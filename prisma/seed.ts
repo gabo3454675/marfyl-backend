@@ -76,13 +76,13 @@ async function main() {
   // ============================================
   const organizationsData = [
     {
-      nombre: 'Monddy',
-      slug: 'monddy',
-      plan: 'ENTERPRISE' as const,
+      nombre: 'MARFYL Demo',
+      slug: 'marfyl-demo',
+      plan: 'PREMIUM' as const,
     },
     {
-      nombre: 'Davean',
-      slug: 'davean',
+      nombre: 'Monddy',
+      slug: 'monddy',
       plan: 'ENTERPRISE' as const,
     },
     {

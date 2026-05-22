@@ -323,7 +323,7 @@ export class InvitationsService {
   }
 
   private generateTempPassword(): string {
-    return 'Disis2026!';
+    return process.env.DEFAULT_MEMBER_PASSWORD?.trim() || 'MARFYL2026!';
   }
 
   private mapMemberToResponse(member: {

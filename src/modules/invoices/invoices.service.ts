@@ -843,7 +843,7 @@ export class InvoicesService {
         const border = '#e5e7eb';
 
         const company = invoice.company as { name?: string; taxId?: string; address?: string } | null;
-        doc.fontSize(20).fillColor(primary).text('disis', 50, 50);
+        doc.fontSize(20).fillColor(primary).text('MARFYL', 50, 50);
         doc.fontSize(10).fillColor(text).text(String(orgName ?? '').slice(0, 80), 50, 72);
         if (company?.taxId) doc.text(`RIF: ${String(company.taxId).slice(0, 30)}`, 50, 85);
         if (company?.address) doc.text(String(company.address).slice(0, 80), 50, 98);

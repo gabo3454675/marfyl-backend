@@ -131,13 +131,10 @@ model Organization {
   auditLogs        AuditLog[]   // Historial de acciones sensibles
   customerCredits  CustomerCredit[] // Cuentas de crédito por organización
   inventoryMovements InventoryMovement[] // Movimientos de inventario
-  vehicleInspections VehicleInspection[] // Inspecciones de vehículos (Davean)
   cierresCaja        CierreCaja[]       // Cierres de caja (X-Report / Z-Report)
   tasasHistoricas    TasaHistorica[]    // Tasas BCV por momento (auditoría)
   activityLogs       ActivityLog[]     // Auditoría de acciones (precio, factura, autoconsumo)
   pagos              Pago[]            // Pagos por factura (tesorería, blindaje)
-  disisClients       DisisClient[]     // Cartera / puntos DISIS (misma BD que el SaaS)
-  disisTransactions  DisisTransaction[]
   expensePayments    ExpensePayment[]
 
   @@index([slug])
@@ -229,7 +226,6 @@ model Product {
   organization  Organization? @relation(fields: [organizationId], references: [id])
   invoiceItems  InvoiceItem[]
   inventoryMovements InventoryMovement[] // Movimientos de inventario del producto
-  disisTransactions  DisisTransaction[] // Consumos registrados desde DISIS monolith
 
   @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
   @@index([organizationId]) // Índice para búsquedas rápidas por organización
@@ -290,27 +286,6 @@ model InventoryMovement {
   @@index([consumptionReason])
   @@index([createdAt])
   @@map("inventory_movements")
-}
-
-// ------------------------------------------
-// INSPECCIÓN DE VEHÍCULOS (Davean)
-// ------------------------------------------
-
-model VehicleInspection {
-  id              Int          @id @default(autoincrement())
-  tenantId        Int          // Organización (Multi-Tenant)
-  diagramPins     Json?        // Coordenadas de los pins del diagrama (formato JSON)
-  usedParts       Json?        // Repuestos usados (formato JSON: [{productId, quantity, ...}])
-  vehicleInfo     String?      // Información del vehículo (placa, modelo, etc.)
-  notes           String?      // Notas adicionales de la inspección
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-
-  tenant          Organization @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId])
-  @@index([createdAt])
-  @@map("vehicle_inspections")
 }
 
 // ------------------------------------------
@@ -904,69 +879,3 @@ model Auditoria {
   @@map("auditorias")
 }
 
-// ------------------------------------------
-// DISIS - Cartera de clientes y consumos (monolith HTTP + dispatch)
-// Misma base de datos que Organization / Product; IDs numéricos (Int).
-// ------------------------------------------
-
-enum DisisTransactionType {
-  RECHARGE
-  CONSUMPTION
-}
-
-enum DisisTransactionStatus {
-  PENDING
-  SYNCED
-}
-
-enum DisisInventorySyncStatus {
-  PENDING
-  SYNCED
-  FAILED
-}
-
-model DisisClient {
-  id             Int      @id @default(autoincrement())
-  organizationId Int
-  nationalId     String
-  name           String
-  balance        Decimal  @default(0) @db.Decimal(15, 2)
-  qrSecret       String
-  pin            String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transactions DisisTransaction[]
-
-  @@unique([organizationId, nationalId])
-  @@index([organizationId])
-  @@map("disis_clients")
-}
-
-model DisisTransaction {
-  id                       Int                     @id @default(autoincrement())
-  organizationId         Int
-  clientId                Int
-  productId               Int?
-  idempotencyKey          String?
-  type                    DisisTransactionType
-  status                  DisisTransactionStatus   @default(PENDING)
-  amount                  Decimal                  @db.Decimal(15, 2)
-  quantity                Decimal?                 @db.Decimal(15, 4)
-  inventorySyncStatus     DisisInventorySyncStatus @default(PENDING)
-  disisInventoryMovementId String?
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       DisisClient  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
-
-  @@unique([organizationId, idempotencyKey])
-  @@index([organizationId, status])
-  @@index([organizationId, inventorySyncStatus])
-  @@index([clientId])
-  @@index([productId])
-  @@map("disis_transactions")
-}

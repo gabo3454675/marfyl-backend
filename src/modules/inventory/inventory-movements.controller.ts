@@ -1,4 +1,4 @@
-import { Controller, Post, Get, UseGuards, Body, Query, Headers } from '@nestjs/common';
+import { Controller, Post, Get, UseGuards, Body, Query } from '@nestjs/common';
 import { InventoryMovementsService } from './inventory-movements.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
@@ -23,13 +23,11 @@ export class InventoryMovementsController {
     @ActiveOrganization() organizationId: number,
     @ActiveUser() user: { id: number },
     @Body() dto: CreateMovementDto,
-    @Headers('x-disis-dispatch-secret') disisDispatchSecret?: string,
   ) {
     return this.inventoryMovementsService.createOutflow({
       organizationId,
       userId: user.id,
       dto,
-      disisDispatchSecretHeader: disisDispatchSecret,
     });
   }
 

@@ -4,7 +4,7 @@ import { TenantContext } from '@/common/context/tenant.context';
 /**
  * Modelos que tienen tenantId (campo literal "tenantId" en el schema).
  */
-const MODELS_WITH_TENANT_ID = new Set<string>(['InventoryMovement', 'VehicleInspection', 'CierreCaja', 'Pago']);
+const MODELS_WITH_TENANT_ID = new Set<string>(['InventoryMovement', 'CierreCaja', 'Pago']);
 
 /**
  * Modelos que tienen organizationId (campo literal "organizationId" en el schema).

@@ -90,7 +90,7 @@ export class BackupService implements OnModuleInit {
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const dumpFileName = `disis-backup-${timestamp}.sql`;
+    const dumpFileName = `marfyl-backup-${timestamp}.sql`;
     const dumpPath = path.join(process.cwd(), 'tmp', dumpFileName);
     const tmpDir = path.dirname(dumpPath);
 

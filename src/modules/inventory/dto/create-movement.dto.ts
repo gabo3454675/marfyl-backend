@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Min, MaxLength, IsNumber, IsEnum, IsBoolean } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min, MaxLength, IsNumber, IsEnum } from 'class-validator';
 import { IsIn } from 'class-validator';
 import { ConsumptionReason } from '@prisma/client';
 
@@ -43,13 +43,4 @@ export class CreateMovementDto {
   @IsOptional()
   @IsEnum(ConsumptionReason, { message: 'consumptionReason debe ser MERMA, MUESTRAS o USO_OPERATIVO' })
   consumptionReason?: ConsumptionReason;
-
-  /**
-   * Si es true: el stock en `products` ya fue ajustado (p. ej. despacho DISIS en el monolito).
-   * Solo se crean InventoryMovement + gasto + logs; no se vuelve a descontar stock.
-   * Requiere cabecera `x-disis-dispatch-secret` igual a `DISIS_DISPATCH_SHARED_SECRET` en el servidor.
-   */
-  @IsOptional()
-  @IsBoolean()
-  stockAlreadyAdjusted?: boolean;
 }
