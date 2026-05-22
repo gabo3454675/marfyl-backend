@@ -1,5 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { assertMarfylDatabaseUrl } from '../src/common/database-guard';
+
+assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
 const prisma = new PrismaClient();
 

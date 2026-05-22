@@ -5,8 +5,11 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as compression from 'compression';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { assertMarfylDatabaseUrl } from './common/database-guard';
 
 async function bootstrap() {
+  assertMarfylDatabaseUrl(process.env.DATABASE_URL);
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const configService = app.get(ConfigService);
