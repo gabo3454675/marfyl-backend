@@ -91,6 +91,18 @@ export class DashboardService {
   }
 
   async getSummary(organizationId: number): Promise<DashboardSummaryDto> {
+    const empty: DashboardSummaryDto = {
+      totalSalesToday: 0,
+      productsCount: 0,
+      lowStockCount: 0,
+      recentTransactions: [],
+    };
+
+    if (!this.prisma.dbAvailable) {
+      return empty;
+    }
+
+    try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -163,6 +175,9 @@ export class DashboardService {
       lowStockCount,
       recentTransactions,
     };
+    } catch {
+      return empty;
+    }
   }
 
   /**

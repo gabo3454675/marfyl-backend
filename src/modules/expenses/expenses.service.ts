@@ -7,6 +7,8 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
+import { FiscalEngineService } from '@/modules/fiscal/fiscal-engine.service';
+import { computeExpenseFiscal } from '@/modules/fiscal/helpers/expense-fiscal.helper';
 import type { PurchaseLineDto } from './dto/purchase-line.dto';
 import * as ExcelJS from 'exceljs';
 import pdfParse from 'pdf-parse';
@@ -22,7 +24,10 @@ function num(v: unknown): number {
 
 @Injectable()
 export class ExpensesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private fiscalEngine: FiscalEngineService,
+  ) {}
 
   /** Suma abonos; si no hay filas y el gasto está PAID (histórico), se considera pagado al 100 %. */
   computeAmountPaid(expense: {
@@ -47,7 +52,16 @@ export class ExpensesService {
   }
 
   async create(createExpenseDto: CreateExpenseDto, organizationId: number, userId: number) {
-    const { purchaseLines, initialPayment, ...rest } = createExpenseDto;
+    const {
+      purchaseLines,
+      initialPayment,
+      supplierControlNumber: _scn,
+      supplierInvoiceNumber: _sin,
+      baseGeneral: _bg,
+      baseExempt: _be,
+      ivaAmount: _iva,
+      ...rest
+    } = createExpenseDto;
 
     const category = await this.prisma.expenseCategory.findFirst({
       where: {
@@ -90,6 +104,15 @@ export class ExpensesService {
 
     const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
 
+    const profile = await this.prisma.fiscalProfile.findUnique({ where: { organizationId } });
+    const fiscal = computeExpenseFiscal({
+      amount: num(createExpenseDto.amount),
+      baseExempt: createExpenseDto.baseExempt,
+      baseGeneral: createExpenseDto.baseGeneral,
+      ivaAmount: createExpenseDto.ivaAmount,
+      applyWithholding: profile?.isSubjectToWithholding ?? false,
+    });
+
     const expense = await this.prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
         data: {
@@ -98,6 +121,14 @@ export class ExpensesService {
           date: new Date(createExpenseDto.date),
           organizationId,
           status: createExpenseDto.status || 'PENDING',
+          supplierInvoiceNumber:
+            createExpenseDto.supplierInvoiceNumber ?? createExpenseDto.referenceNumber,
+          supplierControlNumber: createExpenseDto.supplierControlNumber,
+          baseExempt: fiscal.baseExempt,
+          baseReduced: fiscal.baseReduced,
+          baseGeneral: fiscal.baseGeneral,
+          ivaAmount: fiscal.ivaAmount,
+          withholdingIvaAmount: fiscal.withholdingIvaAmount,
         },
         include: {
           supplier: true,
@@ -143,6 +174,12 @@ export class ExpensesService {
 
     if (!expense) {
       throw new NotFoundException('No se pudo crear el gasto');
+    }
+
+    try {
+      await this.fiscalEngine.projectPurchase(organizationId, expense.id);
+    } catch (err) {
+      console.error('FiscalEngine.projectPurchase:', err);
     }
 
     return this.enrichExpense(expense);

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildDevPreviewUser, isDevPreviewAuthEnabled } from '../dev-preview';
 
 @Injectable()
 export class OrganizationGuard implements CanActivate {
@@ -21,6 +22,26 @@ export class OrganizationGuard implements CanActivate {
       throw new ForbiddenException('Usuario no autenticado');
     }
 
+    const previewUser = buildDevPreviewUser();
+    if (isDevPreviewAuthEnabled() && user.id === previewUser.id) {
+      const organizationId = user.organizationId ?? user.tenantId ?? previewUser.organizationId;
+      request.activeOrganizationId = organizationId;
+      request.activeOrganization = {
+        id: organizationId,
+        name: 'Demo MARFYL (vista previa)',
+        nombre: 'Demo MARFYL (vista previa)',
+      };
+      request.activeOrganizationMembership = {
+        id: 0,
+        userId: user.id,
+        organizationId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        organization: request.activeOrganization,
+      };
+      return true;
+    }
+
     // TenantId SOLO desde el JWT; no se confía en el ID enviado por el frontend (headers/body).
     const organizationId = user.organizationId ?? user.tenantId;
 
@@ -28,6 +49,30 @@ export class OrganizationGuard implements CanActivate {
       throw new BadRequestException(
         'No hay organización activa en la sesión. Use POST /auth/switch-organization o inicie sesión de nuevo.',
       );
+    }
+
+    if (
+      isDevPreviewAuthEnabled() &&
+      user.id === previewUser.id &&
+      user.isSuperAdmin === true &&
+      organizationId === previewUser.organizationId &&
+      !this.prisma.dbAvailable
+    ) {
+      request.activeOrganizationId = organizationId;
+      request.activeOrganization = {
+        id: organizationId,
+        name: 'Demo MARFYL (sin BD)',
+        nombre: 'Demo MARFYL (sin BD)',
+      };
+      request.activeOrganizationMembership = {
+        id: 0,
+        userId: user.id,
+        organizationId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        organization: request.activeOrganization,
+      };
+      return true;
     }
 
     // Verificar que la organización existe
@@ -59,7 +104,7 @@ export class OrganizationGuard implements CanActivate {
         where: { id: user.id },
         select: { isSuperAdmin: true },
       });
-      if (dbUser?.isSuperAdmin) {
+      if (user.isSuperAdmin === true || dbUser?.isSuperAdmin) {
         membership = {
           id: 0,
           userId: user.id,

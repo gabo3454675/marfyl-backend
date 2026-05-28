@@ -27,6 +27,8 @@ import { CierreCajaModule } from './modules/cierre-caja/cierre-caja.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditoriaModule } from './common/auditoria/auditoria.module';
+import { FiscalModule } from './modules/fiscal/fiscal.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 
 @Module({
   imports: [
@@ -59,6 +61,8 @@ import { AuditoriaModule } from './common/auditoria/auditoria.module';
     ActivityLogModule,
     NotificationsModule,
     AuditoriaModule,
+    FiscalModule,
+    AssistantModule,
   ],
   controllers: [AppController],
   providers: [

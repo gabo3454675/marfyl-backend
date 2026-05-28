@@ -2,6 +2,11 @@ import { Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import {
+  buildDevPreviewUser,
+  DEV_PREVIEW_TOKEN,
+  isDevPreviewAuthEnabled,
+} from '../dev-preview';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -17,6 +22,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     if (isPublic) {
       return true;
+    }
+
+    if (isDevPreviewAuthEnabled()) {
+      const request = context.switchToHttp().getRequest();
+      const auth = (request.headers?.authorization as string | undefined)?.trim();
+      const token = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : auth;
+      if (token === DEV_PREVIEW_TOKEN) {
+        request.user = buildDevPreviewUser();
+        return true;
+      }
     }
 
     return super.canActivate(context);

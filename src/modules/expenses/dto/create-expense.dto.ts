@@ -56,4 +56,27 @@ export class CreateExpenseDto {
   @IsNumber()
   @Min(0.01)
   initialPayment?: number;
+
+  @IsString()
+  @IsOptional()
+  supplierControlNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  supplierInvoiceNumber?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseGeneral?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  ivaAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  baseExempt?: number;
 }

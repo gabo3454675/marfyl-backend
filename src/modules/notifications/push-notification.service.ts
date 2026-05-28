@@ -76,6 +76,19 @@ export class PushNotificationService {
     await this.sendToTokens(tokens, title, body, { type: 'stock_bajo', productId: String(params.productId) });
   }
 
+  async notifyFiscalReminder(params: {
+    tokens: string[];
+    title: string;
+    body: string;
+    organizationId: number;
+  }): Promise<void> {
+    if (params.tokens.length === 0) return;
+    await this.sendToTokens(params.tokens, params.title, params.body, {
+      type: 'fiscal_deadline',
+      organizationId: String(params.organizationId),
+    });
+  }
+
   private async sendToTokens(
     tokens: string[],
     title: string,

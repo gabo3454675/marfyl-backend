@@ -114,6 +114,10 @@ model Organization {
   currencySymbol  String          @default("$")  // Símbolo para facturas y POS
   exchangeRate    Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES) para conversión
   rateUpdatedAt   DateTime?       // Última actualización de la tasa (para tarea "Actualizar Tasa del Día")
+  taxId               String?         // RIF emisor (organización)
+  legalName           String?         // Razón social fiscal
+  isSpecialTaxpayer   Boolean         @default(false)
+  isFormalTaxpayer    Boolean         @default(false)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -136,6 +140,18 @@ model Organization {
   activityLogs       ActivityLog[]     // Auditoría de acciones (precio, factura, autoconsumo)
   pagos              Pago[]            // Pagos por factura (tesorería, blindaje)
   expensePayments    ExpensePayment[]
+  fiscalProfile      FiscalProfile?
+  fiscalPeriods      FiscalPeriod[]
+  libroVentaLines    LibroVentaLine[]
+  libroCompraLines   LibroCompraLine[]
+  retencionesIva     RetencionIVA[]
+  fiscalDocuments    FiscalDocument[]
+  fiscalDeadlines    FiscalDeadline[]
+  fiscalDomainEvents FiscalDomainEvent[]
+  fiscalComplianceAlerts FiscalComplianceAlert[]
+  fiscalAuditLogs    FiscalAuditLog[]
+  fiscalSyncRuns     FiscalSyncRun[]
+  declaracionesIva   Declaracion_IVA[]
 
   @@index([slug])
   @@map("organizations")
@@ -504,6 +520,15 @@ model Invoice {
   viewCount            Int     @default(0)
   lastViewedAt        DateTime?
   consecutiveNumber   Int?    // Número consecutivo por organización (cada rancho 1, 2, 3...)
+  fiscalDocumentType  FiscalDocumentType @default(FACTURA)
+  controlNumber       String?
+  fiscalInvoiceNumber String?
+  issueDate           DateTime?
+  baseExempt          Decimal   @default(0) @db.Decimal(15, 2)
+  baseReduced         Decimal   @default(0) @db.Decimal(15, 2)
+  baseGeneral         Decimal   @default(0) @db.Decimal(15, 2)
+  ivaAmount           Decimal   @default(0) @db.Decimal(15, 2)
+  igtfAmount          Decimal   @default(0) @db.Decimal(15, 2)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -518,6 +543,7 @@ model Invoice {
   creditTransactions CreditTransaction[]
   tasaHistoricaId    Int?
   tasaHistorica      TasaHistorica?   @relation("InvoiceTasa", fields: [tasaHistoricaId], references: [id])
+  libroVentaLine     LibroVentaLine?
 
   @@index([companyId])
   @@index([organizationId])
@@ -536,6 +562,9 @@ model InvoiceItem {
   quantity  Int
   unitPrice Decimal @db.Decimal(10, 2)
   subtotal  Decimal @db.Decimal(10, 2)
+  taxRate   Int     @default(16)
+  taxableBase Decimal @default(0) @db.Decimal(15, 2)
+  ivaLine   Decimal @default(0) @db.Decimal(15, 2)
 
   invoice Invoice @relation(fields: [invoiceId], references: [id])
   product Product @relation(fields: [productId], references: [id])
@@ -612,6 +641,13 @@ model Expense {
   supplierId          Int?
   categoryId          Int
   inventoryMovementId Int?           @unique // Doble asiento: gasto generado por autoconsumo/merma
+  supplierControlNumber String?
+  supplierInvoiceNumber String?
+  baseExempt          Decimal        @default(0) @db.Decimal(15, 2)
+  baseReduced         Decimal        @default(0) @db.Decimal(15, 2)
+  baseGeneral         Decimal        @default(0) @db.Decimal(15, 2)
+  ivaAmount           Decimal        @default(0) @db.Decimal(15, 2)
+  withholdingIvaAmount Decimal       @default(0) @db.Decimal(15, 2)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -621,6 +657,8 @@ model Expense {
   category           ExpenseCategory  @relation(fields: [categoryId], references: [id])
   inventoryMovement  InventoryMovement? @relation("MovementExpense", fields: [inventoryMovementId], references: [id])
   payments           ExpensePayment[]
+  libroCompraLine    LibroCompraLine?
+  retencionIva       RetencionIVA?
 
   @@index([companyId])
   @@index([organizationId])
@@ -812,6 +850,425 @@ model AuditLog {
 }
 
 // ------------------------------------------
+// MODULO FISCAL MARFYL - Libros y perfil por organizacion
+// ------------------------------------------
+
+enum FiscalTaxpayerType {
+  ORDINARIO
+  ESPECIAL
+  FORMAL
+}
+
+enum FiscalPeriodStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+enum FiscalDocumentType {
+  FACTURA
+  NOTA_CREDITO
+  NOTA_DEBITO
+}
+
+enum LibroLineStatus {
+  ACTIVE
+  VOID
+}
+
+enum FiscalDocumentKind {
+  RETENCION_IVA
+  CERTIFICADO_DECLARACION
+  COMPROBANTE_PAGO
+  LIBRO_EXPORT
+  OTRO
+}
+
+enum DeclaracionIvaStatus {
+  BORRADOR
+  LISTO
+  PRESENTADO
+}
+
+enum ComplianceStatus {
+  RED
+  YELLOW
+  GREEN
+  CLOSED
+}
+
+enum FiscalObligationPeriodicity {
+  MENSUAL
+  QUINCENAL
+  ANUAL
+}
+
+enum FiscalNormStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+}
+
+enum FiscalAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum FiscalAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum FiscalDomainEventType {
+  INVOICE_ISSUED
+  PURCHASE_REGISTERED
+  CREDIT_NOTE_CREATED
+  CASH_CLOSE
+  PERIOD_CLOSE
+  PROFILE_CHANGED
+  RULES_SYNCED
+  VALIDATION_BLOCKED
+  VALIDATION_WARNING
+}
+
+enum FiscalSyncRunType {
+  CALENDARIO
+  BCV
+  NORMS
+}
+
+enum FiscalSyncRunStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum FiscalComplianceMode {
+  DIAGNOSTIC
+  OPERATIONAL
+}
+
+model FiscalProfile {
+  id                     Int                @id @default(autoincrement())
+  organizationId         Int                @unique
+  taxId                  String?
+  legalName              String?
+  taxpayerType           FiscalTaxpayerType @default(ORDINARIO)
+  isWithholdingAgent     Boolean            @default(false)
+  isSubjectToWithholding Boolean            @default(false)
+  rifLastDigit           Int?
+  obligations            Json?
+  controlSeriesPrefix    String?            @default("01")
+  nextControlSequence    Int                @default(1)
+  economicActivity       String?
+  branches               Json?
+  lastRulesSyncAt        DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("fiscal_profiles")
+}
+
+model FiscalPeriod {
+  id             Int                @id @default(autoincrement())
+  organizationId Int
+  year           Int
+  month          Int
+  status         FiscalPeriodStatus @default(OPEN)
+  closedAt       DateTime?
+  integrityHash  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  declaracionIva Declaracion_IVA?
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId, status])
+  @@map("fiscal_periods")
+}
+
+model LibroVentaLine {
+  id                  Int                @id @default(autoincrement())
+  organizationId      Int
+  periodYear          Int
+  periodMonth         Int
+  invoiceId           Int?               @unique
+  issueDate           DateTime
+  documentType        FiscalDocumentType @default(FACTURA)
+  invoiceNumber       String?
+  controlNumber       String?
+  customerTaxId       String?
+  customerName        String?
+  baseExempt          Decimal            @default(0) @db.Decimal(15, 2)
+  baseReduced         Decimal            @default(0) @db.Decimal(15, 2)
+  baseGeneral         Decimal            @default(0) @db.Decimal(15, 2)
+  ivaAmount           Decimal            @default(0) @db.Decimal(15, 2)
+  totalAmount         Decimal            @default(0) @db.Decimal(15, 2)
+  status              LibroLineStatus    @default(ACTIVE)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, periodYear, periodMonth])
+  @@index([issueDate])
+  @@map("libro_venta_lines")
+}
+
+model LibroCompraLine {
+  id                  Int             @id @default(autoincrement())
+  organizationId      Int
+  periodYear          Int
+  periodMonth         Int
+  expenseId           Int?            @unique
+  issueDate           DateTime
+  supplierTaxId       String?
+  supplierName        String?
+  invoiceNumber       String?
+  controlNumber       String?
+  baseExempt          Decimal         @default(0) @db.Decimal(15, 2)
+  baseReduced         Decimal         @default(0) @db.Decimal(15, 2)
+  baseGeneral         Decimal         @default(0) @db.Decimal(15, 2)
+  ivaAmount           Decimal         @default(0) @db.Decimal(15, 2)
+  withholdingIva      Decimal         @default(0) @db.Decimal(15, 2)
+  totalAmount         Decimal         @default(0) @db.Decimal(15, 2)
+  status              LibroLineStatus @default(ACTIVE)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expense      Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, periodYear, periodMonth])
+  @@index([issueDate])
+  @@map("libro_compra_lines")
+}
+
+model RetencionIVA {
+  id                Int      @id @default(autoincrement())
+  organizationId    Int
+  expenseId         Int      @unique
+  periodYear        Int
+  periodMonth       Int
+  supplierTaxId     String?
+  supplierName      String?
+  baseAmount        Decimal  @default(0) @db.Decimal(15, 2)
+  ivaAmount         Decimal  @default(0) @db.Decimal(15, 2)
+  withholdingRate   Decimal  @default(0.75) @db.Decimal(5, 4)
+  withholdingAmount Decimal @default(0) @db.Decimal(15, 2)
+  certificateNumber String?
+  fiscalDocumentId  Int?     @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expense        Expense        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  fiscalDocument FiscalDocument? @relation(fields: [fiscalDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, periodYear, periodMonth])
+  @@map("retenciones_iva")
+}
+
+model FiscalDocument {
+  id             Int                @id @default(autoincrement())
+  organizationId Int
+  kind           FiscalDocumentKind @default(OTRO)
+  fileName       String?
+  storageUrl     String?
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  retencionIva  RetencionIVA?
+
+  @@index([organizationId, kind])
+  @@map("fiscal_documents")
+}
+
+model FiscalObligationTemplate {
+  id            Int                         @id @default(autoincrement())
+  code          String                      @unique
+  name          String
+  taxpayerTypes FiscalTaxpayerType[]
+  periodicity   FiscalObligationPeriodicity @default(MENSUAL)
+  isActive      Boolean                     @default(true)
+  createdAt     DateTime                    @default(now())
+
+  rules     FiscalCalendarRule[]
+  deadlines FiscalDeadline[]
+
+  @@map("fiscal_obligation_templates")
+}
+
+model FiscalCalendarRule {
+  id            Int      @id @default(autoincrement())
+  templateId    Int
+  normVersionId Int?
+  rifDigitMin     Int      @default(0)
+  rifDigitMax     Int      @default(9)
+  dueDayOfMonth   Int
+  dueMonthOffset  Int      @default(1)
+  version       String   @default("2026")
+  isActive      Boolean  @default(true)
+
+  template    FiscalObligationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  normVersion FiscalNormVersion?     @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@index([normVersionId])
+  @@map("fiscal_calendar_rules")
+}
+
+model FiscalDeadline {
+  id             Int              @id @default(autoincrement())
+  organizationId Int
+  templateId     Int
+  periodYear     Int
+  periodMonth    Int
+  dueDate        DateTime
+  compliance     ComplianceStatus @default(RED)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     FiscalObligationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, templateId, periodYear, periodMonth])
+  @@index([organizationId, dueDate])
+  @@map("fiscal_deadlines")
+}
+
+// ------------------------------------------
+// CUMPLIMIENTO FISCAL - normas versionadas, eventos, alertas, auditoria
+// ------------------------------------------
+
+model FiscalNorm {
+  id              Int              @id @default(autoincrement())
+  code            String           @unique
+  name            String
+  legalReference  String?
+  officialSource  String?
+  priority        Int              @default(100)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  versions     FiscalNormVersion[]
+
+  @@index([isActive])
+  @@map("fiscal_norms")
+}
+
+model FiscalNormVersion {
+  id              Int              @id @default(autoincrement())
+  normId          Int
+  versionCode     String
+  articleRef      String?
+  validFrom       DateTime
+  validTo         DateTime?
+  status          FiscalNormStatus @default(ACTIVE)
+  sourceDocument  String?
+  notes           String?
+  metadata        Json?
+  createdByUserId Int?
+  createdAt       DateTime         @default(now())
+
+  norm              FiscalNorm           @relation(fields: [normId], references: [id], onDelete: Cascade)
+  calendarRules     FiscalCalendarRule[]
+  complianceAlerts  FiscalComplianceAlert[]
+
+  @@index([normId, status])
+  @@index([validFrom, validTo])
+  @@map("fiscal_norm_versions")
+}
+
+model FiscalDomainEvent {
+  id             Int                   @id @default(autoincrement())
+  organizationId Int
+  eventType      FiscalDomainEventType
+  entityType     String?
+  entityId       String?
+  payload        Json?
+  userId         Int?
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, eventType])
+  @@map("fiscal_domain_events")
+}
+
+model FiscalComplianceAlert {
+  id                Int                 @id @default(autoincrement())
+  organizationId    Int
+  severity          FiscalAlertSeverity
+  status            FiscalAlertStatus   @default(OPEN)
+  title             String
+  problem           String
+  risk              String
+  recommendedAction String
+  ruleCode          String?
+  normVersionId     Int?
+  blocksOperation   Boolean             @default(false)
+  periodYear        Int?
+  periodMonth       Int?
+  resolvedAt        DateTime?
+  resolvedByUserId  Int?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  normVersion    FiscalNormVersion? @relation(fields: [normVersionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, severity])
+  @@map("fiscal_compliance_alerts")
+}
+
+model FiscalAuditLog {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  userId         Int?
+  action         String
+  entityType     String
+  entityId       String?
+  ruleCode       String?
+  beforeValue    Json?
+  afterValue     Json?
+  systemResponse Json?
+  userConfirmed  Boolean?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("fiscal_audit_logs")
+}
+
+model FiscalSyncRun {
+  id             Int                 @id @default(autoincrement())
+  organizationId Int?
+  syncType       FiscalSyncRunType
+  status         FiscalSyncRunStatus @default(PENDING)
+  versionLabel   String?
+  startedAt      DateTime            @default(now())
+  finishedAt     DateTime?
+  metadata       Json?
+  errorMessage   String?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([syncType, status])
+  @@map("fiscal_sync_runs")
+}
+
+// ------------------------------------------
 // MÓDULO SAC - DECLARACIONES FISCALES
 // Soft delete con deleted_at (nullable)
 // ------------------------------------------
@@ -830,15 +1287,22 @@ model Contribuyente {
 }
 
 model Declaracion_IVA {
-  id               Int           @id @default(autoincrement())
-  contribuyente_id Int
+  id               Int                  @id @default(autoincrement())
+  contribuyente_id Int?
+  organizationId   Int?
+  fiscalPeriodId   Int?                 @unique
+  status           DeclaracionIvaStatus @default(BORRADOR)
+  totals           Json?
   deleted_at       DateTime?
-  created_at       DateTime      @default(now())
-  updated_at       DateTime      @updatedAt
+  created_at       DateTime             @default(now())
+  updated_at       DateTime             @updatedAt
 
-  contribuyente    Contribuyente @relation(fields: [contribuyente_id], references: [id], onDelete: Restrict)
+  contribuyente  Contribuyente? @relation(fields: [contribuyente_id], references: [id], onDelete: Restrict)
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fiscalPeriod   FiscalPeriod?  @relation(fields: [fiscalPeriodId], references: [id], onDelete: SetNull)
 
   @@index([contribuyente_id])
+  @@index([organizationId])
   @@index([deleted_at])
   @@map("declaraciones_iva")
 }

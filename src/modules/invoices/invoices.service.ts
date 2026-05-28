@@ -14,6 +14,9 @@ import { CreditsService } from '@/modules/credits/credits.service';
 
 const PDFDocument = (PDFKit as any).default ?? PDFKit;
 import { TasksService } from '@/modules/tasks/tasks.service';
+import { FiscalEngineService } from '@/modules/fiscal/fiscal-engine.service';
+import { FiscalControlNumberService } from '@/modules/fiscal/fiscal-control-number.service';
+import { computeInvoiceTax, type LineTaxInput } from '@/modules/fiscal/helpers/tax-calculator';
 import { TaskPriority, Product, PaymentStatus } from '@prisma/client';
 
 @Injectable()
@@ -23,6 +26,8 @@ export class InvoicesService {
     private creditsService: CreditsService,
     private tasksService: TasksService,
     private activityLog: ActivityLogService,
+    private fiscalEngine: FiscalEngineService,
+    private fiscalControlNumber: FiscalControlNumberService,
   ) {}
 
   async create(createInvoiceDto: CreateInvoiceDto, organizationId: number, sellerId: number) {
@@ -85,12 +90,15 @@ export class InvoicesService {
       throw new NotFoundException('Uno o más productos no fueron encontrados');
     }
 
-    let totalAmount = 0;
+    const taxLineInputs: LineTaxInput[] = [];
     const invoiceItemsData: {
       productId: number;
       quantity: number;
       unitPrice: number;
       subtotal: number;
+      taxRate: number;
+      taxableBase: number;
+      ivaLine: number;
     }[] = [];
     const stockUpdates: ReturnType<PrismaService['product']['update']>[] = [];
 
@@ -102,13 +110,17 @@ export class InvoicesService {
 
       const unitPrice = Number(product.salePrice);
       const subtotal = unitPrice * item.quantity;
-      totalAmount += subtotal;
+      const lineTax = { amount: subtotal, isExempt: product.isExempt };
+      taxLineInputs.push(lineTax);
 
       invoiceItemsData.push({
         productId: product.id,
         quantity: item.quantity,
         unitPrice,
         subtotal,
+        taxRate: product.isExempt ? 0 : 16,
+        taxableBase: 0,
+        ivaLine: 0,
       });
 
       const compsUnknown = product.bundleComponents as unknown;
@@ -154,6 +166,15 @@ export class InvoicesService {
         );
       }
     }
+
+    const taxTotals = computeInvoiceTax(taxLineInputs);
+    for (let i = 0; i < invoiceItemsData.length; i++) {
+      const lt = taxTotals.lines[i];
+      invoiceItemsData[i].taxRate = lt.taxRate;
+      invoiceItemsData[i].taxableBase = lt.taxableBase;
+      invoiceItemsData[i].ivaLine = lt.ivaLine;
+    }
+    const totalAmount = taxTotals.totalWithTax;
 
     if (isCredit) {
       const credit = await this.creditsService.getOrCreateCredit(customerId!, organizationId);
@@ -230,6 +251,8 @@ export class InvoicesService {
     // Número consecutivo por organización (cada rancho/empresa tiene su propia secuencia 1, 2, 3...)
     const nextConsecutive =
       (await this.prisma.invoice.count({ where: { organizationId } })) + 1;
+    const issueDate = new Date();
+    const controlNumber = await this.fiscalControlNumber.allocateControlNumber(organizationId);
 
     const mapToMetodo = (method: string): string => {
       const m = method.toUpperCase();
@@ -261,6 +284,13 @@ export class InvoicesService {
           publicToken: uuidv4(),
           tasaHistoricaId: tasa.id,
           consecutiveNumber: nextConsecutive,
+          issueDate,
+          fiscalInvoiceNumber: String(nextConsecutive),
+          controlNumber,
+          baseExempt: taxTotals.baseExempt,
+          baseReduced: taxTotals.baseReduced,
+          baseGeneral: taxTotals.baseGeneral,
+          ivaAmount: taxTotals.ivaAmount,
           items: { create: invoiceItemsData },
           paymentLines: {
             create: paymentLinesData.map((p) => ({
@@ -328,6 +358,12 @@ export class InvoicesService {
         organizationId,
         sellerId,
       );
+    }
+
+    try {
+      await this.fiscalEngine.projectSale(organizationId, invoice.id, sellerId);
+    } catch (err) {
+      console.error('FiscalEngine.projectSale:', err);
     }
 
     return this.prisma.invoice.findUnique({
