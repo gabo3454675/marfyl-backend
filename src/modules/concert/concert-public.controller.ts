@@ -1,0 +1,46 @@
+import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { Public } from '@/common/decorators/public.decorator';
+import { ConcertService } from './concert.service';
+import { HoldSeatsDto } from './dto/hold-seats.dto';
+import { ConcertCheckoutDto } from './dto/checkout.dto';
+
+@Controller('concert/public')
+export class ConcertPublicController {
+  constructor(private readonly concertService: ConcertService) {}
+
+  @Public()
+  @Get(':slug')
+  getEvent(@Param('slug') slug: string) {
+    return this.concertService.getPublicEvent(slug);
+  }
+
+  @Public()
+  @Post(':slug/hold')
+  holdSeats(@Param('slug') slug: string, @Body() dto: HoldSeatsDto) {
+    return this.concertService.holdSeats(slug, dto.seatIds);
+  }
+
+  @Public()
+  @Post(':slug/checkout')
+  @UseInterceptors(
+    FileInterceptor('paymentProof', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  checkout(
+    @Param('slug') slug: string,
+    @Body() dto: ConcertCheckoutDto,
+    @UploadedFile() paymentProof?: Express.Multer.File,
+  ) {
+    return this.concertService.checkoutPublic(slug, dto, paymentProof);
+  }
+
+  @Public()
+  @Get(':slug/orden/:orderToken')
+  getOrder(@Param('slug') slug: string, @Param('orderToken') orderToken: string) {
+    return this.concertService.getPublicOrder(slug, orderToken);
+  }
+}

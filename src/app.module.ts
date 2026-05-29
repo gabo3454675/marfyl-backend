@@ -29,6 +29,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AuditoriaModule } from './common/auditoria/auditoria.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
+import { ConcertModule } from './modules/concert/concert.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { AssistantModule } from './modules/assistant/assistant.module';
     AuditoriaModule,
     FiscalModule,
     AssistantModule,
+    ConcertModule,
   ],
   controllers: [AppController],
   providers: [

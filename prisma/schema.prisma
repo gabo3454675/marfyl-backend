@@ -152,6 +152,7 @@ model Organization {
   fiscalAuditLogs    FiscalAuditLog[]
   fiscalSyncRuns     FiscalSyncRun[]
   declaracionesIva   Declaracion_IVA[]
+  concertEvents      ConcertEvent[]
 
   @@index([slug])
   @@map("organizations")
@@ -1341,5 +1342,148 @@ model Auditoria {
   @@index([fecha])
   @@index([entidad, entidad_id])
   @@map("auditorias")
+}
+
+// ------------------------------------------
+// MÓDULO TEMPORAL: BOLETERÍA / CONCIERTO (feature flag)
+// ------------------------------------------
+
+enum ConcertSeatStatus {
+  AVAILABLE
+  HELD
+  SOLD
+}
+
+enum ConcertOrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+}
+
+enum ConcertPaymentMethod {
+  CASH_USD
+  PAGO_MOVIL
+  BANK_TRANSFER
+}
+
+model ConcertEvent {
+  id               Int       @id @default(autoincrement())
+  organizationId   Int
+  slug             String
+  title            String
+  subtitle         String?
+  venueName        String?
+  eventStartsAt    DateTime
+  isActive         Boolean   @default(true)
+  priceUsdStandard Float
+  priceUsdVip      Float
+  priceBsVip       Float?
+  bankAccountName  String    @default("Inversiones Hemenegilda Capacidad")
+  bankAccountInfo  String?
+  pagoMovilInfo    String?
+  cashInstructions String?
+  publicNotes      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sections     ConcertSection[]
+  orders       ConcertOrder[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([slug])
+  @@map("concert_events")
+}
+
+model ConcertSection {
+  id        Int    @id @default(autoincrement())
+  eventId   Int
+  code      String
+  label     String
+  rows      Int
+  cols      Int
+  sortOrder Int    @default(0)
+
+  event ConcertEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  seats ConcertSeat[]
+
+  @@unique([eventId, code])
+  @@map("concert_sections")
+}
+
+model ConcertSeat {
+  id         Int               @id @default(autoincrement())
+  sectionId  Int
+  rowLabel   String
+  seatNumber Int
+  priceUsd   Float?
+  priceBs    Float?
+  mesaNumber Int?
+  displayNumber Int?
+  tierCode   String?
+  tierLabel  String?
+  status     ConcertSeatStatus @default(AVAILABLE)
+  heldUntil  DateTime?
+  holdToken  String?
+  orderId    Int?
+
+  section ConcertSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  ticket  ConcertTicket?
+
+  @@unique([sectionId, rowLabel, seatNumber])
+  @@index([sectionId, status])
+  @@index([holdToken])
+  @@map("concert_seats")
+}
+
+model ConcertOrder {
+  id               Int                  @id @default(autoincrement())
+  organizationId   Int
+  eventId          Int
+  status           ConcertOrderStatus   @default(PENDING_PAYMENT)
+  paymentMethod    ConcertPaymentMethod
+  buyerName        String
+  buyerIdDocument  String
+  buyerPhone       String
+  buyerEmail       String?
+  amountUsd        Float
+  amountBs         Float
+  exchangeRate     Float
+  paymentReference String?
+  paymentProofUrl  String?
+  publicToken      String               @unique @default(uuid())
+  paidAt           DateTime?
+  confirmedById    Int?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  event   ConcertEvent    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tickets ConcertTicket[]
+
+  @@index([organizationId])
+  @@index([eventId, status])
+  @@index([publicToken])
+  @@map("concert_orders")
+}
+
+model ConcertTicket {
+  id          Int       @id @default(autoincrement())
+  orderId     Int
+  seatId      Int       @unique
+  publicToken String    @unique @default(uuid())
+  qrPayload   String    @unique
+  seatLabel   String
+  sectionCode String
+  checkedInAt DateTime?
+  checkedInBy Int?
+  createdAt   DateTime  @default(now())
+
+  order ConcertOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seat  ConcertSeat  @relation(fields: [seatId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([qrPayload])
+  @@map("concert_tickets")
 }
 
