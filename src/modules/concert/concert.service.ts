@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -13,6 +14,7 @@ import {
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { UploadService } from '@/common/services/upload.service';
+import { EmailService } from '@/modules/email/email.service';
 import { CONCERT_HOLD_MINUTES, isConcertFeatureEnabled } from './concert.config';
 import { ConcertCheckoutDto } from './dto/checkout.dto';
 import { AdminSellDto } from './dto/admin-sell.dto';
@@ -20,9 +22,12 @@ import { HEMENEGILDA_SEAT_CATALOG, type SeatCatalogEntry } from './hemenegilda-s
 
 @Injectable()
 export class ConcertService {
+  private readonly logger = new Logger(ConcertService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
+    private readonly emailService: EmailService,
   ) {}
 
   private assertEnabled() {
@@ -283,7 +288,7 @@ export class ConcertService {
 
     let paymentProofUrl: string | null = null;
     if (paymentProof) {
-      paymentProofUrl = await this.uploadService.uploadFile(paymentProof, 'concert/payments');
+      paymentProofUrl = await this.uploadService.uploadFile(paymentProof, 'private/concert/payments');
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -315,7 +320,14 @@ export class ConcertService {
         },
       });
 
-      return created;
+return created;
+    });
+
+    // Fire-and-forget: notify owner of new pending order
+    setImmediate(() => {
+      this.emailService
+        .sendConcertOrderPendingToOwner(order, event)
+        .catch((err) => this.logger.error(`Failed to send order pending email: ${err.message}`));
     });
 
     return {
@@ -387,6 +399,26 @@ export class ConcertService {
       }
     });
 
+    // Fire-and-forget: send tickets to buyer after payment confirmation
+    // Refresh tickets for email (created in transaction above)
+    const paidOrder = await this.prisma.concertOrder.findUnique({
+      where: { id: orderId },
+      include: { event: true, tickets: true },
+    });
+    if (paidOrder) {
+      setImmediate(() => {
+        this.emailService
+          .sendConcertTicketsToBuyer(paidOrder, paidOrder.event, paidOrder.tickets)
+          .then(async () => {
+            await this.prisma.concertOrder.update({
+              where: { id: orderId },
+              data: { emailSentAt: new Date(), emailSentTo: paidOrder.buyerEmail },
+            });
+          })
+          .catch((err) => this.logger.error(`Failed to send tickets email: ${err.message}`));
+      });
+    }
+
     return this.getOrderDetail(order.organizationId, order.publicToken);
   }
 
@@ -394,7 +426,7 @@ export class ConcertService {
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
     const order = await this.prisma.concertOrder.findFirst({
-      where: { publicToken: orderToken, eventId: event.id },
+      where: { publicToken: orderToken, eventId: event.id, organizationId: event.organization.id },
       include: { tickets: { orderBy: { id: 'asc' } } },
     });
     if (!order) throw new NotFoundException('Orden no encontrada');
@@ -481,6 +513,7 @@ export class ConcertService {
 
     return this.prisma.concertOrder.findMany({
       where: {
+        organizationId,
         eventId: event.id,
         ...(status ? { status } : {}),
       },
@@ -506,6 +539,30 @@ export class ConcertService {
     });
     if (!order) throw new NotFoundException('Orden no encontrada');
     return this.markOrderPaid(order.id, userId);
+  }
+
+  async resendOrderEmail(organizationId: number, orderId: number) {
+    const order = await this.prisma.concertOrder.findFirst({
+      where: { id: orderId, organizationId, status: ConcertOrderStatus.PAID },
+      include: { event: true, tickets: true },
+    });
+    if (!order) throw new NotFoundException('Orden no encontrada o no pagada');
+    if (!order.buyerEmail) throw new BadRequestException('Email del comprador no registrado');
+
+    await this.emailService.sendConcertTicketsToBuyer(order, order.event, order.tickets);
+    await this.prisma.concertOrder.update({
+      where: { id: orderId },
+      data: { emailSentAt: new Date(), emailSentTo: order.buyerEmail },
+    });
+    return { ok: true, message: 'Email reenviado' };
+  }
+
+  async getOrderForProof(organizationId: number, orderId: number) {
+    const order = await this.prisma.concertOrder.findFirst({
+      where: { id: orderId, organizationId },
+      select: { id: true, organizationId: true, paymentProofUrl: true },
+    });
+    return order;
   }
 
   async adminSell(organizationId: number, userId: number, dto: AdminSellDto) {
@@ -576,6 +633,32 @@ export class ConcertService {
       eventTitle: ticket.order.event.title,
       message: 'Acceso autorizado',
     };
+  }
+
+  async cancelOrder(organizationId: number, orderId: number) {
+    const order = await this.prisma.concertOrder.findFirst({
+      where: { id: orderId, organizationId },
+      include: { tickets: true },
+    });
+    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (order.status !== ConcertOrderStatus.PENDING_PAYMENT) {
+      throw new BadRequestException('Solo se pueden cancelar órdenes pendientes');
+    }
+
+    const seatIds = order.tickets.map((t) => t.seatId).filter(Boolean);
+    if (seatIds.length > 0) {
+      await this.prisma.concertSeat.updateMany({
+        where: { id: { in: seatIds } },
+        data: { status: ConcertSeatStatus.AVAILABLE, heldUntil: null, holdToken: null, orderId: null },
+      });
+    }
+
+    await this.prisma.concertOrder.update({
+      where: { id: orderId },
+      data: { status: ConcertOrderStatus.CANCELLED },
+    });
+
+    return { ok: true, message: 'Orden cancelada' };
   }
 
   private catalogEntryToSeat(

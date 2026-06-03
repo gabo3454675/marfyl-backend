@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
 import { HttpCacheTenantInterceptor } from './common/interceptors/http-cache-tenant.interceptor';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
@@ -30,6 +31,7 @@ import { AuditoriaModule } from './common/auditoria/auditoria.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
 import { ConcertModule } from './modules/concert/concert.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -64,11 +66,33 @@ import { ConcertModule } from './modules/concert/concert.module';
     AuditoriaModule,
     FiscalModule,
     AssistantModule,
+    EmailModule,
     ConcertModule,
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000, // 1 second
+        limit: 3,
+      },
+      {
+        name: 'medium',
+        ttl: 10000, // 10 seconds
+        limit: 20,
+      },
+      {
+        name: 'long',
+        ttl: 60000, // 1 minute
+        limit: 100,
+      },
+    ]),
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

@@ -1,5 +1,6 @@
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { ConcertPaymentMethod } from '@prisma/client';
+import { IsSafeText } from '@/common/validators/safe-text.validator';
 
 export class AdminSellDto {
   @IsArray()
@@ -9,6 +10,7 @@ export class AdminSellDto {
 
   @IsString()
   @MinLength(2)
+  @IsSafeText()
   buyerName: string;
 
   @IsString()
@@ -17,11 +19,12 @@ export class AdminSellDto {
 
   @IsString()
   @MinLength(7)
+  @IsSafeText()
   buyerPhone: string;
 
-  @IsOptional()
-  @IsString()
-  buyerEmail?: string;
+  @IsEmail()
+  @IsNotEmpty()
+  buyerEmail: string;
 
   @IsEnum(ConcertPaymentMethod)
   paymentMethod: ConcertPaymentMethod;

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Public } from '@/common/decorators/public.decorator';
@@ -17,12 +18,14 @@ export class ConcertPublicController {
   }
 
   @Public()
+  @Throttle({ long: { limit: 10, ttl: 60000 } })
   @Post(':slug/hold')
   holdSeats(@Param('slug') slug: string, @Body() dto: HoldSeatsDto) {
     return this.concertService.holdSeats(slug, dto.seatIds);
   }
 
   @Public()
+  @Throttle({ long: { limit: 5, ttl: 60000 } })
   @Post(':slug/checkout')
   @UseInterceptors(
     FileInterceptor('paymentProof', {
@@ -38,6 +41,7 @@ export class ConcertPublicController {
     return this.concertService.checkoutPublic(slug, dto, paymentProof);
   }
 
+  @Throttle({ long: { limit: 30, ttl: 60000 } })
   @Public()
   @Get(':slug/orden/:orderToken')
   getOrder(@Param('slug') slug: string, @Param('orderToken') orderToken: string) {

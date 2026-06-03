@@ -1455,6 +1455,8 @@ model ConcertOrder {
   publicToken      String               @unique @default(uuid())
   paidAt           DateTime?
   confirmedById    Int?
+  emailSentAt      DateTime?
+  emailSentTo      String?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 

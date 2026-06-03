@@ -3,11 +3,31 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as compression from 'compression';
-import { join } from 'path';
 import { AppModule } from './app.module';
 import { assertMarfylDatabaseUrl } from './common/database-guard';
 
 async function bootstrap() {
+  // SECURITY: Prevent DEV_PREVIEW_AUTH in production
+  const envNodeEnv = process.env.NODE_ENV;
+  const devPreviewAuth = process.env.DEV_PREVIEW_AUTH === 'true';
+  const fiscalPreview = process.env.NEXT_PUBLIC_FISCAL_PREVIEW === 'true';
+
+  if (envNodeEnv === 'production') {
+    if (devPreviewAuth) {
+      console.error('❌ FATAL: DEV_PREVIEW_AUTH must NOT be enabled in production (NODE_ENV=production)');
+      process.exit(1);
+    }
+    if (fiscalPreview) {
+      console.error('❌ FATAL: NEXT_PUBLIC_FISCAL_PREVIEW must NOT be enabled in production (NODE_ENV=production)');
+      process.exit(1);
+    }
+    console.log('✅ Production security checks passed: DEV_PREVIEW flags are disabled');
+  } else {
+    if (devPreviewAuth) {
+      console.warn('⚠️  WARNING: DEV_PREVIEW_AUTH is enabled (development mode)');
+    }
+  }
+
   assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -17,11 +37,6 @@ async function bootstrap() {
   const frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:3002');
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
 
-  // Servir archivos estáticos desde la carpeta uploads
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads',
-  });
-
   // Compression Gzip - Reduce el tamaño de las respuestas JSON hasta 70%
   app.use(compression());
 
@@ -29,7 +44,7 @@ async function bootstrap() {
   // En producción, solo acepta peticiones desde el dominio configurado
   // En desarrollo, acepta desde localhost
   const allowedOrigins: string[] = [];
-  
+
   // Dominios de producción siempre permitidos (incl. variantes Render)
   const productionDomains: string[] = [];
   const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
@@ -37,16 +52,16 @@ async function bootstrap() {
     .map((o) => o.trim())
     .filter(Boolean);
   productionDomains.push(...extraOrigins);
-  
+
   if (nodeEnv === 'production') {
     // Agregar dominios de producción
     allowedOrigins.push(...productionDomains);
-    
+
     // En producción, también aceptar desde el dominio configurado
     if (frontendUrl) {
       // Agregar el dominio principal
       allowedOrigins.push(frontendUrl);
-      
+
       // Agregar variante con www si no la tiene
       if (frontendUrl.startsWith('https://')) {
         const domain = frontendUrl.replace('https://', '');
@@ -76,7 +91,7 @@ async function bootstrap() {
       if (!origin) {
         return callback(null, true);
       }
-      
+
       // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
       const normalizedOrigin = origin.replace(/\/$/, '');
       const isInList = allowedOrigins.some(
