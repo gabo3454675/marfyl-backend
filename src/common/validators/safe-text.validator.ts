@@ -1,29 +1,18 @@
 import { registerDecorator, ValidationOptions, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
-import { JSDOM } from 'jsdom';
 
-const window = new JSDOM('').window;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const createDOMPurify = require('dompurify') as (w: typeof window) => {
-  sanitize: (dirty: string, cfg?: Record<string, unknown>) => string;
-};
-const purify = createDOMPurify(window);
+/** Elimina etiquetas HTML sin depender de DOMPurify/jsdom en runtime Node. */
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]*>/g, '');
+}
 
 @ValidatorConstraint({ name: 'isSafeText', async: false })
 export class IsSafeTextConstraint implements ValidatorConstraintInterface {
   validate(text: string) {
     if (typeof text !== 'string') return false;
 
-    // Strip ALL HTML tags, keep only plain text
-    const sanitized = purify.sanitize(text, {
-      ALLOWED_TAGS: [],
-      ALLOWED_ATTR: [],
-      KEEP_CONTENT: true,
-    });
-
-    // Allow only alphanumeric, spaces, common punctuation
-    // Accents (á, é, í, ó, ú, ñ) are allowed via Unicode
+    const sanitized = stripHtml(text).trim();
     const safeTextRegex = /^[\p{L}\p{N}\s.,;:()\-'"]+$/u;
-    return safeTextRegex.test(sanitized.trim());
+    return safeTextRegex.test(sanitized);
   }
 
   defaultMessage() {
