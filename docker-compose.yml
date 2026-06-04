@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: marfyl-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marfyl_user
+      POSTGRES_PASSWORD: marfyl_password
+      POSTGRES_DB: marfyl_db
+    ports:
+      - '5433:5432'
+    volumes:
+      - marfyl_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U marfyl_user -d marfyl_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  marfyl_pg_data:

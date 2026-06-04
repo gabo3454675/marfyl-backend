@@ -10,6 +10,16 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import {
+  mapOrganizationForClient,
+  organizationSelectForAuth,
+} from '@/common/organization-mapper';
+import { filterOrganizationsForLogin, isFoundingOrgSlug } from '@/common/founding-orgs';
+import {
+  assertOrganizationSlugAvailable,
+  normalizeOrganizationSlug,
+} from '@/common/org-slug';
+import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { CompletePasswordResetDto } from './dto/complete-password-reset.dto';
 import { RecoverPasswordDto } from './dto/recover-password.dto';
 
@@ -51,78 +61,32 @@ export class AuthService {
 
     // Para Super Admin: visibilidad de TODAS las organizaciones (Poder Global).
     // Para usuarios estándar: solo las de Member (Peso de Membresía).
-    let organizations: Array<{
-      id: number;
-      name: string;
-      slug: string;
-      plan: string;
-      currencyCode: string;
-      currencySymbol: string;
-      exchangeRate: number;
-      rateUpdatedAt: Date | null;
-      role: string;
-    }>;
+    let organizations: ReturnType<typeof mapOrganizationForClient>[];
 
     if (isSuperAdmin) {
-      // Super Admin: devolver TODAS las organizaciones de la BD, omitiendo tabla Member
       const allOrgs = await this.prisma.organization.findMany({
         orderBy: { nombre: 'asc' },
-        select: {
-          id: true,
-          nombre: true,
-          slug: true,
-          plan: true,
-          currencyCode: true,
-          currencySymbol: true,
-          exchangeRate: true,
-          rateUpdatedAt: true,
-        },
+        select: organizationSelectForAuth,
       });
-      organizations = allOrgs.map((o) => ({
-        id: o.id,
-        name: o.nombre,
-        slug: o.slug,
-        plan: o.plan,
-        currencyCode: o.currencyCode ?? 'USD',
-        currencySymbol: o.currencySymbol ?? '$',
-        exchangeRate: o.exchangeRate ?? 1,
-        rateUpdatedAt: o.rateUpdatedAt ?? null,
-        role: 'SUPER_ADMIN',
-      }));
+      organizations = allOrgs.map((o) => mapOrganizationForClient(o, 'SUPER_ADMIN'));
     } else {
-      // Usuario estándar: solo organizaciones donde es miembro activo
       const organizationMemberships = await this.prisma.member.findMany({
         where: {
           userId: user.id,
           status: 'ACTIVE',
         },
         include: {
-          organization: {
-            select: {
-              id: true,
-              nombre: true,
-              slug: true,
-              plan: true,
-              currencyCode: true,
-              currencySymbol: true,
-              exchangeRate: true,
-              rateUpdatedAt: true,
-            },
-          },
+          organization: { select: organizationSelectForAuth },
         },
       });
-      organizations = organizationMemberships.map((m) => ({
-        id: m.organization.id,
-        name: m.organization.nombre,
-        slug: m.organization.slug,
-        plan: m.organization.plan,
-        currencyCode: m.organization.currencyCode ?? 'USD',
-        currencySymbol: m.organization.currencySymbol ?? '$',
-        exchangeRate: m.organization.exchangeRate ?? 1,
-        rateUpdatedAt: m.organization.rateUpdatedAt ?? null,
-        role: m.role,
-      }));
+      organizations = organizationMemberships.map((m) =>
+        mapOrganizationForClient(m.organization, m.role),
+      );
     }
+
+    organizations = filterOrganizationsForLogin(organizations, {
+      isPlatformSuperAdmin: isSuperAdmin,
+    });
 
     // Obtener las empresas legacy a las que pertenece el usuario (CompanyMember)
     const companyMemberships = await this.prisma.companyMember.findMany({
@@ -348,8 +312,68 @@ export class AuthService {
     };
   }
 
+  private async createOrganizationForNewCustomer(
+    userId: number,
+    organizationName: string,
+    organizationSlug: string,
+  ) {
+    const slug = normalizeOrganizationSlug(organizationSlug);
+    try {
+      assertOrganizationSlugAvailable(slug);
+    } catch {
+      throw new BadRequestException(
+        'El identificador de empresa no es válido o está reservado',
+      );
+    }
+    if (isFoundingOrgSlug(slug)) {
+      throw new ConflictException('Este identificador de empresa está reservado');
+    }
+
+    const existingOrg = await this.prisma.organization.findUnique({
+      where: { slug },
+    });
+    if (existingOrg) {
+      throw new ConflictException('Ya existe una empresa con ese identificador');
+    }
+
+    const existingMembership = await this.prisma.member.findFirst({
+      where: { userId, status: 'ACTIVE' },
+    });
+    if (existingMembership) {
+      throw new ConflictException('Este usuario ya tiene una empresa registrada');
+    }
+
+    const nombre = organizationName.trim();
+    if (!nombre) {
+      throw new BadRequestException('El nombre de la empresa es obligatorio');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
+        data: {
+          nombre,
+          slug,
+          plan: 'BASIC',
+          billingExempt: false,
+          concertModuleEnabled: false,
+        },
+        select: organizationSelectForAuth,
+      });
+
+      await tx.member.create({
+        data: {
+          userId,
+          organizationId: organization.id,
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        },
+      });
+
+      return organization;
+    });
+  }
+
   async register(registerDto: RegisterDto) {
-    // Verificar si el usuario ya existe
     const existingUser = await this.prisma.user.findUnique({
       where: { email: registerDto.email },
     });
@@ -358,40 +382,87 @@ export class AuthService {
       throw new ConflictException('El email ya está registrado');
     }
 
-    // Hash de la contraseña
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(registerDto.password, saltRounds);
 
-    // Crear el usuario
     const user = await this.prisma.user.create({
       data: {
         email: registerDto.email,
         passwordHash,
         fullName: registerDto.fullName,
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        createdAt: true,
+        isSuperAdmin: false,
       },
     });
 
-    // Generar JWT
-    const payload = {
-      email: user.email,
-      sub: user.id,
+    await this.createOrganizationForNewCustomer(
+      user.id,
+      registerDto.organizationName,
+      registerDto.organizationSlug,
+    );
+
+    const validatedUser = await this.validateUser(
+      registerDto.email,
+      registerDto.password,
+    );
+    const organizationId = validatedUser.organizations?.[0]?.id ?? null;
+    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
+      email: validatedUser.email,
+      sub: validatedUser.id,
+      isSuperAdmin: false,
     };
+    if (organizationId != null) payload.organizationId = organizationId;
 
     return {
       access_token: this.jwtService.sign(payload),
       user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        organizations: [], // El usuario recién registrado no tiene organizaciones aún
-        companies: [], // Legacy - mantener para compatibilidad
+        id: validatedUser.id,
+        email: validatedUser.email,
+        fullName: validatedUser.fullName,
+        isSuperAdmin: false,
+        organizations: validatedUser.organizations,
+        companies: validatedUser.companies,
       },
+    };
+  }
+
+  /**
+   * Usuario ya registrado sin empresa: completa alta de negocio (misma lógica que /register).
+   */
+  async setupOrganization(userId: number, dto: SetupOrganizationDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, isSuperAdmin: true },
+    });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    if (user.isSuperAdmin) {
+      throw new ForbiddenException(
+        'El administrador de plataforma crea empresas desde Configuración',
+      );
+    }
+
+    await this.createOrganizationForNewCustomer(
+      userId,
+      dto.organizationName,
+      dto.organizationSlug,
+    );
+
+    const orgs = await this.getUserOrganizations(userId, false);
+    const organizationId = orgs[0]?.id;
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, isSuperAdmin: true },
+    });
+    const payload = {
+      email: dbUser!.email,
+      sub: userId,
+      isSuperAdmin: dbUser!.isSuperAdmin ?? false,
+      organizationId,
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      organizationId,
+      organizations: orgs,
     };
   }
 
@@ -404,25 +475,11 @@ export class AuthService {
     if (isSuperAdmin) {
       const allOrgs = await this.prisma.organization.findMany({
         orderBy: { nombre: 'asc' },
-        select: {
-          id: true,
-          nombre: true,
-          slug: true,
-          plan: true,
-          currencyCode: true,
-          currencySymbol: true,
-          exchangeRate: true,
-          rateUpdatedAt: true,
-        },
+        select: organizationSelectForAuth,
       });
       return allOrgs.map((o) => ({
-        id: o.id,
+        ...mapOrganizationForClient(o, 'SUPER_ADMIN'),
         nombre: o.nombre,
-        slug: o.slug,
-        plan: o.plan,
-        exchangeRate: o.exchangeRate ?? 1,
-        rateUpdatedAt: o.rateUpdatedAt ?? null,
-        role: 'SUPER_ADMIN',
         status: 'ACTIVE',
         joinedAt: new Date(),
       }));
@@ -434,33 +491,22 @@ export class AuthService {
         status: 'ACTIVE',
       },
       include: {
-        organization: {
-          select: {
-            id: true,
-            nombre: true,
-            slug: true,
-            plan: true,
-            exchangeRate: true,
-            rateUpdatedAt: true,
-            createdAt: true,
-          },
-        },
+        organization: { select: organizationSelectForAuth },
       },
       orderBy: {
         joinedAt: 'desc',
       },
     });
 
-    return memberships.map((m) => ({
-      id: m.organization.id,
+    const mapped = memberships.map((m) => ({
+      ...mapOrganizationForClient(m.organization, m.role),
       nombre: m.organization.nombre,
-      slug: m.organization.slug,
-      plan: m.organization.plan,
-      exchangeRate: m.organization.exchangeRate ?? 1,
-      rateUpdatedAt: m.organization.rateUpdatedAt ?? null,
-      role: m.role,
       status: m.status,
       joinedAt: m.joinedAt,
     }));
+
+    return filterOrganizationsForLogin(mapped, {
+      isPlatformSuperAdmin: isSuperAdmin,
+    });
   }
 }

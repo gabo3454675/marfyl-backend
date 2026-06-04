@@ -8,10 +8,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildDevPreviewUser, isDevPreviewAuthEnabled } from '../dev-preview';
+import { OrganizationBillingService } from '../billing/organization-billing.service';
 
 @Injectable()
 export class OrganizationGuard implements CanActivate {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private billing: OrganizationBillingService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -125,6 +129,8 @@ export class OrganizationGuard implements CanActivate {
     request.activeOrganizationId = organizationId;
     request.activeOrganization = membership.organization;
     request.activeOrganizationMembership = membership;
+
+    await this.billing.assertOrganizationBillingActive(organizationId);
 
     return true;
   }

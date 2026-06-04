@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as compression from 'compression';
 import { AppModule } from './app.module';
 import { assertMarfylDatabaseUrl } from './common/database-guard';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   // SECURITY: Prevent DEV_PREVIEW_AUTH in production
@@ -127,6 +128,8 @@ async function bootstrap() {
     ],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
   });
+
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   // Global Validation Pipe
   app.useGlobalPipes(

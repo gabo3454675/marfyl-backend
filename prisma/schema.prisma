@@ -109,7 +109,9 @@ model Organization {
   id              Int             @id @default(autoincrement())
   nombre          String          // Nombre de la organización
   slug            String          @unique // Slug único para URLs (ej: "mi-empresa")
-  plan            Plan            @default(FREE)
+  plan                 Plan     @default(FREE)
+  billingExempt        Boolean  @default(false) // Grupo fundador: suscripción sin cobro
+  concertModuleEnabled Boolean  @default(false) // Boletería temporal (solo Monddy en prod)
   currencyCode    String          @default("USD") // Código ISO de moneda principal (USD, VES, etc.)
   currencySymbol  String          @default("$")  // Símbolo para facturas y POS
   exchangeRate    Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES) para conversión

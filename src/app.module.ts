@@ -9,6 +9,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { BillingModule } from './common/billing/billing.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -46,6 +47,7 @@ import { EmailModule } from './modules/email/email.module';
       isGlobal: true,
     }),
     PrismaModule,
+    BillingModule,
     AuthModule,
     TenantsModule,
     CustomersModule,

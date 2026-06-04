@@ -46,6 +46,8 @@ export class TenantsService {
         currencySymbol: true,
         exchangeRate: true,
         rateUpdatedAt: true,
+        billingExempt: true,
+        concertModuleEnabled: true,
       },
     });
     return orgs.map((o) => ({
@@ -57,6 +59,8 @@ export class TenantsService {
       currencySymbol: o.currencySymbol ?? '$',
       exchangeRate: o.exchangeRate ?? 1,
       rateUpdatedAt: o.rateUpdatedAt ?? null,
+      billingExempt: o.billingExempt,
+      concertModuleEnabled: o.concertModuleEnabled,
     }));
   }
 
@@ -76,6 +80,8 @@ export class TenantsService {
         currencySymbol: true,
         exchangeRate: true,
         rateUpdatedAt: true,
+        billingExempt: true,
+        concertModuleEnabled: true,
       },
     });
     if (!org) {
@@ -96,6 +102,8 @@ export class TenantsService {
       exchangeRate: org.exchangeRate ?? 1,
       rateUpdatedAt: org.rateUpdatedAt ?? null,
       rateUpdatedBy: lastRateUpdate?.actorEmail ?? null,
+      billingExempt: org.billingExempt,
+      concertModuleEnabled: org.concertModuleEnabled,
     };
   }
 

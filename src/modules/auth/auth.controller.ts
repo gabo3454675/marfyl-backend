@@ -14,6 +14,7 @@ import { RegisterDto } from './dto/register.dto';
 import { CompletePasswordResetDto } from './dto/complete-password-reset.dto';
 import { RecoverPasswordDto } from './dto/recover-password.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
+import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { ActiveUser } from '@/common/decorators/active-user.decorator';
 
@@ -71,5 +72,18 @@ export class AuthController {
     @Body() dto: SwitchOrganizationDto,
   ) {
     return this.authService.switchOrganization(user.id, dto.organizationId);
+  }
+
+  /**
+   * Alta de empresa para usuario autenticado sin organización (registro antiguo).
+   */
+  @Post('setup-organization')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard)
+  async setupOrganization(
+    @ActiveUser() user: { id: number },
+    @Body() dto: SetupOrganizationDto,
+  ) {
+    return this.authService.setupOrganization(user.id, dto);
   }
 }

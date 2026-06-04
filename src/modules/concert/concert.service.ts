@@ -13,9 +13,14 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/common/prisma/prisma.service';
+import { assertDbAvailable } from '@/common/prisma/assert-db-available';
 import { UploadService } from '@/common/services/upload.service';
 import { EmailService } from '@/modules/email/email.service';
-import { CONCERT_HOLD_MINUTES, isConcertFeatureEnabled } from './concert.config';
+import {
+  CONCERT_HOLD_MINUTES,
+  isConcertEnabledForOrganization,
+  isConcertFeatureEnabled,
+} from './concert.config';
 import { ConcertCheckoutDto } from './dto/checkout.dto';
 import { AdminSellDto } from './dto/admin-sell.dto';
 import { HEMENEGILDA_SEAT_CATALOG, type SeatCatalogEntry } from './hemenegilda-seat-catalog';
@@ -36,15 +41,45 @@ export class ConcertService {
     }
   }
 
+  private assertConcertForOrganization(org: {
+    slug: string;
+    concertModuleEnabled?: boolean;
+  }) {
+    this.assertEnabled();
+    if (!isConcertEnabledForOrganization(org)) {
+      throw new NotFoundException(
+        'Módulo de concierto no disponible para esta organización',
+      );
+    }
+  }
+
+  private async assertConcertForOrganizationId(organizationId: number) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true, concertModuleEnabled: true },
+    });
+    if (!org) throw new NotFoundException('Organización no encontrada');
+    this.assertConcertForOrganization(org);
+  }
+
   private async getEventBySlug(slug: string) {
     const event = await this.prisma.concertEvent.findFirst({
       where: { slug, isActive: true },
       include: {
         sections: { orderBy: { sortOrder: 'asc' }, include: { seats: true } },
-        organization: { select: { id: true, nombre: true, exchangeRate: true } },
+        organization: {
+          select: {
+            id: true,
+            slug: true,
+            nombre: true,
+            exchangeRate: true,
+            concertModuleEnabled: true,
+          },
+        },
       },
     });
     if (!event) throw new NotFoundException('Evento no encontrado');
+    this.assertConcertForOrganization(event.organization);
     return event;
   }
 
@@ -464,7 +499,8 @@ return created;
   }
 
   async getAdminOverview(organizationId: number) {
-    this.assertEnabled();
+    assertDbAvailable(this.prisma);
+    await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, isActive: true },
       orderBy: { eventStartsAt: 'asc' },
@@ -505,7 +541,7 @@ return created;
   }
 
   async listOrders(organizationId: number, status?: ConcertOrderStatus) {
-    this.assertEnabled();
+    await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, isActive: true },
     });
@@ -534,6 +570,7 @@ return created;
   }
 
   async confirmOrder(organizationId: number, orderId: number, userId: number) {
+    await this.assertConcertForOrganizationId(organizationId);
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
     });
@@ -566,7 +603,7 @@ return created;
   }
 
   async adminSell(organizationId: number, userId: number, dto: AdminSellDto) {
-    this.assertEnabled();
+    await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, isActive: true },
       include: { organization: true },
@@ -593,7 +630,7 @@ return created;
   }
 
   async scanTicket(organizationId: number, userId: number, qrPayload: string) {
-    this.assertEnabled();
+    await this.assertConcertForOrganizationId(organizationId);
     const ticket = await this.prisma.concertTicket.findFirst({
       where: { qrPayload },
       include: {
@@ -636,6 +673,7 @@ return created;
   }
 
   async cancelOrder(organizationId: number, orderId: number) {
+    await this.assertConcertForOrganizationId(organizationId);
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
       include: { tickets: true },
@@ -752,6 +790,7 @@ return created;
 
   /** Aplica precios y mesas del catálogo a un evento ya creado (sin borrar ventas). */
   async syncSeatCatalog(organizationId: number) {
+    await this.assertConcertForOrganizationId(organizationId);
     const slug = process.env.CONCERT_DEFAULT_SLUG || 'hemenegilda-capacidad';
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, slug },
@@ -795,6 +834,13 @@ return created;
 
   /** Seed layout for Hemenegilda — 66 + 32 seats con precios por planilla */
   async ensureDefaultEvent(organizationId: number) {
+    assertDbAvailable(this.prisma);
+    const orgRow = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true, concertModuleEnabled: true },
+    });
+    if (!orgRow) throw new NotFoundException('Organización no encontrada');
+    this.assertConcertForOrganization(orgRow);
     const slug = process.env.CONCERT_DEFAULT_SLUG || 'hemenegilda-capacidad';
     const existing = await this.prisma.concertEvent.findFirst({
       where: { organizationId, slug },

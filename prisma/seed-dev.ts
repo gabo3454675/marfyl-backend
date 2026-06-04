@@ -9,9 +9,9 @@ const SUPER_ADMIN_EMAIL = 'admin@marfyl.dev';
 const SUPER_ADMIN_PASSWORD = 'admin123';
 
 const ORGANIZATIONS = [
-  { nombre: 'Marfyl Demo', slug: 'marfyl-demo', plan: Plan.PREMIUM, currency: 'USD', symbol: '$' },
   { nombre: 'El Rancho de Germán', slug: 'el-rancho-de-german', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
   { nombre: 'Monddy Corp', slug: 'monddy', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
+  { nombre: 'Davean', slug: 'davean', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
 ];
 
 const ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SELLER', 'WAREHOUSE', 'FISCAL'];

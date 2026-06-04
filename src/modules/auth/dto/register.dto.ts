@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, Matches } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -13,4 +13,16 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   fullName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  organizationName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'organizationSlug debe ser minúsculas, números y guiones',
+  })
+  organizationSlug: string;
 }

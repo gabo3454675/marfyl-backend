@@ -32,16 +32,15 @@ async function main() {
   const superAdminUser = await prisma.user.upsert({
     where: { email: SUPER_ADMIN_EMAIL },
     update: {
-      isSuperAdmin: true, // Asegurar que es Super Admin
-      passwordHash, // Actualizar password en cada ejecución
-      // Requisito: asegurar nombre del usuario principal
+      isSuperAdmin: false,
+      passwordHash,
       fullName: SUPER_ADMIN_NAME,
     },
     create: {
       email: SUPER_ADMIN_EMAIL,
       passwordHash,
       fullName: SUPER_ADMIN_NAME,
-      isSuperAdmin: true,
+      isSuperAdmin: false,
     },
   });
 
@@ -57,15 +56,15 @@ async function main() {
   const superAdminUser2 = await prisma.user.upsert({
     where: { email: SUPER_ADMIN_2_EMAIL },
     update: {
-      isSuperAdmin: true, // Asegurar que es Super Admin
-      passwordHash: passwordHash2, // Actualizar password en cada ejecución
+      isSuperAdmin: false,
+      passwordHash: passwordHash2,
       fullName: SUPER_ADMIN_2_NAME,
     },
     create: {
       email: SUPER_ADMIN_2_EMAIL,
       passwordHash: passwordHash2,
       fullName: SUPER_ADMIN_2_NAME,
-      isSuperAdmin: true,
+      isSuperAdmin: false,
     },
   });
 
@@ -79,19 +78,25 @@ async function main() {
   // ============================================
   const organizationsData = [
     {
-      nombre: 'MARFYL Demo',
-      slug: 'marfyl-demo',
-      plan: 'PREMIUM' as const,
-    },
-    {
-      nombre: 'Monddy',
-      slug: 'monddy',
-      plan: 'ENTERPRISE' as const,
-    },
-    {
-      nombre: 'El Rancho De German',
+      nombre: 'El Rancho de Germán',
       slug: 'el-rancho-de-german',
       plan: 'ENTERPRISE' as const,
+      billingExempt: true,
+      concertModuleEnabled: false,
+    },
+    {
+      nombre: 'Monddy Corp',
+      slug: 'monddy',
+      plan: 'ENTERPRISE' as const,
+      billingExempt: true,
+      concertModuleEnabled: true,
+    },
+    {
+      nombre: 'Davean',
+      slug: 'davean',
+      plan: 'ENTERPRISE' as const,
+      billingExempt: true,
+      concertModuleEnabled: false,
     },
   ];
 
@@ -109,13 +114,17 @@ async function main() {
     const organization = await prisma.organization.upsert({
       where: { slug: orgData.slug },
       update: {
-        nombre: orgData.nombre, // Actualizar nombre si cambió
-        plan: orgData.plan, // Actualizar plan si cambió
+        nombre: orgData.nombre,
+        plan: orgData.plan,
+        billingExempt: orgData.billingExempt,
+        concertModuleEnabled: orgData.concertModuleEnabled,
       },
       create: {
         nombre: orgData.nombre,
         slug: orgData.slug,
         plan: orgData.plan,
+        billingExempt: orgData.billingExempt,
+        concertModuleEnabled: orgData.concertModuleEnabled,
       },
     });
 
@@ -141,13 +150,13 @@ async function main() {
           },
         },
         update: {
-          role: 'SUPER_ADMIN', // Asegurar rol SUPER_ADMIN
+          role: 'ADMIN',
           status: 'ACTIVE',
         },
         create: {
           userId: admin.id,
           organizationId: organization.id,
-          role: 'SUPER_ADMIN',
+          role: 'ADMIN',
           status: 'ACTIVE',
         },
       });
