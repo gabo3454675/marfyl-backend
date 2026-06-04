@@ -17,6 +17,7 @@ import type {
   FrictionFunnelDto,
   StrategyInsightDto,
 } from './dto/dashboard-strategy.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DashboardService {
@@ -182,6 +183,7 @@ export class DashboardService {
 
   /**
    * Dashboard de Salud General: ventas $ vs Bs último mes, top 5 por margen, KPIs.
+   * OPTIMIZADO: Usa aggregations en lugar de findMany para reducir transferencia de datos.
    */
   async getHealth(organizationId: number): Promise<DashboardHealthDto> {
     const org = await this.prisma.organization.findUnique({
@@ -195,38 +197,39 @@ export class DashboardService {
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
-    // Ventas último mes por día (solo PAID)
-    const invoicesLastMonth = await this.prisma.invoice.findMany({
-      where: {
-        organizationId,
-        status: 'PAID',
-        createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
-      },
-      select: { createdAt: true, totalAmount: true },
-    });
+    // Ventas último mes por día (solo PAID) - OPTIMIZADO con raw SQL para GROUP BY
+    const dailySalesRaw = await this.prisma.$queryRaw<Array<{ date: string; total: Prisma.Decimal }>>`
+      SELECT DATE("createdAt") as date, SUM("totalAmount") as total
+      FROM "invoices"
+      WHERE "organizationId" = ${organizationId}
+        AND status = 'PAID'
+        AND "createdAt" >= ${firstDayLastMonth}
+        AND "createdAt" <= ${lastDayLastMonth}
+      GROUP BY DATE("createdAt")
+      ORDER BY date
+    `;
 
-    const byDay = new Map<string, { usd: number }>();
-    for (const inv of invoicesLastMonth) {
-      const key = inv.createdAt.toISOString().slice(0, 10);
-      const current = byDay.get(key) ?? { usd: 0 };
-      current.usd += Number(inv.totalAmount);
-      byDay.set(key, current);
+    const byDay = new Map<string, number>();
+    for (const row of dailySalesRaw) {
+      const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10);
+      byDay.set(dateStr.slice(0, 10), Number(row.total));
     }
 
     const salesChartLastMonth: SalesChartDayDto[] = [];
     const d = new Date(firstDayLastMonth);
     while (d <= lastDayLastMonth) {
       const key = d.toISOString().slice(0, 10);
-      const dayData = byDay.get(key) ?? { usd: 0 };
+      const dayUsd = byDay.get(key) ?? 0;
       salesChartLastMonth.push({
         date: key,
-        ventasUsd: Math.round(dayData.usd * 100) / 100,
-        ventasBs: Math.round(dayData.usd * rate * 100) / 100,
+        ventasUsd: Math.round(dayUsd * 100) / 100,
+        ventasBs: Math.round(dayUsd * rate * 100) / 100,
       });
       d.setDate(d.getDate() + 1);
     }
 
     // Top 5 productos por margen (ganancia neta): (unitPrice - costPrice) * quantity
+    // Limitado a 1000 items para evitar memory issues con datasets grandes
     const itemsWithProduct = await this.prisma.invoiceItem.findMany({
       where: {
         invoice: {
@@ -238,6 +241,7 @@ export class DashboardService {
       include: {
         product: { select: { id: true, name: true, costPrice: true } },
       },
+      take: 1000,
     });
 
     const marginByProduct = new Map<number, { name: string; margin: number }>();
@@ -258,15 +262,16 @@ export class DashboardService {
       .sort((a, b) => b.margin - a.margin)
       .slice(0, 5);
 
-    // KPIs: ticket promedio (mes actual), crecimiento mensual, impuestos acumulados
-    const [invoicesThisMonth, invoicesLastMonthAgg] = await Promise.all([
-      this.prisma.invoice.findMany({
+    // KPIs: ticket promedio (mes actual), crecimiento mensual - OPTIMIZADO con aggregations
+    const [invoicesThisMonthAgg, invoicesLastMonthAgg] = await Promise.all([
+      this.prisma.invoice.aggregate({
         where: {
           organizationId,
           status: 'PAID',
           createdAt: { gte: firstDayThisMonth },
         },
-        select: { totalAmount: true },
+        _sum: { totalAmount: true },
+        _count: { id: true },
       }),
       this.prisma.invoice.aggregate({
         where: {
@@ -279,9 +284,9 @@ export class DashboardService {
       }),
     ]);
 
-    const totalThisMonth = invoicesThisMonth.reduce((s, i) => s + Number(i.totalAmount), 0);
+    const totalThisMonth = Number(invoicesThisMonthAgg._sum.totalAmount ?? 0);
     const totalLastMonth = Number(invoicesLastMonthAgg._sum.totalAmount ?? 0);
-    const countThisMonth = invoicesThisMonth.length;
+    const countThisMonth = invoicesThisMonthAgg._count.id;
     const ticketPromedio = countThisMonth > 0 ? totalThisMonth / countThisMonth : 0;
     const crecimientoMensual =
       totalLastMonth > 0 ? ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 : 0;

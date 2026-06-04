@@ -39,7 +39,29 @@ export class InvoicesController {
   }
 
   @Get()
-  async findAll(@ActiveOrganization() organizationId: number) {
+  async findAll(
+    @ActiveOrganization() organizationId: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+
+    if (pageNum !== undefined && isNaN(pageNum)) {
+      return this.invoicesService.findAll(organizationId);
+    }
+
+    if (pageNum !== undefined && pageNum > 0) {
+      return this.invoicesService.findAllPaginated(organizationId, {
+        page: pageNum,
+        limit: limitNum,
+        search,
+        status,
+      });
+    }
+
     return this.invoicesService.findAll(organizationId);
   }
 

@@ -6,6 +6,7 @@ import {
   Body,
   Res,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { InvoicesService } from './invoices.service';
 import { Public } from '@/common/decorators/public.decorator';
@@ -25,8 +26,10 @@ export class InvoicesPublicController {
   /**
    * Obtiene los datos de una factura por su token público
    * Endpoint público - No requiere autenticación
+   * @Throttle(30, 60) = 30 requests por minuto para prevenir enumeración
    */
   @Public()
+  @Throttle({ long: { limit: 30, ttl: 60000 } })
   @Get(':token')
   async getPublicInvoice(@Param('token') token: string) {
     return this.invoicesService.findByPublicToken(token);
@@ -35,8 +38,10 @@ export class InvoicesPublicController {
   /**
    * Descarga el PDF de una factura por su token público
    * Endpoint público - No requiere autenticación
+   * @Throttle(30, 60) = 30 requests por minuto para prevenir enumeración
    */
   @Public()
+  @Throttle({ long: { limit: 30, ttl: 60000 } })
   @Get(':token/pdf')
   async getPublicPDF(
     @Param('token') token: string,
@@ -58,8 +63,10 @@ export class InvoicesPublicController {
   /**
    * Marca una factura como pagada desde el link público
    * Endpoint público - No requiere autenticación
+   * @Throttle(3, 60) = 3 intentos por minuto para prevenir abuse
    */
   @Public()
+  @Throttle({ long: { limit: 3, ttl: 60000 } })
   @Post(':token/mark-paid')
   async markAsPaid(
     @Param('token') token: string,

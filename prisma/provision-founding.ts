@@ -23,20 +23,31 @@ const FOUNDING_ORGS = [
 
 const OWNER_USERS = [
   {
-    email: process.env.SUPER_ADMIN_EMAIL || 'glonga10@gmail.com',
+    email: process.env.SUPER_ADMIN_EMAIL!,
     fullName: 'Gabriel longa',
-    password: process.env.SUPER_ADMIN_PASSWORD || '338232gG',
+    password: process.env.SUPER_ADMIN_PASSWORD!,
     role: 'ADMIN' as Role,
   },
   {
-    email: process.env.SUPER_ADMIN_2_EMAIL || 'agpereir@gmail.com',
+    email: process.env.SUPER_ADMIN_2_EMAIL!,
     fullName: 'Angel Pereira',
-    password: process.env.SUPER_ADMIN_2_PASSWORD || 'monddy33',
+    password: process.env.SUPER_ADMIN_2_PASSWORD!,
     role: 'ADMIN' as Role,
   },
 ];
 
 async function main() {
+  for (const owner of OWNER_USERS) {
+    if (!owner.password || owner.password.trim() === '') {
+      console.error(`❌ SUPER_ADMIN_PASSWORD o SUPER_ADMIN_2_PASSWORD no están configurados en variables de entorno. Provision abortado.`);
+      process.exit(1);
+    }
+    if (owner.password === '338232gG' || owner.password === 'monddy33' || owner.password === 'cambiar-por-clave-segura') {
+      console.error(`❌ La contraseña para ${owner.email} es insecure. Usa una contraseña única y segura. Provision abortado.`);
+      process.exit(1);
+    }
+  }
+
   console.log('🏢 Provisionando organizaciones fundadoras...\n');
 
   const orgs: { id: number; slug: string; nombre: string }[] = [];

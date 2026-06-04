@@ -112,6 +112,9 @@ model Organization {
   plan                 Plan     @default(FREE)
   billingExempt        Boolean  @default(false) // Grupo fundador: suscripción sin cobro
   concertModuleEnabled Boolean  @default(false) // Boletería temporal (solo Monddy en prod)
+  // Soft delete para compliance fiscal (Venezuela: retención de 5+ años)
+  // Usar findFirst/findMany con where: { deletedAt: null } en queries
+  deletedAt       DateTime?
   currencyCode    String          @default("USD") // Código ISO de moneda principal (USD, VES, etc.)
   currencySymbol  String          @default("$")  // Símbolo para facturas y POS
   exchangeRate    Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES) para conversión
@@ -157,6 +160,7 @@ model Organization {
   concertEvents      ConcertEvent[]
 
   @@index([slug])
+  @@index([deletedAt])
   @@map("organizations")
 }
 
@@ -532,6 +536,11 @@ model Invoice {
   baseGeneral         Decimal   @default(0) @db.Decimal(15, 2)
   ivaAmount           Decimal   @default(0) @db.Decimal(15, 2)
   igtfAmount          Decimal   @default(0) @db.Decimal(15, 2)
+  // Soft delete para compliance fiscal (Venezuela: retención de 5+ años)
+  // NO eliminar facturas: usar where: { deletedAt: null } en queries
+  // La eliminación física solo debe hacerse por un Super Admin con justificación legal
+  deletedAt           DateTime?
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -555,6 +564,7 @@ model Invoice {
   @@index([markedAsPaidByClient])
   @@index([paymentStatus])
   @@index([tasaHistoricaId])
+  @@index([deletedAt])
   @@map("invoices")
 }
 
@@ -651,6 +661,9 @@ model Expense {
   baseGeneral         Decimal        @default(0) @db.Decimal(15, 2)
   ivaAmount           Decimal        @default(0) @db.Decimal(15, 2)
   withholdingIvaAmount Decimal       @default(0) @db.Decimal(15, 2)
+  // Soft delete para compliance fiscal (Venezuela: retención de 5+ años)
+  deletedAt           DateTime?
+
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -668,6 +681,7 @@ model Expense {
   @@index([date])
   @@index([categoryId])
   @@index([inventoryMovementId])
+  @@index([deletedAt])
   @@map("expenses")
 }
 

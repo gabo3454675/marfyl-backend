@@ -323,7 +323,13 @@ export class InvitationsService {
   }
 
   private generateTempPassword(): string {
-    return process.env.DEFAULT_MEMBER_PASSWORD?.trim() || 'MARFYL2026!';
+    const envPassword = process.env.DEFAULT_MEMBER_PASSWORD?.trim();
+    if (!envPassword || envPassword.length < 8) {
+      throw new BadRequestException(
+        'DEFAULT_MEMBER_PASSWORD debe estar configurada con al menos 8 caracteres',
+      );
+    }
+    return envPassword;
   }
 
   private mapMemberToResponse(member: {

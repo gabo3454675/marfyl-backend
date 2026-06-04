@@ -8,7 +8,7 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'crypto';
 import * as PDFKit from 'pdfkit';
 import { CreditsService } from '@/modules/credits/credits.service';
 
@@ -281,7 +281,7 @@ export class InvoicesService {
           montoBs,
           tasaReferencia,
           notes: notes || null,
-          publicToken: uuidv4(),
+          publicToken: randomBytes(32).toString('hex'),
           tasaHistoricaId: tasa.id,
           consecutiveNumber: nextConsecutive,
           issueDate,
@@ -423,6 +423,61 @@ export class InvoicesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * Obtiene facturas con paginación server-side.
+   * Para datasets grandes (10k+ facturas), usar esta versión.
+   */
+  async findAllPaginated(
+    organizationId: number,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+    } = {},
+  ) {
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options.limit ?? 50));
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId };
+
+    if (options.status) {
+      where.status = options.status;
+    }
+
+    if (options.search) {
+      where.OR = [
+        { customer: { name: { contains: options.search, mode: 'insensitive' } } },
+        { consecutiveNumber: options.search ? Number(options.search) : undefined },
+        { notes: { contains: options.search, mode: 'insensitive' } },
+      ].filter((c) => c.consecutiveNumber !== undefined || Object.keys(c).length > 1);
+    }
+
+    const [total, data] = await Promise.all([
+      this.prisma.invoice.count({ where }),
+      this.prisma.invoice.findMany({
+        where,
+        include: {
+          items: { include: { product: true } },
+          customer: true,
+          paymentLines: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
@@ -677,6 +732,7 @@ export class InvoicesService {
         customerId: true,
         sellerId: true,
         totalAmount: true,
+        ivaAmount: true,
         status: true,
         paymentMethod: true,
         montoUsd: true,
@@ -946,7 +1002,7 @@ export class InvoicesService {
         y += 18;
 
         const subtotalVal = this.toNum(invoice.totalAmount);
-        const taxVal = 0;
+        const taxVal = this.toNum(invoice.ivaAmount);
         const totalVal = subtotalVal + taxVal;
         const tx = 350;
 

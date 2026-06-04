@@ -11,6 +11,7 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CacheTTL } from '@nestjs/cache-manager';
@@ -47,7 +48,29 @@ export class ProductsController {
   @Get()
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
-  findAll(@ActiveOrganization() organizationId: number) {
+  findAll(
+    @ActiveOrganization() organizationId: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+
+    if (pageNum !== undefined && isNaN(pageNum)) {
+      return this.productsService.findAll(organizationId);
+    }
+
+    if (pageNum !== undefined && pageNum > 0) {
+      return this.productsService.findAllPaginated(organizationId, {
+        page: pageNum,
+        limit: limitNum,
+        search,
+        categoryId: categoryId ? parseInt(categoryId, 10) : undefined,
+      });
+    }
+
     return this.productsService.findAll(organizationId);
   }
 

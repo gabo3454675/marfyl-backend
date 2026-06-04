@@ -1,128 +1,187 @@
-# 🔒 Configuración de Producción - DISIS API
+# 🔒 Configuración de Producción - Marfyl Backend
 
-## ✅ Archivos Generados
+**Última actualización:** 4 Junio 2026
 
-### 1. CORS Configurado (`apps/server/src/main.ts`)
-- ✅ Acepta SOLAMENTE peticiones desde `https://[DOMINIO]` y `https://www.[DOMINIO]` en producción
-- ✅ Usa `process.env.FRONTEND_URL` para configuración dinámica
-- ✅ En desarrollo permite localhost
-- ✅ Rechaza requests sin origin en producción (más seguro)
+---
+
+## ✅ Seguridad Implementada
+
+### 1. CORS Configurado (`src/main.ts`)
+- ✅ Acepta SOLAMENTE peticiones desde orígenes configurados en producción
+- ✅ Usa `process.env.FRONTEND_URL` y `CORS_ALLOWED_ORIGINS` para configuración dinámica
+- ✅ En desarrollo permite localhost (puertos 3000-3003)
+- ✅ Rechaza requests de orígenes no autorizados en producción
 - ✅ Headers personalizados para multi-tenant
 
-### 2. Configuración Nginx (`apps/server/nginx/disis-api.conf`)
-- ✅ Escucha en `api.[DOMINIO]`
-- ✅ Proxy pass a `localhost:3001`
-- ✅ Headers para WebSockets y Proxy real
-- ✅ SSL/TLS configurado
-- ✅ Redirección HTTP → HTTPS
-- ✅ Headers de seguridad (HSTS, X-Frame-Options, etc.)
-- ✅ Servir archivos estáticos directamente desde Nginx
-- ✅ CORS para archivos estáticos
+### 2. Validación de JWT_SECRET (`src/main.ts`)
+- ✅ Bloquea arranque si `JWT_SECRET` usa valores inseguros por defecto
+- ✅ Valida contra lista de secrets conocidos inseguros
+- ✅ En producción: `process.exit(1)` si el secret es débil
 
-### 3. Template .env (`apps/server/env.production.example`)
-- ✅ Variables de entorno para producción
-- ✅ `DATABASE_URL` para base de datos `disis_db`
-- ✅ `FRONTEND_URL` configurado
-- ✅ `JWT_SECRET` con instrucciones
-- ✅ Configuración opcional de AWS S3
-
-## 📋 Instrucciones de Uso
-
-### Paso 1: Configurar Variables de Entorno
-
-```bash
-cd apps/server
-cp env.production.example .env
-nano .env
+**Secrets bloqueados:**
+```typescript
+const INSECURE_JWT_SECRETS = [
+  'cambiar-clave-segura-en-produccion',
+  'cambiar-jwt-secret-en-produccion',
+  'dev-secret-key',
+  'secret',
+  'password',
+];
 ```
 
-**Reemplaza `[DOMINIO]` con tu dominio real en:**
-- `FRONTEND_URL=https://[DOMINIO]`
-- `BASE_URL=https://api.[DOMINIO]`
+### 3. Rate Limiting (`@nestjs/throttler`)
+- ✅ Login: 5/min, 20/hr
+- ✅ Register: 3/min, 10/hr
+- ✅ Password Recovery: 3/min, 10/hr
+- ✅ Endpoints públicos de facturas: 30/min
+- ✅ mark-paid: 3/min (protege contra abuso)
 
-**Ejemplo si tu dominio es `tudominio.com`:**
+### 4. Protección CSRF (`src/main.ts`)
+- ✅ Valida `Origin` y `Referer` en requests state-changing (POST/PUT/PATCH/DELETE)
+- ✅ Solo bloquea en producción si falta origin
+- ✅whitelist de orígenes permitidos
+
+### 5. Tokens Criptográficamente Seguros
+- ✅ Tokens públicos de facturas: `crypto.randomBytes(32).toString('hex')`
+- ✅ Tokens de invitación: `randomBytes(32)` (ya estaba)
+
+---
+
+## 📋 Variables de Entorno Obligatorias
+
+### Producción
 ```env
-FRONTEND_URL=https://tudominio.com
-BASE_URL=https://api.tudominio.com
+# Backend
+PORT=3001
+NODE_ENV=production
+
+# Base de datos
+DATABASE_URL="postgresql://..."
+
+# Autenticación - OBLIGATORIO
+# Generar con: openssl rand -base64 64
+JWT_SECRET="tu-secret-seguro-aqui"
+JWT_EXPIRES_IN=365d
+
+# Frontend/CORS - OBLIGATORIO
+FRONTEND_URL="https://tu-dominio.com"
+# Separar múltiples orígenes con coma
+# CORS_ALLOWED_ORIGINS=https://otro-dominio.com,https://mas.com
+
+# Contraseñas de admins - OBLIGATORIO (sin fallback)
+SUPER_ADMIN_EMAIL="admin@tu-dominio.com"
+SUPER_ADMIN_PASSWORD="contraseña-super-segura-1"
+SUPER_ADMIN_2_EMAIL="admin2@tu-dominio.com"
+SUPER_ADMIN_2_PASSWORD="contraseña-super-segura-2"
+
+# Contraseña miembros invitados - OBLIGATORIO (sin fallback)
+DEFAULT_MEMBER_PASSWORD="minimo-8-caracteres"
 ```
 
-### Paso 2: Configurar Nginx
+### Desarrollo
+```env
+NODE_ENV=development
+PORT=3001
+DATABASE_URL="postgresql://..."
 
-```bash
-# Copiar configuración
-sudo cp apps/server/nginx/disis-api.conf /etc/nginx/sites-available/disis-api
-
-# Editar y reemplazar [DOMINIO]
-sudo nano /etc/nginx/sites-available/disis-api
-# Busca y reemplaza TODAS las instancias de [DOMINIO] con tu dominio real
-
-# Activar sitio
-sudo ln -s /etc/nginx/sites-available/disis-api /etc/nginx/sites-enabled/
-
-# Verificar configuración
-sudo nginx -t
-
-# Reiniciar Nginx
-sudo systemctl restart nginx
+# En desarrollo se permiten fallbacks para conveniencia
+# pero se muestran WARNINGS en consola
+JWT_SECRET="cambiar-clave-segura-en-produccion"  # Muestra warning
 ```
 
-### Paso 3: Configurar SSL
+---
 
-```bash
-# Instalar Certbot
-sudo apt install -y certbot python3-certbot-nginx
+## 🔐 Hardening de Seguridad
 
-# Obtener certificado (reemplaza [DOMINIO] con tu dominio)
-sudo certbot --nginx -d api.[DOMINIO] -d www.api.[DOMINIO]
-```
+### Contraseñas
+- ✅ bcrypt con saltRounds=10
+- ✅ No hay contraseñas hardcoded en código
+- ✅ Validación de passwords mínimos en provisión
 
-### Paso 4: Verificar CORS
+### Multi-Tenant
+- ✅ `organizationId` solo del JWT, nunca de headers
+- ✅ `OrganizationGuard` valida membresía activa
+- ✅ Filtros `organizationId` en TODOS los queries Prisma
 
-El código ya está configurado para:
-- ✅ Aceptar solo desde `https://[DOMINIO]` y `https://www.[DOMINIO]` en producción
-- ✅ Rechazar cualquier otro origin
-- ✅ Permitir credenciales (cookies, headers de autenticación)
+### Soft-Delete (Compliance Fiscal Venezuela)
+- ✅ Campos `deletedAt` en `Organization`, `Invoice`, `Expense`
+- ✅ **Requiere migración:** `npx prisma migrate dev --name add_soft_delete`
 
-## 🔐 Seguridad Implementada
-
-1. **CORS Restrictivo**: Solo acepta tu dominio en producción
-2. **HTTPS Forzado**: Nginx redirige HTTP a HTTPS
-3. **Headers de Seguridad**: HSTS, X-Frame-Options, etc.
-4. **SSL/TLS Moderno**: Solo TLS 1.2 y 1.3
-5. **Proxy Real IP**: Nginx pasa la IP real del cliente al backend
+---
 
 ## 📝 Checklist de Despliegue
 
-- [ ] Reemplazar `[DOMINIO]` en `.env` con tu dominio real
-- [ ] Reemplazar `[DOMINIO]` en `nginx/disis-api.conf` con tu dominio real
 - [ ] Configurar `DATABASE_URL` con credenciales reales
-- [ ] Generar `JWT_SECRET` seguro (mínimo 32 caracteres)
-- [ ] Configurar certificado SSL con Let's Encrypt
-- [ ] Verificar que Nginx está funcionando: `sudo nginx -t`
-- [ ] Verificar que la app está corriendo: `pm2 status`
-- [ ] Probar CORS desde el frontend
-- [ ] Verificar logs: `pm2 logs disis-api`
+- [ ] Generar `JWT_SECRET` seguro: `openssl rand -base64 64`
+- [ ] Configurar `FRONTEND_URL` con el dominio del frontend
+- [ ] Configurar `SUPER_ADMIN_EMAIL` y `SUPER_ADMIN_PASSWORD`
+- [ ] Configurar `SUPER_ADMIN_2_EMAIL` y `SUPER_ADMIN_2_PASSWORD`
+- [ ] Configurar `DEFAULT_MEMBER_PASSWORD` (mínimo 8 caracteres)
+- [ ] Ejecutar migraciones: `pnpm prisma migrate deploy`
+- [ ] **Ejecutar migración de soft-delete:** `pnpm prisma migrate dev --name add_soft_delete`
+- [ ] Verificar que NODE_ENV=production
+- [ ] Verificar logs de inicio: `pm2 logs marfyl-backend`
 
-## 🚨 Importante
+---
 
-1. **Nunca** subas el archivo `.env` al repositorio
-2. **Siempre** usa HTTPS en producción
-3. **Genera** un `JWT_SECRET` único y seguro
-4. **Reemplaza** `[DOMINIO]` en TODOS los archivos antes de desplegar
-5. **Verifica** que el firewall solo permite puertos necesarios
+## 🚨 Errores Comunes y Soluciones
+
+### "JWT_SECRET is not set or uses an insecure default"
+```bash
+# Generar secret seguro
+openssl rand -base64 64
+# Poner el resultado en JWT_SECRET
+```
+
+### "DEFAULT_MEMBER_PASSWORD must be configured"
+```bash
+# Agregar a .env
+DEFAULT_MEMBER_PASSWORD="tu-contraseña-de-8-o-mas-caracteres"
+```
+
+### "SUPER_ADMIN_PASSWORD or SUPER_ADMIN_2_PASSWORD not configured"
+```bash
+# Agregar a .env
+SUPER_ADMIN_EMAIL="tu-email@ejemplo.com"
+SUPER_ADMIN_PASSWORD="contraseña-segura"
+SUPER_ADMIN_2_EMAIL="otro-email@ejemplo.com"
+SUPER_ADMIN_2_PASSWORD="otra-contraseña-segura"
+```
+
+---
 
 ## 📞 Troubleshooting
 
-### CORS Error en Producción
-- Verifica que `FRONTEND_URL` en `.env` tiene el dominio correcto
-- Verifica que el frontend está usando HTTPS
-- Revisa logs: `pm2 logs disis-api`
+### Request bloqueado por CORS
+1. Verificar que `FRONTEND_URL` tiene el protocolo `https://`
+2. Verificar que el frontend usa HTTPS
+3. Agregar orígenes adicionales en `CORS_ALLOWED_ORIGINS`
 
-### Nginx no inicia
-- Verifica sintaxis: `sudo nginx -t`
-- Revisa logs: `sudo tail -f /var/log/nginx/error.log`
+### Request bloqueado por CSRF
+1. Verificar que el frontend envía `Origin` header
+2. Verificar que el origin está en `FRONTEND_URL` o `CORS_ALLOWED_ORIGINS`
 
-### SSL no funciona
-- Verifica que el dominio apunta a tu servidor
-- Verifica que los puertos 80 y 443 están abiertos
-- Revisa certificados: `sudo certbot certificates`
+### Rate limit excedido
+- Esperar el tiempo de reset (indicado en headers `Retry-After`)
+- En desarrollo: reducir límites o deshabilitar throttling temporalmente
+
+---
+
+## 🔧 Comandos de Verificación
+
+```bash
+# Verificar que el servidor inicia correctamente
+pm2 logs marfyl-backend
+
+# Verificar configuración de CORS (buscar "CORS" en logs)
+pm2 logs marfyl-backend | grep CORS
+
+# Verificar JWT_SECRET (buscar "JWT_SECRET" en logs al iniciar)
+pm2 logs marfyl-backend | grep JWT_SECRET
+
+# Ejecutar migraciones
+pnpm prisma migrate deploy
+
+# Regenerar cliente Prisma después de cambios
+pnpm prisma generate
+```

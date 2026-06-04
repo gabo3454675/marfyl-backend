@@ -103,6 +103,56 @@ export class ProductsService {
     });
   }
 
+  /**
+   * Obtiene productos con paginación server-side y búsqueda.
+   * Para catálogos grandes (5k+ productos), usar esta versión.
+   */
+  async findAllPaginated(
+    organizationId: number,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      categoryId?: number;
+    } = {},
+  ) {
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options.limit ?? 50));
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId };
+
+    if (options.categoryId) {
+      where.categoryId = options.categoryId;
+    }
+
+    if (options.search) {
+      where.OR = [
+        { name: { contains: options.search, mode: 'insensitive' } },
+        { sku: { contains: options.search, mode: 'insensitive' } },
+        { barcode: { contains: options.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [total, data] = await Promise.all([
+      this.prisma.product.count({ where }),
+      this.prisma.product.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async findOne(id: number, organizationId: number) {
     const product = await this.prisma.product.findFirst({
       where: {

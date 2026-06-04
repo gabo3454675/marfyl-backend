@@ -7,6 +7,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { Public } from '@/common/decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -23,6 +24,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ short: { limit: 5, ttl: 60000 }, long: { limit: 20, ttl: 3600000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
@@ -30,6 +32,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() registerDto: RegisterDto) {
@@ -37,6 +40,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
   @Post('complete-password-reset')
   @HttpCode(HttpStatus.OK)
   async completePasswordReset(@Body() dto: CompletePasswordResetDto) {
@@ -44,6 +48,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { limit: 3, ttl: 60000 }, long: { limit: 10, ttl: 3600000 } })
   @Post('recover-password')
   @HttpCode(HttpStatus.OK)
   async recoverPassword(@Body() dto: RecoverPasswordDto) {

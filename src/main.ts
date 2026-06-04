@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as compression from 'compression';
@@ -12,6 +12,16 @@ async function bootstrap() {
   const envNodeEnv = process.env.NODE_ENV;
   const devPreviewAuth = process.env.DEV_PREVIEW_AUTH === 'true';
   const fiscalPreview = process.env.NEXT_PUBLIC_FISCAL_PREVIEW === 'true';
+  const jwtSecret = process.env.JWT_SECRET;
+
+  // Bloquear JWT_SECRET por defecto en producción
+  const INSECURE_JWT_SECRETS = [
+    'cambiar-clave-segura-en-produccion',
+    'cambiar-jwt-secret-en-produccion',
+    'dev-secret-key',
+    'secret',
+    'password',
+  ];
 
   if (envNodeEnv === 'production') {
     if (devPreviewAuth) {
@@ -22,10 +32,18 @@ async function bootstrap() {
       console.error('❌ FATAL: NEXT_PUBLIC_FISCAL_PREVIEW must NOT be enabled in production (NODE_ENV=production)');
       process.exit(1);
     }
-    console.log('✅ Production security checks passed: DEV_PREVIEW flags are disabled');
+    if (!jwtSecret || INSECURE_JWT_SECRETS.includes(jwtSecret)) {
+      console.error('❌ FATAL: JWT_SECRET is not set or uses an insecure default value in production');
+      console.error('   Generate a secure secret with: openssl rand -base64 64');
+      process.exit(1);
+    }
+    console.log('✅ Production security checks passed: DEV_PREVIEW flags are disabled and JWT_SECRET is configured');
   } else {
     if (devPreviewAuth) {
       console.warn('⚠️  WARNING: DEV_PREVIEW_AUTH is enabled (development mode)');
+    }
+    if (!jwtSecret || INSECURE_JWT_SECRETS.includes(jwtSecret)) {
+      console.warn('⚠️  WARNING: JWT_SECRET uses an insecure default value. Change it for production!');
     }
   }
 
@@ -127,6 +145,66 @@ async function bootstrap() {
       'x-company-id',
     ],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  });
+
+  // CSRF Protection: Validate Origin header for state-changing requests
+  app.use((req: any, res: any, next: any) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      return next();
+    }
+
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const nodeEnv = process.env.NODE_ENV;
+
+    if (!origin && !referer) {
+      if (nodeEnv === 'production') {
+        console.error('[CSRF] Blocked request without Origin/Referer:', req.method, req.path);
+        return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: missing origin' });
+      }
+      return next();
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
+    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((o: string) => o.trim())
+      .filter(Boolean);
+    const allowedOrigins = [
+      frontendUrl,
+      ...extraOrigins,
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+    ];
+
+    const isOriginAllowed = (origin: string) => {
+      const normalized = origin.replace(/\/$/, '');
+      return allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
+    };
+
+    if (origin && !isOriginAllowed(origin)) {
+      console.error('[CSRF] Blocked request with disallowed origin:', origin, req.method, req.path);
+      return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: origin not allowed' });
+    }
+
+    if (referer) {
+      try {
+        const refererUrl = new URL(referer);
+        const refererOrigin = refererUrl.origin;
+        if (!isOriginAllowed(refererOrigin)) {
+          console.error('[CSRF] Blocked request with disallowed referer:', refererOrigin, req.method, req.path);
+          return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: referer not allowed' });
+        }
+      } catch {
+        if (nodeEnv === 'production') {
+          return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: invalid referer' });
+        }
+      }
+    }
+
+    next();
   });
 
   app.useGlobalFilters(new PrismaExceptionFilter());
