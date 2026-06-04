@@ -4,17 +4,30 @@ import {
   ForbiddenException,
   ConflictException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
+import { Invitation } from '@prisma/client';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { getPermissions, ROLES } from '@/common/constants/roles.constants';
+import { EmailService } from '@/modules/email/email.service';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { ProvisionMemberDto } from './dto/provision-member.dto';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 
+type InvitationWithRelations = Invitation & {
+  organization: { id: number; nombre: string; slug: string };
+  inviter: { id: number; email: string; fullName: string | null };
+};
+
 @Injectable()
 export class InvitationsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(InvitationsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   /**
    * Invita a un miembro a una organización
@@ -147,13 +160,94 @@ export class InvitationsService {
       },
     });
 
-    // TODO: Enviar email con el token de invitación
-    // Por ahora retornamos el token para desarrollo
+    // Enviar email de invitación (síncrono, A2).
+    // Si falla, se loggea y se continúa: el 201 NO depende del éxito del email.
+    const invitationUrl = `${this.getFrontendUrl()}/accept-invitation?token=${token}`;
+    try {
+      await this.emailService.sendEmail({
+        to: invitation.email,
+        subject: `Invitación a ${invitation.organization.nombre} en MARFYL`,
+        html: this.buildInvitationEmailHtml(invitation, invitationUrl),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo enviar el email de invitación a ${invitation.email}. Link: ${invitationUrl}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+
     return {
       invitation,
       token, // En producción, esto se enviaría por email
-      invitationUrl: `/accept-invitation?token=${token}`,
+      invitationUrl,
     };
+  }
+
+  private getFrontendUrl(): string {
+    return process.env.FRONTEND_URL?.trim() || 'http://localhost:3003';
+  }
+
+  private escapeHtml(s: string): string {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private buildInvitationEmailHtml(
+    invitation: InvitationWithRelations,
+    url: string,
+  ): string {
+    const orgName = this.escapeHtml(invitation.organization.nombre);
+    const inviterName = this.escapeHtml(
+      invitation.inviter.fullName || invitation.inviter.email,
+    );
+    const role = this.escapeHtml(String(invitation.role));
+    const expiresAt = invitation.expiresAt.toLocaleDateString('es-VE', {
+      dateStyle: 'long',
+    });
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invitación a ${orgName}</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    .container { background: #ffffff; border-radius: 8px; max-width: 600px; margin: 0 auto; padding: 0; overflow: hidden; }
+    .header { background: #1a1a2e; color: #ffffff; padding: 24px; text-align: center; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .content { padding: 24px; color: #333; font-size: 14px; line-height: 1.5; }
+    .role { display: inline-block; background: #e94560; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+    .btn { display: inline-block; background: #e94560; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 16px; }
+    .footer { background: #f9f9f9; padding: 16px; text-align: center; font-size: 12px; color: #888; }
+    .small { font-size: 12px; color: #888; margin-top: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎟️ Has sido invitado a ${orgName}</h1>
+    </div>
+    <div class="content">
+      <p>Hola,</p>
+      <p><strong>${inviterName}</strong> te ha invitado a unirte a <strong>${orgName}</strong> en MARFYL con el rol <span class="role">${role}</span>.</p>
+      <p>Esta invitación expira el <strong>${expiresAt}</strong>.</p>
+      <p style="text-align:center;">
+        <a href="${url}" class="btn">Aceptar invitación</a>
+      </p>
+      <p class="small">Si el botón no funciona, copia y pega este enlace en tu navegador:<br/>${url}</p>
+    </div>
+    <div class="footer">
+      <p>MARFYL — Sistema de gestión</p>
+      <p>Si no esperabas este correo, puedes ignorarlo.</p>
+    </div>
+  </div>
+</body>
+</html>`;
   }
 
   /**

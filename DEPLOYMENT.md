@@ -1,8 +1,9 @@
 # 🚀 Guía de Despliegue - Marfyl Backend
 
 **Última actualización:** 4 Junio 2026
+# MARFYL Backend
 
-## Arquitectura de Producción
+Guía de despliegue del backend de **MARFYL** (SaaS multi-tenant).
 
 - **Frontend**: Next.js 14 (Vercel o similar) - HTTPS requerido
 - **Backend**: NestJS en Node.js (Render, Railway, AWS, etc.) - Puerto 3001
@@ -17,8 +18,14 @@
 - Dominio con SSL configurado
 
 ---
+## Stack
 
-## 📋 Pasos de Despliegue
+- **Framework**: NestJS 10
+- **ORM**: Prisma 5.10
+- **Base de datos**: PostgreSQL (Neon)
+- **Autenticación**: JWT con expiración de 365 días
+- **Multi-tenant**: aislamiento por header `x-tenant-id`
+- **Runtime**: Node.js
 
 ### 1. Preparar el Entorno
 
@@ -35,9 +42,67 @@ npm install -g pnpm
 
 ```bash
 cd marfyl-backend
+## Comandos
 
-# Instalar dependencias
-pnpm install
+Desarrollo y operación del backend:
+
+| Comando              | Descripción                                  |
+| -------------------- | -------------------------------------------- |
+| `pnpm dev`           | Levanta el servidor con `nest start --watch` |
+| `pnpm build`         | Compila el proyecto con `nest build`         |
+| `pnpm start:prod`    | Ejecuta el build con `node dist/main`        |
+| `pnpm prisma:generate` | Genera el cliente de Prisma                |
+| `pnpm prisma:migrate` | Aplica migraciones a la base de datos       |
+| `pnpm prisma:seed`   | Ejecuta el seed inicial de datos             |
+
+## Variables de entorno
+
+Configurar estas variables antes de levantar el servicio:
+
+| Variable         | Descripción                                                      |
+| ---------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL`   | URL de conexión a PostgreSQL/Neon (con `?sslmode=require`)       |
+| `PORT`           | Puerto HTTP del servicio (Render lo inyecta automáticamente)     |
+| `NODE_ENV`       | `development` \| `production`                                    |
+| `JWT_SECRET`     | Clave secreta para firmar tokens JWT                             |
+| `JWT_EXPIRES_IN` | Tiempo de expiración del token (formato NestJS, ej. `365d`)      |
+| `FRONTEND_URL`   | URL del frontend (usada para CORS y redirecciones)               |
+
+Notas:
+- `DATABASE_URL` debe apuntar al pooler de Neon en producción.
+- `JWT_SECRET` debe ser único por entorno. Nunca commitear el valor real.
+- `FRONTEND_URL` debe coincidir exactamente con el origen del frontend (incluido el esquema).
+
+## Despliegue
+
+### Render (principal)
+
+El backend se despliega en **Render free tier** bajo el dominio `*.onrender.com`.
+
+**Build command**
+
+```bash
+pnpm install && pnpm prisma:generate && pnpm build
+```
+
+**Start command**
+
+```bash
+pnpm prisma:migrate deploy && pnpm start:prod
+```
+
+**Pasos**
+
+1. Crear un nuevo **Web Service** en Render conectado al repositorio.
+2. Configurar las variables de entorno listadas arriba.
+3. Definir los comandos de build y start según corresponda.
+4. Render expone el servicio en `https://<service-name>.onrender.com`.
+5. Verificar que `FRONTEND_URL` apunte al frontend desplegado.
+
+Consideraciones del free tier:
+- El servicio entra en sleep tras inactividad; la primera request puede tardar.
+- El filesystem es efímero: cualquier archivo subido se pierde en redeploys.
+- Configurar health check contra la ruta raíz o `/api/v1` si está disponible.
 
 # Generar Prisma Client
 pnpm prisma generate
@@ -225,3 +290,46 @@ pm2 restart marfyl-backend
 1. Verificar `FRONTEND_URL` incluye `https://`
 2. Verificar que el frontend usa HTTPS
 3. Agregar orígenes adicionales en `CORS_ALLOWED_ORIGINS`
+### Nginx VPS (alternativo)
+
+Para deployments en VPS propio usando **Nginx** como reverse proxy.
+
+**Configuración mínima de Nginx** (`/etc/nginx/sites-available/marfyl-backend`):
+
+```nginx
+server {
+    listen 80;
+    server_name api.tu-dominio.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**Pasos**
+
+1. Construir el proyecto: `pnpm install && pnpm prisma:generate && pnpm build`.
+2. Copiar el build al VPS y configurar las variables de entorno.
+3. Ejecutar migraciones: `pnpm prisma:migrate deploy`.
+4. Iniciar el proceso (PM2 o systemd) con `node dist/main`.
+5. Activar el sitio en Nginx y reiniciar el servicio.
+6. Terminar TLS con Let's Encrypt (Certbot) si se requiere HTTPS.
+
+## Operaciones
+
+- **Migrar base de datos**: usar `pnpm prisma:migrate deploy` en producción.
+- **Regenerar cliente Prisma**: requerido tras cambios en `schema.prisma`.
+- **Revisar logs**: según el host (Render dashboard, `pm2 logs`, `journalctl`, etc.).
+
+## Seguridad
+
+- Rotar `JWT_SECRET` si se sospecha compromiso.
+- Restringir CORS al `FRONTEND_URL` configurado.
+- Forzar HTTPS en cualquier deployment expuesto a internet.
+- No commitear archivos `.env`; usar el gestor de secretos del host.

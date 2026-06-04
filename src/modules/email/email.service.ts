@@ -89,7 +89,7 @@ export class EmailService {
   // ─────────────────────────────────────────────────────────────
   // Internal helpers
   // ─────────────────────────────────────────────────────────────
-  private async sendEmail(params: { to: string; subject: string; html: string }): Promise<void> {
+  public async sendEmail(params: { to: string; subject: string; html: string }): Promise<void> {
     if (!this.resend) {
       this.logger.warn(`Email omitido (sin RESEND_API_KEY): ${params.subject} → ${params.to}`);
       return;

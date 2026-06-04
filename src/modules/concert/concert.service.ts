@@ -586,11 +586,19 @@ return created;
     if (!order) throw new NotFoundException('Orden no encontrada o no pagada');
     if (!order.buyerEmail) throw new BadRequestException('Email del comprador no registrado');
 
-    await this.emailService.sendConcertTicketsToBuyer(order, order.event, order.tickets);
+    try {
+      await this.emailService.sendConcertTicketsToBuyer(order, order.event, order.tickets);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Resend tickets email failed for order ${orderId}: ${message}`);
+      throw new BadRequestException('No se pudo reenviar el email. Intente nuevamente.');
+    }
+
     await this.prisma.concertOrder.update({
       where: { id: orderId },
       data: { emailSentAt: new Date(), emailSentTo: order.buyerEmail },
     });
+    this.logger.log(`Tickets email re-sent for order ${orderId} to ${order.buyerEmail}`);
     return { ok: true, message: 'Email reenviado' };
   }
 

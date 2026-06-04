@@ -161,9 +161,121 @@ export class TenantsService {
     return this.getOrganization(organizationId);
   }
 
-  async findOne(id: string) {
-    // TODO: Implementar búsqueda de tenant
-    return null;
+  /**
+   * Lista las organizaciones (tenants) donde el usuario autenticado tiene membership activa.
+   * Filtrado en Prisma por `members.some.userId`, NO por flag global de SUPER_ADMIN.
+   * Esto garantiza que un ADMIN de org solo vea los tenants donde efectivamente es miembro,
+   * consistente con la regla A3 del plan.
+   *
+   * Paginación estándar: `page` (1-based) y `limit` (1..100, default 20).
+   * Devuelve `{ data, pagination }` con metadata para el frontend.
+   */
+  async listForUser(
+    userId: number,
+    opts?: { page?: number; limit?: number },
+  ) {
+    const page = Math.max(Math.floor(opts?.page ?? 1), 1);
+    const limit = Math.min(Math.max(Math.floor(opts?.limit ?? 20), 1), 100);
+    const skip = (page - 1) * limit;
+    const take = limit;
+
+    const where = {
+      members: {
+        some: {
+          userId,
+          status: 'ACTIVE',
+        },
+      },
+    };
+
+    const [total, orgs] = await this.prisma.$transaction([
+      this.prisma.organization.count({ where }),
+      this.prisma.organization.findMany({
+        where,
+        orderBy: { nombre: 'asc' },
+        skip,
+        take,
+        select: {
+          id: true,
+          nombre: true,
+          slug: true,
+          plan: true,
+          currencyCode: true,
+          currencySymbol: true,
+          exchangeRate: true,
+          rateUpdatedAt: true,
+        },
+      }),
+    ]);
+
+    return {
+      data: orgs.map((o) => ({
+        id: o.id,
+        name: o.nombre,
+        slug: o.slug,
+        plan: o.plan,
+        currencyCode: o.currencyCode ?? 'USD',
+        currencySymbol: o.currencySymbol ?? '$',
+        exchangeRate: o.exchangeRate ?? 1,
+        rateUpdatedAt: o.rateUpdatedAt ?? null,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Obtiene un tenant por id, SOLO si el usuario autenticado tiene membership activa.
+   * Si el usuario no es miembro (o el id es inválido), responde 404 por consistencia
+   * con el resto del módulo: nunca se distingue "no existe" de "no tienes acceso"
+   * (evita enumeration attacks).
+   */
+  async findOne(id: string, userId: number) {
+    const orgId = Number.parseInt(id, 10);
+    if (!Number.isFinite(orgId) || orgId <= 0) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    const org = await this.prisma.organization.findFirst({
+      where: {
+        id: orgId,
+        members: {
+          some: {
+            userId,
+            status: 'ACTIVE',
+          },
+        },
+      },
+      select: {
+        id: true,
+        nombre: true,
+        slug: true,
+        plan: true,
+        currencyCode: true,
+        currencySymbol: true,
+        exchangeRate: true,
+        rateUpdatedAt: true,
+      },
+    });
+
+    if (!org) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    return {
+      id: org.id,
+      name: org.nombre,
+      slug: org.slug,
+      plan: org.plan,
+      currencyCode: org.currencyCode ?? 'USD',
+      currencySymbol: org.currencySymbol ?? '$',
+      exchangeRate: org.exchangeRate ?? 1,
+      rateUpdatedAt: org.rateUpdatedAt ?? null,
+    };
   }
 
   /**

@@ -23,6 +23,7 @@ import { ActiveOrganizationMembership } from '@/common/decorators/active-organiz
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 
 @Controller('tenants')
 @UseGuards(JwtAuthGuard)
@@ -33,6 +34,36 @@ export class TenantsController {
   async getCurrentTenant(@TenantId() tenantId: string) {
     // TODO: Implementar obtención de tenant actual
     return { message: 'Get current tenant - To be implemented', tenantId };
+  }
+
+  /**
+   * Lista paginada de tenants (organizaciones) donde el usuario autenticado
+   * tiene membership ACTIVA. El filtro se hace en Prisma por `members.userId`,
+   * NO por flag global de SUPER_ADMIN: un ADMIN de org solo ve sus tenants.
+   * Query: ?page=1&limit=20
+   */
+  @Get()
+  async listTenants(
+    @ActiveUser() user: { id: number },
+    @Query() query: ListTenantsQueryDto,
+  ) {
+    return this.tenantsService.listForUser(user.id, {
+      page: query.page,
+      limit: query.limit,
+    });
+  }
+
+  /**
+   * Obtiene un tenant por id. Responde 404 si el usuario no tiene membership
+   * activa en ese tenant (no se distingue "no existe" de "sin acceso").
+   * Se declara al final para no colisionar con rutas estáticas (me, organization, ...).
+   */
+  @Get(':id')
+  async getTenant(
+    @Param('id') id: string,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.tenantsService.findOne(id, user.id);
   }
 
   /**
@@ -231,7 +262,8 @@ export class TenantsController {
    * Regla: no puede eliminarse a sí mismo. Solo OWNER o ADMIN puede eliminar.
    */
   @Delete('users/:id')
-  @UseGuards(OrganizationGuard)
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   async removeUser(
     @Param('id', ParseIntPipe) targetUserId: number,
     @ActiveOrganization() organizationId: number,

@@ -95,16 +95,6 @@ export class ConcertController {
     return this.concertService.scanTicket(organizationId, user.sub, dto.qrPayload);
   }
 
-  // ============================================================
-  // SECURITY: Rate limit per email address to prevent email bombing
-  // NOTE: This endpoint will be implemented in TASK-A3 (Resend Confirmation Email)
-  // @Throttle({ long: { limit: 3, ttl: 3600000 } }) // 3 requests per hour
-  // POST /concert/admin/orders/:id/resend-email
-  // TODO: Add @UseGuards(JwtAuthGuard, OrganizationGuard, RolesGuard)
-  // TODO: Add @Roles(Role.ADMIN, Role.MANAGER)
-  // TODO: Add resendEmail() method to ConcertService
-  // ============================================================
-
   @Get('orders/:id/proof')
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   async getOrderProof(
