@@ -2,7 +2,20 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Resend } from "resend";
 import { ConcertOrder, ConcertEvent, ConcertTicket } from "@prisma/client";
-import * as QRCode from "qrcode";
+import { SendEmailParams, TicketEmailOptions } from "./email.types";
+import { generateTicketQr } from "./utils/qr-code.util";
+import {
+  buildMultiTicketEmailHtml,
+  buildTicketEmailHtml,
+  formatEventDateLabel,
+  formatShowTimeLabel,
+} from "./templates/ticket-email.template";
+import {
+  buildSeatsSummary,
+  CONCERT_TICKET_EMAIL,
+} from "./concert-ticket-email.constants";
+import { resolveTicketQrPayload } from "@/common/utils/concert-ticket-qr.util";
+import { toResendInlineAttachment } from "./utils/resend-attachment.util";
 
 @Injectable()
 export class EmailService {
@@ -34,95 +47,306 @@ export class EmailService {
       this.config.get<string>("FRONTEND_URL") || "http://localhost:3003";
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 1. Notify owner of a new PENDING order
-  // ─────────────────────────────────────────────────────────────
+  /** Envío genérico (invitaciones, notificaciones, etc.). */
+  async sendEmail(params: {
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<boolean> {
+    const recipient = params.to?.trim();
+    if (!recipient) {
+      this.logger.warn("sendEmail omitido: destinatario vacío");
+      return false;
+    }
+    return this.dispatchEmail({
+      to: recipient,
+      subject: params.subject,
+      html: params.html,
+    });
+  }
+
+  async sendTicketEmail(
+    to: string,
+    clientName: string,
+    ticketCode: string,
+    options: TicketEmailOptions = {},
+  ): Promise<boolean> {
+    const recipient = to?.trim();
+    if (!recipient) {
+      this.logger.warn("sendTicketEmail omitido: destinatario vacío");
+      return false;
+    }
+
+    try {
+      const qrPayload = options.qrPayload?.trim() || ticketCode;
+      const qrScanValue =
+        options.eventSlug && options.ticketPublicToken
+          ? resolveTicketQrPayload(
+              { publicToken: options.ticketPublicToken, qrPayload },
+              options.eventSlug,
+              this.frontendUrl,
+            )
+          : qrPayload;
+      const contentId = this.sanitizeContentId(`marfyl-qr-${ticketCode}`);
+      const qr = await generateTicketQr(qrScanValue, contentId);
+
+      const eventName =
+        options.eventName?.trim() || CONCERT_TICKET_EMAIL.eventName;
+      const emailSubjectArtist =
+        options.mainArtist || options.eventHeadline || eventName;
+      const html = buildTicketEmailHtml({
+        clientName,
+        ticketCode,
+        eventName,
+        eventHeadline:
+          options.eventHeadline ?? CONCERT_TICKET_EMAIL.eventHeadline,
+        mainArtist: options.mainArtist ?? CONCERT_TICKET_EMAIL.mainArtist,
+        lineup: options.lineup ?? CONCERT_TICKET_EMAIL.lineup,
+        entryTimeLabel:
+          options.entryTimeLabel ?? CONCERT_TICKET_EMAIL.entryTimeLabel,
+        showTimeLabel:
+          options.showTimeLabel ?? formatShowTimeLabel(options.eventDate),
+        eventVenue: options.eventVenue ?? CONCERT_TICKET_EMAIL.venueDefault,
+        eventDateLabel: formatEventDateLabel(options.eventDate),
+        seatsSummary: options.seatsSummary,
+        seatLabel: options.seatLabel,
+        sectionCode: options.sectionCode,
+        orderReference: options.orderReference,
+        qrContentId: qr.contentId,
+      });
+
+      return await this.dispatchEmail({
+        to: recipient,
+        subject: `🎫 Tu boleto — ${emailSubjectArtist}`,
+        html,
+        attachments: [
+          {
+            filename: `qr-${ticketCode}.png`,
+            content: qr.buffer,
+            contentId: qr.contentId,
+            contentType: "image/png",
+          },
+        ],
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `sendTicketEmail falló (${recipient}, ${ticketCode}): ${message}`,
+      );
+      return false;
+    }
+  }
+
   async sendConcertOrderPendingToOwner(
     order: ConcertOrder & { event?: ConcertEvent },
     event: ConcertEvent,
-  ): Promise<void> {
-    const to = this.ownerNotifyEmail;
-    const subject = `🔔 Nueva orden pendiente — ${event.title}`;
-
-    const html = this.buildOrderPendingHtml(order, event);
-
-    await this.sendEmail({ to, subject, html });
+  ): Promise<boolean> {
+    try {
+      const html = this.buildOrderPendingHtml(order, event);
+      return await this.dispatchEmail({
+        to: this.ownerNotifyEmail,
+        subject: `🔔 Nueva orden pendiente — ${this.resolveEventDisplayName(event)}`,
+        html,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `sendConcertOrderPendingToOwner falló (orden ${order.id}): ${message}`,
+      );
+      return false;
+    }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 2. Send tickets to buyer after payment confirmation
-  // ─────────────────────────────────────────────────────────────
   async sendConcertTicketsToBuyer(
     order: ConcertOrder & { event?: ConcertEvent; tickets?: ConcertTicket[] },
     event: ConcertEvent,
     tickets: ConcertTicket[],
-  ): Promise<void> {
-    if (!order.buyerEmail) {
+  ): Promise<boolean> {
+    if (!order.buyerEmail?.trim()) {
       this.logger.warn(
-        `Cannot send tickets: buyerEmail is null for order ${order.id}`,
+        `No se envían boletos: buyerEmail vacío en orden ${order.id}`,
       );
-      return;
+      return false;
     }
 
-    const to = order.buyerEmail;
-    const subject = `🎫 Tus entradas — ${event.title}`;
+    if (tickets.length === 0) {
+      this.logger.warn(`No se envían boletos: orden ${order.id} sin tickets`);
+      return false;
+    }
 
-    // Generate QR codes server-side
-    const ticketsWithQr = await Promise.all(
-      tickets.map(async (ticket) => {
-        const qrDataUrl = await QRCode.toDataURL(ticket.qrPayload, {
-          errorCorrectionLevel: "M",
-          type: "image/png",
-          width: 200,
-          margin: 2,
-        });
-        return { ...ticket, qrDataUrl };
-      }),
-    );
+    const emailContext = this.buildConcertEmailContext(event, tickets);
 
-    const html = this.buildTicketsHtml(order, event, ticketsWithQr);
+    try {
+      if (tickets.length === 1) {
+        const ticket = tickets[0];
+        return await this.sendTicketEmail(
+          order.buyerEmail,
+          order.buyerName,
+          this.formatTicketCode(ticket),
+          {
+            ...emailContext,
+            seatLabel: ticket.seatLabel,
+            sectionCode: ticket.sectionCode,
+            qrPayload: ticket.qrPayload,
+            eventSlug: event.slug,
+            ticketPublicToken: ticket.publicToken,
+            orderReference: order.publicToken.slice(0, 8).toUpperCase(),
+          },
+        );
+      }
 
-    await this.sendEmail({ to, subject, html });
+      const attachments: NonNullable<SendEmailParams["attachments"]> = [];
+      const blocks = await Promise.all(
+        tickets.map(async (ticket) => {
+          const ticketCode = this.formatTicketCode(ticket);
+          const contentId = this.sanitizeContentId(`marfyl-qr-${ticket.id}`);
+          const qrScanValue = resolveTicketQrPayload(
+            ticket,
+            event.slug,
+            this.frontendUrl,
+          );
+          const qr = await generateTicketQr(qrScanValue, contentId);
+          attachments.push({
+            filename: `qr-${ticketCode}.png`,
+            content: qr.buffer,
+            contentId: qr.contentId,
+            contentType: "image/png",
+          });
+          return {
+            ticketCode,
+            seatLabel: ticket.seatLabel,
+            sectionCode: ticket.sectionCode,
+            qrContentId: qr.contentId,
+          };
+        }),
+      );
+
+      const html = buildMultiTicketEmailHtml(
+        order.buyerName,
+        {
+          eventName: emailContext.eventName ?? CONCERT_TICKET_EMAIL.eventName,
+          eventHeadline: emailContext.eventHeadline,
+          mainArtist: emailContext.mainArtist,
+          lineup: emailContext.lineup,
+          entryTimeLabel: emailContext.entryTimeLabel,
+          showTimeLabel: emailContext.showTimeLabel,
+          eventVenue: emailContext.eventVenue,
+          eventDateLabel: formatEventDateLabel(emailContext.eventDate),
+          seatsSummary: emailContext.seatsSummary,
+          orderReference: order.publicToken.slice(0, 8).toUpperCase(),
+        },
+        blocks,
+      );
+
+      return await this.dispatchEmail({
+        to: order.buyerEmail.trim(),
+        subject: `🎫 Tus entradas (${tickets.length}) — ${emailContext.mainArtist ?? emailContext.eventHeadline ?? emailContext.eventName}`,
+        html,
+        attachments,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `sendConcertTicketsToBuyer falló (orden ${order.id}): ${message}`,
+      );
+      return false;
+    }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 3. Re-send tickets for an existing PAID order
-  // ─────────────────────────────────────────────────────────────
   async resendConcertTickets(orderId: number): Promise<void> {
-    // This is called from the service layer which already has the order data
-    // The service layer will call sendConcertTicketsToBuyer directly
-    this.logger.log(`Resend requested for order ${orderId}`);
+    this.logger.log(
+      `Reenvío solicitado para orden ${orderId} — use ConcertService.resendOrderEmail`,
+    );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Internal helpers
-  // ─────────────────────────────────────────────────────────────
-  public async sendEmail(params: {
-    to: string;
-    subject: string;
-    html: string;
-  }): Promise<void> {
+  private buildConcertEmailContext(
+    event: ConcertEvent,
+    tickets: ConcertTicket[],
+  ): Omit<
+    TicketEmailOptions,
+    "seatLabel" | "sectionCode" | "qrPayload" | "orderReference"
+  > {
+    return {
+      eventName: this.resolveEventDisplayName(event),
+      eventHeadline: event.subtitle ?? CONCERT_TICKET_EMAIL.eventHeadline,
+      mainArtist: CONCERT_TICKET_EMAIL.mainArtist,
+      lineup: CONCERT_TICKET_EMAIL.lineup,
+      entryTimeLabel: CONCERT_TICKET_EMAIL.entryTimeLabel,
+      showTimeLabel: formatShowTimeLabel(event.eventStartsAt),
+      eventVenue: event.venueName ?? CONCERT_TICKET_EMAIL.venueDefault,
+      eventDate: event.eventStartsAt,
+      seatsSummary: buildSeatsSummary(
+        tickets.map((t) => ({
+          seatLabel: t.seatLabel,
+          sectionCode: t.sectionCode,
+        })),
+      ),
+    };
+  }
+
+  private resolveEventDisplayName(event: ConcertEvent): string {
+    if (
+      event.title.toLowerCase().includes("bodegón") ||
+      event.title.toLowerCase().includes("bodegon")
+    ) {
+      return CONCERT_TICKET_EMAIL.eventName;
+    }
+    return event.title || CONCERT_TICKET_EMAIL.eventName;
+  }
+
+  private sanitizeContentId(raw: string): string {
+    const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 120);
+    return cleaned || "marfyl-ticket-qr";
+  }
+
+  private formatTicketCode(ticket: ConcertTicket): string {
+    const shortToken = ticket.publicToken
+      .replace(/-/g, "")
+      .slice(0, 8)
+      .toUpperCase();
+    return `EV-${shortToken}`;
+  }
+
+  private async dispatchEmail(params: SendEmailParams): Promise<boolean> {
     if (!this.resend) {
       this.logger.warn(
         `Email omitido (sin RESEND_API_KEY): ${params.subject} → ${params.to}`,
       );
-      return;
+      return false;
     }
+
     try {
       const result = await this.resend.emails.send({
         from: `${this.fromName} <${this.fromEmail}>`,
         to: params.to,
         subject: params.subject,
         html: params.html,
-      });
+        attachments: params.attachments?.map((a) =>
+          toResendInlineAttachment(
+            a.content,
+            a.contentId,
+            a.filename,
+            a.contentType,
+          ),
+        ),
+      } as Parameters<NonNullable<typeof this.resend>["emails"]["send"]>[0]);
 
       if (result.error) {
-        this.logger.error(`Resend error: ${JSON.stringify(result.error)}`);
-      } else {
-        this.logger.log(`Email sent to ${params.to}: ${params.subject}`);
+        this.logger.error(
+          `Resend error (${params.to}): ${result.error.message ?? JSON.stringify(result.error)}`,
+        );
+        return false;
       }
-    } catch (err) {
-      this.logger.error(`Failed to send email to ${params.to}`, err);
+
+      this.logger.log(`Email enviado → ${params.to}: ${params.subject}`);
+      return true;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Error al enviar email a ${params.to}: ${message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return false;
     }
   }
 
@@ -147,153 +371,35 @@ export class EmailService {
       BANK_TRANSFER: "Transferencia bancaria",
     };
 
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nueva orden pendiente</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
-    .container { background: #ffffff; border-radius: 8px; max-width: 600px; margin: 0 auto; padding: 30px; }
-    .header { background: #1a1a2e; color: #ffffff; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }
-    .header h1 { margin: 0; font-size: 20px; }
-    .header p { margin: 5px 0 0; opacity: 0.8; font-size: 13px; }
-    .section { padding: 20px; border-bottom: 1px solid #eee; }
-    .section:last-child { border-bottom: none; }
-    .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 0 0 4px; }
-    .value { font-size: 16px; font-weight: bold; color: #1a1a2e; margin: 0; }
-    .amount { font-size: 28px; color: #e94560; font-weight: bold; }
-    .amount small { font-size: 14px; color: #888; font-weight: normal; }
-    .badge { display: inline-block; background: #f59e0b; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-    .footer { background: #f9f9f9; padding: 20px; text-align: center; font-size: 12px; color: #888; }
-    .btn { display: inline-block; background: #e94560; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 10px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎫 MARFYL Entradas</h1>
-      <p>Nueva orden pendiente de confirmación</p>
-    </div>
-
-    <div class="section">
-      <p class="label">Estado</p>
-      <p><span class="badge">PENDIENTE DE PAGO</span></p>
-    </div>
-
-    <div class="section">
-      <p class="label">Evento</p>
-      <p class="value">${event.title}</p>
-      <p style="font-size:13px; color:#666; margin-top:4px;">📍 ${event.venueName}</p>
-      <p style="font-size:13px; color:#666; margin-top:4px;">📅 ${new Date(event.eventStartsAt).toLocaleString("es-VE", { dateStyle: "long", timeStyle: "short" })}</p>
-    </div>
-
-    <div class="section">
-      <p class="label">Datos del comprador</p>
-      <p class="value">${order.buyerName}</p>
-      <p style="margin:4px 0 0; color:#555;">📞 ${order.buyerPhone}</p>
-      <p style="margin:4px 0 0; color:#555;">🪪 ${order.buyerIdDocument}</p>
-      ${order.buyerEmail ? `<p style="margin:4px 0 0; color:#555;">✉️ ${order.buyerEmail}</p>` : ""}
-    </div>
-
-    <div class="section">
-      <p class="label">Monto total</p>
-      <p class="amount">${formatUsd(Number(order.amountUsd))} <small>(Bs ${formatBs(Number(order.amountBs))})</small></p>
-      <p style="margin-top:8px; font-size:13px; color:#666;">💳 Método: ${paymentMethodLabels[order.paymentMethod] || order.paymentMethod}</p>
-      ${order.paymentReference ? `<p style="margin:4px 0 0; font-size:13px; color:#666;">🔖 Referencia: ${order.paymentReference}</p>` : ""}
-    </div>
-
-    <div class="section" style="text-align:center;">
-      <a href="${this.frontendUrl}/concierto/ordenes" class="btn">Verificar ordenes</a>
-    </div>
-
-    <div class="footer">
-      <p>MARFYL — Sistema de boletería digital</p>
-      <p>No responda este correo. Contacte al organizador del evento.</p>
-    </div>
-  </div>
-</body>
-</html>`;
-  }
-
-  private buildTicketsHtml(
-    order: ConcertOrder & { event?: ConcertEvent },
-    event: ConcertEvent,
-    tickets: (ConcertTicket & { qrDataUrl: string })[],
-  ): string {
-    const ticketRows = tickets
-      .map(
-        (t) => `
-      <tr>
-        <td style="padding:12px; border-bottom:1px solid #eee;">
-          <strong style="font-size:14px; color:#1a1a2e;">${t.seatLabel}</strong>
-          <br/><span style="font-size:12px; color:#888;">Sección ${t.sectionCode}</span>
-        </td>
-        <td style="padding:12px; border-bottom:1px solid #eee; text-align:center;">
-          <img src="${t.qrDataUrl}" alt="QR" width="80" height="80" style="border-radius:8px;" />
-        </td>
-        <td style="padding:12px; border-bottom:1px solid #eee; text-align:right;">
-          <a href="${this.frontendUrl}/evento/${event.slug}/entrada/${t.publicToken}" style="color:#e94560; font-size:12px; text-decoration:none;">Ver entrada →</a>
-        </td>
-      </tr>`,
-      )
-      .join("");
+    const eventName = this.resolveEventDisplayName(event);
+    const artistLine = CONCERT_TICKET_EMAIL.mainArtist;
+    const headlineLine = event.subtitle ?? CONCERT_TICKET_EMAIL.eventHeadline;
 
     return `<!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title> Tus entradas — ${event.title}</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
-    .container { background: #ffffff; border-radius: 8px; max-width: 600px; margin: 0 auto; padding: 0; overflow: hidden; }
-    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #ffffff; padding: 30px; text-align: center; }
-    .header h1 { margin: 0; font-size: 22px; font-weight: bold; }
-    .header p { margin: 8px 0 0; opacity: 0.8; font-size: 13px; }
-    .event-info { background: #e94560; color: #fff; padding: 16px 30px; text-align: center; }
-    .event-info p { margin: 0; font-size: 14px; }
-    .event-info .venue { opacity: 0.9; font-size: 12px; margin-top: 4px; }
-    .tickets { padding: 20px; }
-    .tickets table { width: 100%; border-collapse: collapse; }
-    .instruction { background: #f0f8ff; border: 1px solid #d0e8ff; border-radius: 8px; padding: 16px; margin: 0 20px 20px; text-align: center; font-size: 13px; color: #333; }
-    .instruction strong { color: #1a1a2e; }
-    .footer { background: #f9f9f9; padding: 20px; text-align: center; font-size: 12px; color: #888; margin-top: 20px; }
-    .ticket-card { background: #fafafa; border: 1px solid #eee; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-    .ticket-card-header { background: #1a1a2e; color: #fff; padding: 10px 16px; font-size: 12px; display: flex; justify-content: space-between; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎫 ¡Tus entradas!</h1>
-      <p>Confirmación de pago #${order.publicToken.slice(0, 8).toUpperCase()}</p>
-    </div>
-
-    <div class="event-info">
-      <p><strong>${event.title}</strong></p>
-      <p class="venue">📍 ${event.venueName}</p>
-      <p class="venue">📅 ${new Date(event.eventStartsAt).toLocaleString("es-VE", { dateStyle: "long", timeStyle: "short" })}</p>
-    </div>
-
-    <div class="instruction">
-      <strong>📋 Instrucciones</strong><br/>
-      Presente el código QR en la entrada del evento. Cada QR es válido para un (1) ingreso.
-    </div>
-
-    <div class="tickets">
-      <p style="font-size:12px; text-transform:uppercase; color:#888; margin:0 0 12px; letter-spacing:0.5px;">Sus entradas (${tickets.length})</p>
-      <table>${ticketRows}</table>
-    </div>
-
-    <div class="footer">
-      <p>Comprador: ${order.buyerName} | ${order.buyerPhone}</p>
-      <p style="margin-top:8px;">MARFYL — Sistema de boletería digital</p>
-      <p>No responda este correo. Contacte al organizador del evento.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+<head><meta charset="UTF-8" /><meta name="color-scheme" content="dark" /></head>
+<body style="margin:0;padding:24px;background:#050508;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#12121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;">
+    <tr><td style="padding:24px;background:linear-gradient(135deg,#0f172a,#1e1b4b);color:#fff;">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5eead4;">MARFYL · Boletería</p>
+      <h1 style="margin:0;font-size:22px;">🔔 Nueva orden pendiente</h1>
+      <p style="margin:12px 0 0;font-size:20px;font-weight:700;color:#fff;">${artistLine}</p>
+      <p style="margin:4px 0 0;font-size:14px;color:rgba(255,255,255,0.75);">${headlineLine}</p>
+      <p style="margin:10px 0 0;font-size:15px;font-weight:600;color:#5eead4;">Ingreso ${CONCERT_TICKET_EMAIL.entryTimeLabel}</p>
+    </td></tr>
+    <tr><td style="padding:24px;color:rgba(255,255,255,0.85);">
+      <p style="margin:0 0 8px;font-size:12px;color:#99f6e4;font-weight:700;letter-spacing:0.06em;">PENDIENTE DE PAGO</p>
+      <p style="margin:4px 0;font-size:13px;color:rgba(255,255,255,0.6);">📍 ${event.venueName ?? CONCERT_TICKET_EMAIL.venueDefault}</p>
+      <p style="margin:4px 0;font-size:13px;color:rgba(255,255,255,0.55);">${eventName}</p>
+      <p style="margin:4px 0 16px;font-size:13px;color:rgba(255,255,255,0.6);">📅 ${formatEventDateLabel(event.eventStartsAt)}</p>
+      <p style="margin:0 0 4px;font-size:13px;"><strong>Comprador:</strong> ${order.buyerName}</p>
+      <p style="margin:4px 0;font-size:13px;">📞 ${order.buyerPhone} · 🪪 ${order.buyerIdDocument}</p>
+      ${order.buyerEmail ? `<p style="margin:4px 0;font-size:13px;">✉️ ${order.buyerEmail}</p>` : ""}
+      <p style="margin:16px 0 4px;font-size:24px;font-weight:800;color:#5eead4;">${formatUsd(Number(order.amountUsd))}</p>
+      <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.55);">Bs ${formatBs(Number(order.amountBs))} · ${paymentMethodLabels[order.paymentMethod] || order.paymentMethod}</p>
+      <p style="margin:20px 0 0;text-align:center;"><a href="${this.frontendUrl}/concierto/ordenes" style="display:inline-block;background:#5eead4;color:#0a0a0f;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;">Verificar órdenes</a></p>
+    </td></tr>
+  </table>
+</body></html>`;
   }
 }

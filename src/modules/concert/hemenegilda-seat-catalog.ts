@@ -203,9 +203,7 @@ const VIP_PRICE_BS = 85;
 function buildSalonCatalog(): SeatCatalogEntry[] {
   const out: SeatCatalogEntry[] = [];
   for (const m of SALON_MESAS) {
-    let pos = 0;
     for (const displayNumber of m.seats) {
-      pos += 1;
       out.push({
         sectionCode: "SALON",
         mesaNumber: m.mesa,

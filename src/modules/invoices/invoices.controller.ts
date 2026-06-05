@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Delete,
@@ -10,12 +11,15 @@ import {
   Res,
   Header,
   Query,
+  HttpCode,
+  HttpStatus,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Response } from "express";
 import { InvoicesService } from "./invoices.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { InvoiceHistoryQueryDto } from "./dto/history-query.dto";
+import { VoidInvoiceDto, AdjustAmountDto } from "./dto/void-invoice.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
@@ -165,5 +169,46 @@ export class InvoicesController {
       };
     }
     return invoice;
+  }
+
+  /**
+   * Anula una factura (soft-delete). Cumple con la normativa tributaria venezolana.
+   * La factura pasa a estado CANCELLED, se preservan todos los datos y se registra en auditoría.
+   */
+  @Post(":id/void")
+  @HttpCode(HttpStatus.OK)
+  async voidInvoice(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: VoidInvoiceDto,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.invoicesService.voidInvoice(
+      id,
+      organizationId,
+      user.id,
+      dto.reason,
+    );
+  }
+
+  /**
+   * Ajusta el monto de una factura mediante nota de crédito.
+   * Crea un registro de nota de crédito y actualiza el total de la factura original.
+   */
+  @Patch(":id/adjust-amount")
+  @HttpCode(HttpStatus.OK)
+  async adjustAmount(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: AdjustAmountDto,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.invoicesService.adjustAmount(
+      id,
+      dto.newAmount,
+      organizationId,
+      user.id,
+      dto.reason,
+    );
   }
 }

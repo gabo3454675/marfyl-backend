@@ -20,7 +20,13 @@ import {
   computeInvoiceTax,
   type LineTaxInput,
 } from "@/modules/fiscal/helpers/tax-calculator";
-import { TaskPriority, Product, PaymentStatus } from "@prisma/client";
+import {
+  TaskPriority,
+  Product,
+  PaymentStatus,
+  InvoiceStatus,
+  FiscalDocumentType,
+} from "@prisma/client";
 
 @Injectable()
 export class InvoicesService {
@@ -738,6 +744,9 @@ export class InvoicesService {
 
   /**
    * Elimina una factura. Solo permitido para super_admin.
+   * @deprecated En Venezuela las facturas NO se eliminan nunca. Usar voidInvoice() para anular.
+   *              La eliminación física de facturas es ilegal según la ley tributaria venezolana.
+   *              Este método será removido en futuras versiones.
    */
   async remove(id: number, organizationId: number, userId: number) {
     const user = await this.prisma.user.findUnique({
@@ -782,6 +791,201 @@ export class InvoicesService {
     ]);
 
     return { message: "Factura eliminada correctamente" };
+  }
+
+  /**
+   * Anula una factura (soft-delete). Cumple con la normativa tributaria venezolana.
+   * La factura pasa a estado CANCELLED, se preservan todos los datos y se registra en auditoría.
+   *
+   * @param id ID de la factura
+   * @param organizationId ID de la organización (multi-tenant)
+   * @param userId ID del usuario que ejecuta la anulación
+   * @param reason Motivo de la anulación (requerido para auditoría)
+   * @returns Factura anulada
+   * @throws NotFoundException si la factura no existe
+   * @throws BadRequestException si la factura ya está anulada
+   */
+  async voidInvoice(
+    id: number,
+    organizationId: number,
+    userId: number,
+    reason: string,
+  ) {
+    if (!reason?.trim()) {
+      throw new BadRequestException(
+        "Debe proporcionar un motivo para la anulación",
+      );
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+      include: {
+        customer: { select: { name: true } },
+        items: { include: { product: true } },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
+    }
+
+    if (invoice.status === InvoiceStatus.CANCELLED || invoice.deletedAt) {
+      throw new BadRequestException("La factura ya está anulada");
+    }
+
+    // Soft-delete: marcar como cancelada y establecer deletedAt
+    const voidedInvoice = await this.prisma.invoice.update({
+      where: { id },
+      data: {
+        status: InvoiceStatus.CANCELLED,
+        deletedAt: new Date(),
+      },
+      include: {
+        customer: true,
+        items: { include: { product: true } },
+      },
+    });
+
+    // Registrar en activity log para auditoría
+    await this.activityLog.log({
+      organizationId,
+      userId,
+      action: "INVOICE_VOIDED",
+      entityType: "invoice",
+      entityId: String(id),
+      oldValue: {
+        status: invoice.status,
+        totalAmount: Number(invoice.totalAmount),
+      },
+      newValue: {
+        status: InvoiceStatus.CANCELLED,
+        voidReason: reason,
+        voidedAt: new Date().toISOString(),
+      },
+      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} ANULADA. Motivo: ${reason}. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${invoice.customer?.name ?? "N/A"}.`,
+    });
+
+    return voidedInvoice;
+  }
+
+  /**
+   * Ajusta el monto de una factura mediante nota de crédito.
+   * Crea un registro de nota de crédito y actualiza el total de la factura original.
+   *
+   * @param id ID de la factura a ajustar
+   * @param newAmount Nuevo monto total (debe ser menor al original)
+   * @param organizationId ID de la organización (multi-tenant)
+   * @param userId ID del usuario que ejecuta el ajuste
+   * @param reason Motivo del ajuste (requerido para auditoría)
+   * @returns Crédito fiscal creado con los detalles del ajuste
+   * @throws NotFoundException si la factura no existe
+   * @throws BadRequestException si el nuevo monto es mayor o igual al actual
+   */
+  async adjustAmount(
+    id: number,
+    newAmount: number,
+    organizationId: number,
+    userId: number,
+    reason: string,
+  ) {
+    if (!reason?.trim()) {
+      throw new BadRequestException(
+        "Debe proporcionar un motivo para el ajuste",
+      );
+    }
+
+    if (newAmount < 0) {
+      throw new BadRequestException("El nuevo monto no puede ser negativo");
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+      include: {
+        customer: { select: { name: true, taxId: true } },
+        organization: { select: { exchangeRate: true } },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
+    }
+
+    const currentAmount = Number(invoice.totalAmount);
+    if (newAmount >= currentAmount) {
+      throw new BadRequestException(
+        `El nuevo monto ($${newAmount.toFixed(2)}) debe ser menor al monto actual ($${currentAmount.toFixed(2)})`,
+      );
+    }
+
+    const difference = currentAmount - newAmount;
+    const exchangeRate = Number(invoice.organization?.exchangeRate ?? 1);
+    const differenceBs = difference * exchangeRate;
+
+    // Crear nota de crédito en libro de ventas
+    const creditNote = await this.prisma.libroVentaLine.create({
+      data: {
+        organizationId,
+        periodYear: new Date().getFullYear(),
+        periodMonth: new Date().getMonth() + 1,
+        invoiceId: id,
+        issueDate: new Date(),
+        documentType: FiscalDocumentType.NOTA_CREDITO,
+        invoiceNumber: `NC-${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id}`,
+        controlNumber: invoice.controlNumber
+          ? `NC-${invoice.controlNumber}`
+          : null,
+        customerTaxId: invoice.customer?.taxId ?? null,
+        customerName: invoice.customer?.name ?? "Cliente General",
+        baseExempt: 0,
+        baseReduced: 0,
+        baseGeneral: newAmount,
+        ivaAmount: newAmount * 0.16,
+        totalAmount: newAmount + newAmount * 0.16,
+        status: "ACTIVE",
+      },
+    });
+
+    // Actualizar el total de la factura original
+    const updatedInvoice = await this.prisma.invoice.update({
+      where: { id },
+      data: {
+        totalAmount: newAmount,
+        ivaAmount: newAmount * 0.16,
+        baseGeneral: newAmount,
+      },
+      include: {
+        customer: true,
+        items: { include: { product: true } },
+      },
+    });
+
+    // Registrar en activity log para auditoría
+    await this.activityLog.log({
+      organizationId,
+      userId,
+      action: "INVOICE_ADJUSTED",
+      entityType: "invoice",
+      entityId: String(id),
+      oldValue: {
+        totalAmount: currentAmount,
+        ivaAmount: currentAmount * 0.16,
+      },
+      newValue: {
+        totalAmount: newAmount,
+        ivaAmount: newAmount * 0.16,
+        difference: difference,
+        reason: reason,
+        creditNoteId: creditNote.id,
+      },
+      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} ajustada. Monto anterior: $${currentAmount.toFixed(2)}, Nuevo monto: $${newAmount.toFixed(2)}, Diferencia: $${difference.toFixed(2)} (Bs ${differenceBs.toFixed(2)}). Motivo: ${reason}.`,
+    });
+
+    return {
+      creditNote,
+      adjustedInvoice: updatedInvoice,
+      difference,
+      reason,
+    };
   }
 
   async findOne(id: number, organizationId: number) {

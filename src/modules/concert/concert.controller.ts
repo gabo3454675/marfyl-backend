@@ -21,9 +21,10 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { ConcertService } from "./concert.service";
 import { ScanTicketDto } from "./dto/checkout.dto";
 import { AdminSellDto } from "./dto/admin-sell.dto";
+import { SearchOrdersDto } from "./dto/search-orders.dto";
 import * as path from "path";
 import * as fs from "fs";
-import { NotFoundException, ForbiddenException } from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 
 @Controller("concert/admin")
 @UseGuards(JwtAuthGuard, OrganizationGuard, RolesGuard)
@@ -55,6 +56,15 @@ export class ConcertController {
     @Query("status") status?: ConcertOrderStatus,
   ) {
     return this.concertService.listOrders(organizationId, status);
+  }
+
+  @Get("orders/search")
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  searchOrders(
+    @ActiveOrganization() organizationId: number,
+    @Query() query: SearchOrdersDto,
+  ) {
+    return this.concertService.searchOrdersByCustomer(organizationId, query.q);
   }
 
   @Post("orders/:id/confirm")

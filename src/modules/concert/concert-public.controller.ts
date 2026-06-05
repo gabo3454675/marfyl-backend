@@ -49,6 +49,15 @@ export class ConcertPublicController {
     return this.concertService.checkoutPublic(slug, dto, paymentProof);
   }
 
+  @Public()
+  @Get(":slug/boleto/:ticketToken")
+  getTicket(
+    @Param("slug") slug: string,
+    @Param("ticketToken") ticketToken: string,
+  ) {
+    return this.concertService.getPublicTicket(slug, ticketToken);
+  }
+
   @Throttle({ long: { limit: 30, ttl: 60000 } })
   @Public()
   @Get(":slug/orden/:orderToken")

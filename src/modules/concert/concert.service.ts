@@ -27,6 +27,13 @@ import {
   HEMENEGILDA_SEAT_CATALOG,
   type SeatCatalogEntry,
 } from "./hemenegilda-seat-catalog";
+import {
+  buildPublicTicketUrl,
+  formatTicketDisplayCode,
+  parseTicketScanInput,
+  resolveTicketQrPayload,
+} from "@/common/utils/concert-ticket-qr.util";
+import { CONCERT_TICKET_EMAIL } from "@/modules/email/concert-ticket-email.constants";
 
 @Injectable()
 export class ConcertService {
@@ -37,6 +44,10 @@ export class ConcertService {
     private readonly uploadService: UploadService,
     private readonly emailService: EmailService,
   ) {}
+
+  private get frontendUrl(): string {
+    return process.env.FRONTEND_URL?.trim() || "http://localhost:3003";
+  }
 
   private assertEnabled() {
     if (!isConcertFeatureEnabled()) {
@@ -455,7 +466,12 @@ export class ConcertService {
           where: { seatId: seat.id },
         });
         if (!existing) {
-          const qrPayload = `MARFYL-TKT-${randomUUID()}`;
+          const publicToken = randomUUID();
+          const qrPayload = buildPublicTicketUrl(
+            this.frontendUrl,
+            order.event.slug,
+            publicToken,
+          );
           const seatLabel =
             seat.displayNumber != null && seat.mesaNumber != null
               ? `Mesa ${seat.mesaNumber} · Asiento ${seat.displayNumber}`
@@ -464,6 +480,7 @@ export class ConcertService {
             data: {
               orderId: order.id,
               seatId: seat.id,
+              publicToken,
               qrPayload,
               seatLabel,
               sectionCode: seat.section.code,
@@ -534,6 +551,7 @@ export class ConcertService {
       paid: true,
       event: {
         title: event.title,
+        subtitle: event.subtitle,
         venueName: event.venueName,
         eventStartsAt: event.eventStartsAt,
       },
@@ -544,9 +562,94 @@ export class ConcertService {
         publicToken: t.publicToken,
         seatLabel: t.seatLabel,
         sectionCode: t.sectionCode,
-        qrPayload: t.qrPayload,
+        qrPayload: resolveTicketQrPayload(t, event.slug, this.frontendUrl),
+        ticketCode: formatTicketDisplayCode(t.publicToken),
         checkedIn: !!t.checkedInAt,
       })),
+    };
+  }
+
+  async getPublicTicket(slug: string, ticketToken: string) {
+    this.assertEnabled();
+    const event = await this.getEventBySlug(slug);
+    const ticket = await this.prisma.concertTicket.findFirst({
+      where: { publicToken: ticketToken },
+      include: {
+        order: { include: { event: true } },
+      },
+    });
+
+    if (!ticket || ticket.order.eventId !== event.id) {
+      return {
+        valid: false,
+        status: "invalid" as const,
+        title: "Entrada no encontrada",
+        message: "Este código no corresponde a una entrada válida del evento.",
+      };
+    }
+
+    const ticketCode = formatTicketDisplayCode(ticket.publicToken);
+    const firstName =
+      ticket.order.buyerName.trim().split(/\s+/)[0] || ticket.order.buyerName;
+
+    if (ticket.order.status !== ConcertOrderStatus.PAID) {
+      return {
+        valid: false,
+        status: "pending" as const,
+        title: "Pago en revisión",
+        message: `Hola ${firstName}, estamos confirmando tu pago. Te avisaremos por correo cuando tu entrada esté lista.`,
+        buyerName: ticket.order.buyerName,
+        ticketCode,
+      };
+    }
+
+    const eventTitle = event.title || CONCERT_TICKET_EMAIL.eventName;
+    const eventHeadline = event.subtitle ?? CONCERT_TICKET_EMAIL.eventHeadline;
+
+    if (ticket.checkedInAt) {
+      return {
+        valid: true,
+        status: "used" as const,
+        title: "Entrada utilizada",
+        greeting: `Hola, ${firstName}`,
+        message:
+          "Esta entrada ya fue utilizada para ingresar al evento. Si crees que es un error, contacta al organizador en la puerta.",
+        buyerName: ticket.order.buyerName,
+        ticketCode,
+        seatLabel: ticket.seatLabel,
+        sectionCode: ticket.sectionCode,
+        checkedInAt: ticket.checkedInAt,
+        event: {
+          title: eventTitle,
+          headline: eventHeadline,
+          venueName: event.venueName ?? CONCERT_TICKET_EMAIL.venueDefault,
+          eventStartsAt: event.eventStartsAt,
+          entryTimeLabel: CONCERT_TICKET_EMAIL.entryTimeLabel,
+          mainArtist: CONCERT_TICKET_EMAIL.mainArtist,
+        },
+      };
+    }
+
+    return {
+      valid: true,
+      status: "confirmed" as const,
+      title: "¡Entrada confirmada!",
+      greeting: `¡Gracias por tu compra, ${firstName}!`,
+      message:
+        "Tu entrada es válida. Nos vemos el día del evento — te esperamos en Bodegón Monddy. Presenta tu QR en la entrada.",
+      buyerName: ticket.order.buyerName,
+      ticketCode,
+      seatLabel: ticket.seatLabel,
+      sectionCode: ticket.sectionCode,
+      event: {
+        title: eventTitle,
+        headline: eventHeadline,
+        venueName: event.venueName ?? CONCERT_TICKET_EMAIL.venueDefault,
+        eventStartsAt: event.eventStartsAt,
+        entryTimeLabel: CONCERT_TICKET_EMAIL.entryTimeLabel,
+        mainArtist: CONCERT_TICKET_EMAIL.mainArtist,
+        lineup: CONCERT_TICKET_EMAIL.lineup,
+      },
     };
   }
 
@@ -639,6 +742,67 @@ export class ConcertService {
     });
   }
 
+  /**
+   * Busca órdenes por nombre del comprador o número de documento (cédula).
+   * Búsqueda case-insensitive partial match.
+   *
+   * @param organizationId ID de la organización (multi-tenant)
+   * @param searchTerm Término de búsqueda (mínimo 2 caracteres)
+   * @returns Lista de órdenes que coinciden con el criterio
+   * @throws BadRequestException si el término de búsqueda es muy corto
+   */
+  async searchOrdersByCustomer(organizationId: number, searchTerm: string) {
+    await this.assertConcertForOrganizationId(organizationId);
+
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      throw new BadRequestException(
+        "El término de búsqueda debe tener al menos 2 caracteres",
+      );
+    }
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    const orders = await this.prisma.concertOrder.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { buyerName: { contains: normalizedSearch, mode: "insensitive" } },
+          {
+            buyerIdDocument: {
+              contains: normalizedSearch,
+              mode: "insensitive",
+            },
+          },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        tickets: {
+          select: {
+            id: true,
+            seatLabel: true,
+            sectionCode: true,
+            checkedInAt: true,
+            publicToken: true,
+          },
+        },
+        event: {
+          select: {
+            title: true,
+            venueName: true,
+            eventStartsAt: true,
+          },
+        },
+      },
+    });
+
+    return {
+      count: orders.length,
+      orders,
+      searchTerm: searchTerm.trim(),
+    };
+  }
+
   private async getOrderDetail(organizationId: number, orderToken: string) {
     const order = await this.prisma.concertOrder.findFirst({
       where: { publicToken: orderToken, organizationId },
@@ -729,8 +893,11 @@ export class ConcertService {
 
   async scanTicket(organizationId: number, userId: number, qrPayload: string) {
     await this.assertConcertForOrganizationId(organizationId);
+    const parsed = parseTicketScanInput(qrPayload);
     const ticket = await this.prisma.concertTicket.findFirst({
-      where: { qrPayload },
+      where: parsed.publicToken
+        ? { publicToken: parsed.publicToken }
+        : { qrPayload: parsed.qrPayload ?? qrPayload.trim() },
       include: {
         order: { include: { event: true } },
       },
