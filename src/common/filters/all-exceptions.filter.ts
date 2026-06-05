@@ -92,9 +92,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(header, errorStack);
       this.logger.error(`Request context: ${JSON.stringify(requestContext)}`);
     } else {
-      this.logger.warn(
-        `${header} | context=${JSON.stringify(requestContext)}`,
-      );
+      this.logger.warn(`${header} | context=${JSON.stringify(requestContext)}`);
     }
 
     const responseBody: Record<string, unknown> = isHttpException

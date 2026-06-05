@@ -511,10 +511,7 @@ export class FiscalService {
     organizationId: number,
     query: QueryLibroDto,
   ): Promise<Buffer> {
-    const { lines, year, month } = await this.listLibroVentas(
-      organizationId,
-      query,
-    );
+    const { lines } = await this.listLibroVentas(organizationId, query);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Libro de Ventas");
     ws.addRow([

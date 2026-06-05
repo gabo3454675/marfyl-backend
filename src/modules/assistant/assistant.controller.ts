@@ -12,9 +12,21 @@ export class AssistantController {
   @Post("chat")
   async chat(
     @Body() dto: AssistantChatDto,
-    @Req() req: { activeOrganization?: { nombre?: string } },
+    @Req()
+    req: {
+      user?: { sub?: number; id?: number };
+      activeOrganization?: { id?: number; nombre?: string };
+      activeOrganizationId?: number;
+    },
   ) {
-    const orgName = req.activeOrganization?.nombre;
-    return this.assistant.chat(dto, orgName);
+    const organizationId =
+      req.activeOrganizationId ?? req.activeOrganization?.id;
+    const userId = req.user?.sub ?? req.user?.id ?? 0;
+
+    return this.assistant.chat(dto, {
+      organizationId: Number(organizationId),
+      userId: Number(userId),
+      orgName: req.activeOrganization?.nombre,
+    });
   }
 }

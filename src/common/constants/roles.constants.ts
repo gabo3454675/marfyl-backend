@@ -70,7 +70,6 @@ export function getPermissions(role: string | undefined): RolePermissions {
   const isSuperAdmin = r === ROLES.SUPER_ADMIN;
   const isAdmin = r === ROLES.ADMIN;
   const isManager = r === ROLES.MANAGER;
-  const isUserRole = USER_ROLES.includes(r as RoleValue);
 
   return {
     isSuperAdmin,

@@ -1,5 +1,5 @@
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe, BadRequestException } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import * as compression from "compression";
@@ -7,6 +7,7 @@ import { AppModule } from "./app.module";
 import { assertMarfylDatabaseUrl } from "./common/database-guard";
 import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { WebSocketService } from "./services/websocket";
 
 async function bootstrap() {
   // SECURITY: Prevent DEV_PREVIEW_AUTH in production
@@ -273,10 +274,7 @@ async function bootstrap() {
   // In NestJS, filters are evaluated in registration order with first-match
   // semantics (see packages/core/exceptions/exceptions-handler.ts), so a
   // catch-all registered first always handles the response.
-  app.useGlobalFilters(
-    new AllExceptionsFilter(),
-    new PrismaExceptionFilter(),
-  );
+  app.useGlobalFilters(new AllExceptionsFilter(), new PrismaExceptionFilter());
 
   // Global Validation Pipe
   app.useGlobalPipes(
@@ -293,7 +291,14 @@ async function bootstrap() {
   // Global Prefix
   app.setGlobalPrefix("api");
 
+  await app.init();
+  const httpServer = app.getHttpServer();
+  app.get(WebSocketService).attachToServer(httpServer);
+
   await app.listen(port);
+  console.log(
+    `🚀 MARFYL API listening on port ${port} (WebSocket /chat enabled)`,
+  );
 }
 
 bootstrap();

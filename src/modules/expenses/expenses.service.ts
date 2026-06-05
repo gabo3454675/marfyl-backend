@@ -73,16 +73,7 @@ export class ExpensesService {
     organizationId: number,
     userId: number,
   ) {
-    const {
-      purchaseLines,
-      initialPayment,
-      supplierControlNumber: _scn,
-      supplierInvoiceNumber: _sin,
-      baseGeneral: _bg,
-      baseExempt: _be,
-      ivaAmount: _iva,
-      ...rest
-    } = createExpenseDto;
+    const { purchaseLines, initialPayment, ...rest } = createExpenseDto;
 
     const category = await this.prisma.expenseCategory.findFirst({
       where: {

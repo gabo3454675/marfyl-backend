@@ -39,6 +39,7 @@ import { FiscalNormsService } from "./fiscal-norms.service";
   exports: [
     FiscalEngineService,
     FiscalService,
+    FiscalCalendarService,
     FiscalAlertsService,
     FiscalControlNumberService,
     FiscalValidationService,

@@ -335,7 +335,6 @@ export class ProductsService {
     const products = await this.prisma.product.findMany({
       where: {
         organizationId,
-        // @ts-ignore
         isActive: true,
       },
       select: {
@@ -399,8 +398,7 @@ export class ProductsService {
         );
       });
 
-      // Validar columnas requeridas (case-insensitive)
-      const requiredColumns = ["nombre", "precio", "stock"];
+      // Validar columnas requeridas (case-insensitive) vía columnVariations
       const columnMap: Record<string, number> = {};
 
       // Buscar columnas (flexible con variaciones)

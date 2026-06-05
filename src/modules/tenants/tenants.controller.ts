@@ -32,7 +32,7 @@ export class TenantsController {
 
   @Get("me")
   async getCurrentTenant(@TenantId() tenantId: string) {
-    console.log('tenantId', tenantId);
+    console.log("tenantId", tenantId);
     return { message: "Get current tenant - To be implemented", tenantId };
   }
 

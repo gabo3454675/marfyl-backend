@@ -177,7 +177,7 @@ export class UploadService {
       const bucket = this.configService.get<string>("AWS_S3_BUCKET");
       if (bucket) {
         const urlParts = fileUrl.split("/");
-        const key = urlParts.slice(-2).join("/");
+        void urlParts.slice(-2).join("/");
         // Nota: Para eliminar en S3 usar DeleteObjectCommand; por ahora solo no hace nada en S3
       }
     } else {

@@ -29,6 +29,7 @@ export class PushNotificationService {
       return;
     }
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires -- firebase-admin es CJS opcional
       const admin = require("firebase-admin");
       let app: import("firebase-admin").app.App;
       if (!admin.apps.length) {

@@ -14,8 +14,9 @@ import { UpdateCreditLimitDto } from "./dto/update-credit-limit.dto";
 import { RegisterPaymentDto } from "./dto/register-payment.dto";
 import { TaskStatus } from "@prisma/client";
 
-// require() evita "default is not a constructor" en producción (CommonJS)
-const PDFDocument = require("pdfkit");
+import * as PDFKit from "pdfkit";
+
+const PDFDocument = (PDFKit as any).default ?? PDFKit;
 
 @Injectable()
 export class CreditsService {

@@ -34,6 +34,7 @@ import { AssistantModule } from "./modules/assistant/assistant.module";
 import { ConcertModule } from "./modules/concert/concert.module";
 import { EmailModule } from "./modules/email/email.module";
 import { HealthModule } from "./modules/health/health.module";
+import { AiModule } from "./modules/ai/ai.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { HealthModule } from "./modules/health/health.module";
     EmailModule,
     ConcertModule,
     HealthModule,
+    AiModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

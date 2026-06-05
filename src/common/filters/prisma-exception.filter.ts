@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { Request, Response } from "express";
+import { Response } from "express";
 
 const DB_UNAVAILABLE =
   "PostgreSQL no está disponible o las credenciales de DATABASE_URL son incorrectas. " +
@@ -39,12 +39,19 @@ function isDatabaseConnectivityError(exception: unknown): boolean {
 export class PrismaExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctxForLog = host.switchToHttp();
-    const request = ctxForLog.getRequest<{ method?: string; originalUrl?: string; url?: string }>();
+    const request = ctxForLog.getRequest<{
+      method?: string;
+      originalUrl?: string;
+      url?: string;
+    }>();
     console.error("[PRISMA-EXCEPTION-FILTER]", {
       name: (exception as { name?: string } | null)?.name,
       code: (exception as { code?: string } | null)?.code,
       message: (exception as { message?: string } | null)?.message,
-      stack: process.env.NODE_ENV !== "production" ? (exception as { stack?: string } | null)?.stack : undefined,
+      stack:
+        process.env.NODE_ENV !== "production"
+          ? (exception as { stack?: string } | null)?.stack
+          : undefined,
       method: request?.method,
       url: request?.originalUrl ?? request?.url,
     });
