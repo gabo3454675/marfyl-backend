@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 export interface RegisterFcmTokenDto {
   token: string;
@@ -14,7 +14,10 @@ export interface RegisterFcmTokenDto {
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async registerFcmToken(userId: number, dto: RegisterFcmTokenDto): Promise<{ ok: boolean }> {
+  async registerFcmToken(
+    userId: number,
+    dto: RegisterFcmTokenDto,
+  ): Promise<{ ok: boolean }> {
     await this.prisma.fcmToken.upsert({
       where: { token: dto.token },
       create: {

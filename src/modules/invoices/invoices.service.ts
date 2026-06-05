@@ -3,21 +3,24 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
-import { CreateInvoiceDto } from './dto/create-invoice.dto';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import { randomBytes } from 'crypto';
-import * as PDFKit from 'pdfkit';
-import { CreditsService } from '@/modules/credits/credits.service';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
+import { CreateInvoiceDto } from "./dto/create-invoice.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { randomBytes } from "crypto";
+import * as PDFKit from "pdfkit";
+import { CreditsService } from "@/modules/credits/credits.service";
 
 const PDFDocument = (PDFKit as any).default ?? PDFKit;
-import { TasksService } from '@/modules/tasks/tasks.service';
-import { FiscalEngineService } from '@/modules/fiscal/fiscal-engine.service';
-import { FiscalControlNumberService } from '@/modules/fiscal/fiscal-control-number.service';
-import { computeInvoiceTax, type LineTaxInput } from '@/modules/fiscal/helpers/tax-calculator';
-import { TaskPriority, Product, PaymentStatus } from '@prisma/client';
+import { TasksService } from "@/modules/tasks/tasks.service";
+import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
+import { FiscalControlNumberService } from "@/modules/fiscal/fiscal-control-number.service";
+import {
+  computeInvoiceTax,
+  type LineTaxInput,
+} from "@/modules/fiscal/helpers/tax-calculator";
+import { TaskPriority, Product, PaymentStatus } from "@prisma/client";
 
 @Injectable()
 export class InvoicesService {
@@ -30,22 +33,39 @@ export class InvoicesService {
     private fiscalControlNumber: FiscalControlNumberService,
   ) {}
 
-  async create(createInvoiceDto: CreateInvoiceDto, organizationId: number, sellerId: number) {
-    const { items, customerId, notes, paymentMethod: paymentMethodDto, payments: paymentsDto } =
-      createInvoiceDto;
-    const useHybridPayments = Array.isArray(paymentsDto) && paymentsDto.length > 0;
+  async create(
+    createInvoiceDto: CreateInvoiceDto,
+    organizationId: number,
+    sellerId: number,
+  ) {
+    const {
+      items,
+      customerId,
+      notes,
+      paymentMethod: paymentMethodDto,
+      payments: paymentsDto,
+    } = createInvoiceDto;
+    const useHybridPayments =
+      Array.isArray(paymentsDto) && paymentsDto.length > 0;
     const isCredit =
-      paymentMethodDto?.toUpperCase() === 'CREDIT' ||
-      (useHybridPayments && paymentsDto!.some((p) => p.method === 'CREDIT'));
+      paymentMethodDto?.toUpperCase() === "CREDIT" ||
+      (useHybridPayments && paymentsDto!.some((p) => p.method === "CREDIT"));
 
     if (!items || items.length === 0) {
-      throw new BadRequestException('La factura debe tener al menos un producto');
+      throw new BadRequestException(
+        "La factura debe tener al menos un producto",
+      );
     }
     if (isCredit && !customerId) {
-      throw new BadRequestException('Para venta a crédito debe seleccionar un cliente');
+      throw new BadRequestException(
+        "Para venta a crédito debe seleccionar un cliente",
+      );
     }
 
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     // Obtener tasa y registrar TasaHistorica fuera de una transacción interactiva
     const org = await this.prisma.organization.findUnique({
@@ -57,7 +77,7 @@ export class InvoicesService {
       data: {
         organizationId,
         rate,
-        source: 'BCV',
+        source: "BCV",
         effectiveAt: new Date(),
       },
     });
@@ -87,7 +107,7 @@ export class InvoicesService {
     const productById = new Map(products.map((p) => [p.id, p]));
 
     if (products.length !== allIdSet.size) {
-      throw new NotFoundException('Uno o más productos no fueron encontrados');
+      throw new NotFoundException("Uno o más productos no fueron encontrados");
     }
 
     const taxLineInputs: LineTaxInput[] = [];
@@ -100,12 +120,14 @@ export class InvoicesService {
       taxableBase: number;
       ivaLine: number;
     }[] = [];
-    const stockUpdates: ReturnType<PrismaService['product']['update']>[] = [];
+    const stockUpdates: ReturnType<PrismaService["product"]["update"]>[] = [];
 
     for (const item of items) {
       const product = productById.get(item.productId);
       if (!product) {
-        throw new NotFoundException(`Producto con ID ${item.productId} no encontrado`);
+        throw new NotFoundException(
+          `Producto con ID ${item.productId} no encontrado`,
+        );
       }
 
       const unitPrice = Number(product.salePrice);
@@ -131,13 +153,15 @@ export class InvoicesService {
 
       if (product.isBundle) {
         if (!compsList) {
-          throw new BadRequestException(`El combo "${product.name}" no tiene componentes configurados`);
+          throw new BadRequestException(
+            `El combo "${product.name}" no tiene componentes configurados`,
+          );
         }
         this.applyInvoiceBundleComponents(
           compsList,
           item.quantity,
           product.name,
-          'combo',
+          "combo",
           productById,
           stockUpdates,
         );
@@ -147,7 +171,7 @@ export class InvoicesService {
             compsList,
             item.quantity,
             product.name,
-            'servicio',
+            "servicio",
             productById,
             stockUpdates,
           );
@@ -177,10 +201,14 @@ export class InvoicesService {
     const totalAmount = taxTotals.totalWithTax;
 
     if (isCredit) {
-      const credit = await this.creditsService.getOrCreateCredit(customerId!, organizationId);
-      const available = Number(credit.limitAmount) - Number(credit.currentBalance);
-      if (credit.status !== 'ACTIVE') {
-        throw new BadRequestException('El crédito del cliente está suspendido');
+      const credit = await this.creditsService.getOrCreateCredit(
+        customerId!,
+        organizationId,
+      );
+      const available =
+        Number(credit.limitAmount) - Number(credit.currentBalance);
+      if (credit.status !== "ACTIVE") {
+        throw new BadRequestException("El crédito del cliente está suspendido");
       }
       if (available < totalAmount) {
         throw new BadRequestException(
@@ -195,13 +223,17 @@ export class InvoicesService {
     let montoUsd: number;
     let montoBs: number;
     const tasaReferencia = rate;
-    const paymentLinesData: { method: string; amount: number; currency: string }[] = [];
+    const paymentLinesData: {
+      method: string;
+      amount: number;
+      currency: string;
+    }[] = [];
 
     if (useHybridPayments && paymentsDto!.length > 0) {
       let sumUsd = 0;
       let sumBs = 0;
       for (const p of paymentsDto!) {
-        if (p.currency === 'USD') {
+        if (p.currency === "USD") {
           sumUsd += p.amount;
         } else {
           sumBs += p.amount;
@@ -222,45 +254,51 @@ export class InvoicesService {
       }
       montoUsd = sumUsd;
       montoBs = sumBs;
-      paymentMethod = paymentLinesData.length === 1 ? paymentLinesData[0].method : 'MIXED';
+      paymentMethod =
+        paymentLinesData.length === 1 ? paymentLinesData[0].method : "MIXED";
     } else {
       paymentMethod = isCredit
-        ? 'CREDIT'
+        ? "CREDIT"
         : paymentMethodDto &&
-            ['CASH', 'ZELLE', 'CARD', 'CREDIT'].includes(String(paymentMethodDto).toUpperCase())
+            ["CASH", "ZELLE", "CARD", "CREDIT"].includes(
+              String(paymentMethodDto).toUpperCase(),
+            )
           ? String(paymentMethodDto).toUpperCase()
-          : 'CASH';
+          : "CASH";
       montoUsd = totalAmount;
       montoBs = 0;
       paymentLinesData.push({
         method:
-          paymentMethod === 'CASH'
-            ? 'CASH_USD'
-            : paymentMethod === 'ZELLE'
-              ? 'ZELLE'
-              : paymentMethod === 'CARD'
-                ? 'CARD'
-                : 'CREDIT',
+          paymentMethod === "CASH"
+            ? "CASH_USD"
+            : paymentMethod === "ZELLE"
+              ? "ZELLE"
+              : paymentMethod === "CARD"
+                ? "CARD"
+                : "CREDIT",
         amount: totalAmount,
-        currency: 'USD',
+        currency: "USD",
       });
     }
 
-    const paymentStatus = isCredit ? PaymentStatus.pending_credit : PaymentStatus.paid;
+    const paymentStatus = isCredit
+      ? PaymentStatus.pending_credit
+      : PaymentStatus.paid;
 
     // Número consecutivo por organización (cada rancho/empresa tiene su propia secuencia 1, 2, 3...)
     const nextConsecutive =
       (await this.prisma.invoice.count({ where: { organizationId } })) + 1;
     const issueDate = new Date();
-    const controlNumber = await this.fiscalControlNumber.allocateControlNumber(organizationId);
+    const controlNumber =
+      await this.fiscalControlNumber.allocateControlNumber(organizationId);
 
     const mapToMetodo = (method: string): string => {
       const m = method.toUpperCase();
-      if (m === 'CASH_USD' || m === 'CASH_BS') return 'EFECTIVO';
-      if (m === 'PAGO_MOVIL') return 'PAGO_MOVIL';
-      if (m === 'ZELLE') return 'ZELLE';
-      if (m === 'CARD' || m === 'CREDIT') return 'PUNTO';
-      return 'EFECTIVO';
+      if (m === "CASH_USD" || m === "CASH_BS") return "EFECTIVO";
+      if (m === "PAGO_MOVIL") return "PAGO_MOVIL";
+      if (m === "ZELLE") return "ZELLE";
+      if (m === "CARD" || m === "CREDIT") return "PUNTO";
+      return "EFECTIVO";
     };
 
     // Ejecutamos actualización de stock e inserción de factura en una sola transacción "batch"
@@ -274,14 +312,14 @@ export class InvoicesService {
           customerId: customerId || null,
           sellerId,
           totalAmount,
-          status: 'PAID',
+          status: "PAID",
           paymentMethod,
           paymentStatus,
           montoUsd,
           montoBs,
           tasaReferencia,
           notes: notes || null,
-          publicToken: randomBytes(32).toString('hex'),
+          publicToken: randomBytes(32).toString("hex"),
           tasaHistoricaId: tasa.id,
           consecutiveNumber: nextConsecutive,
           issueDate,
@@ -340,10 +378,13 @@ export class InvoicesService {
         exchangeRate,
       );
 
-      const credit = await this.creditsService.getOrCreateCredit(customerId, organizationId);
+      const credit = await this.creditsService.getOrCreateCredit(
+        customerId,
+        organizationId,
+      );
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + (credit.creditDueDays ?? 30));
-      const customerName = invoice.customer?.name ?? 'Cliente';
+      const customerName = invoice.customer?.name ?? "Cliente";
 
       await this.tasksService.create(
         {
@@ -352,7 +393,7 @@ export class InvoicesService {
           assignedToId: sellerId,
           invoiceId: invoice.id,
           priority: TaskPriority.HIGH,
-          category: 'COBRANZA',
+          category: "COBRANZA",
           dueDate: dueDate.toISOString(),
         },
         organizationId,
@@ -363,7 +404,7 @@ export class InvoicesService {
     try {
       await this.fiscalEngine.projectSale(organizationId, invoice.id, sellerId);
     } catch (err) {
-      console.error('FiscalEngine.projectSale:', err);
+      console.error("FiscalEngine.projectSale:", err);
     }
 
     return this.prisma.invoice.findUnique({
@@ -383,15 +424,15 @@ export class InvoicesService {
     comps: { productId: number; quantity: number }[],
     lineQty: number,
     parentName: string,
-    kind: 'combo' | 'servicio',
+    kind: "combo" | "servicio",
     productById: Map<number, Product>,
-    stockUpdates: ReturnType<PrismaService['product']['update']>[],
+    stockUpdates: ReturnType<PrismaService["product"]["update"]>[],
   ) {
     for (const comp of comps) {
       const child = productById.get(comp.productId);
       if (!child) {
         throw new NotFoundException(
-          kind === 'combo'
+          kind === "combo"
             ? `Componente de combo no encontrado: producto ${comp.productId}`
             : `Producto incluido en el servicio no encontrado: ${comp.productId}`,
         );
@@ -399,7 +440,7 @@ export class InvoicesService {
       const need = lineQty * (comp.quantity ?? 1);
       if (child.stock < need) {
         throw new BadRequestException(
-          `Stock insuficiente para "${child.name}" (${kind === 'combo' ? 'componente del combo' : 'incluido en el servicio'}) "${parentName}". Disponible: ${child.stock}, requerido: ${need}`,
+          `Stock insuficiente para "${child.name}" (${kind === "combo" ? "componente del combo" : "incluido en el servicio"}) "${parentName}". Disponible: ${child.stock}, requerido: ${need}`,
         );
       }
       stockUpdates.push(
@@ -421,7 +462,7 @@ export class InvoicesService {
         customer: true,
         paymentLines: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 
@@ -450,10 +491,18 @@ export class InvoicesService {
 
     if (options.search) {
       where.OR = [
-        { customer: { name: { contains: options.search, mode: 'insensitive' } } },
-        { consecutiveNumber: options.search ? Number(options.search) : undefined },
-        { notes: { contains: options.search, mode: 'insensitive' } },
-      ].filter((c) => c.consecutiveNumber !== undefined || Object.keys(c).length > 1);
+        {
+          customer: { name: { contains: options.search, mode: "insensitive" } },
+        },
+        {
+          consecutiveNumber: options.search
+            ? Number(options.search)
+            : undefined,
+        },
+        { notes: { contains: options.search, mode: "insensitive" } },
+      ].filter(
+        (c) => c.consecutiveNumber !== undefined || Object.keys(c).length > 1,
+      );
     }
 
     const [total, data] = await Promise.all([
@@ -465,7 +514,7 @@ export class InvoicesService {
           customer: true,
           paymentLines: true,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -501,7 +550,9 @@ export class InvoicesService {
     const start = new Date(startDate);
     const end = new Date(endDate);
     if (start.getTime() > end.getTime()) {
-      throw new BadRequestException('startDate no puede ser posterior a endDate');
+      throw new BadRequestException(
+        "startDate no puede ser posterior a endDate",
+      );
     }
     const startOfRange = new Date(start);
     startOfRange.setUTCHours(0, 0, 0, 0);
@@ -521,7 +572,7 @@ export class InvoicesService {
         customer: true,
         paymentLines: true,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
 
     const dailySummary = this.buildDailySummary(invoices);
@@ -542,7 +593,10 @@ export class InvoicesService {
     userId: number,
     requestedOrganizationId?: number,
   ): Promise<number> {
-    if (requestedOrganizationId == null || requestedOrganizationId === activeOrganizationId) {
+    if (
+      requestedOrganizationId == null ||
+      requestedOrganizationId === activeOrganizationId
+    ) {
       return activeOrganizationId;
     }
     const user = await this.prisma.user.findUnique({
@@ -551,7 +605,7 @@ export class InvoicesService {
     });
     if (!user?.isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo puedes consultar el historial de la organización activa (x-tenant-id)',
+        "Solo puedes consultar el historial de la organización activa (x-tenant-id)",
       );
     }
     const org = await this.prisma.organization.findUnique({
@@ -574,7 +628,11 @@ export class InvoicesService {
     invoices: Array<{
       totalAmount: unknown;
       paymentMethod: string;
-      paymentLines?: Array<{ method: string; amount: unknown; currency: string }>;
+      paymentLines?: Array<{
+        method: string;
+        amount: unknown;
+        currency: string;
+      }>;
       createdAt: Date;
     }>,
   ): Array<{
@@ -582,7 +640,10 @@ export class InvoicesService {
     totalSales: number;
     byPaymentMethod: Record<string, number>;
   }> {
-    const byDate = new Map<string, { totalSales: number; byPaymentMethod: Record<string, number> }>();
+    const byDate = new Map<
+      string,
+      { totalSales: number; byPaymentMethod: Record<string, number> }
+    >();
 
     for (const inv of invoices) {
       const total = this.toNum(inv.totalAmount);
@@ -595,11 +656,13 @@ export class InvoicesService {
       if (inv.paymentLines && inv.paymentLines.length > 0) {
         for (const line of inv.paymentLines) {
           const key = `${line.method}_${line.currency}`;
-          day.byPaymentMethod[key] = (day.byPaymentMethod[key] ?? 0) + this.toNum(line.amount);
+          day.byPaymentMethod[key] =
+            (day.byPaymentMethod[key] ?? 0) + this.toNum(line.amount);
         }
       } else {
-        const method = (inv.paymentMethod || 'CASH').toUpperCase();
-        day.byPaymentMethod[method] = (day.byPaymentMethod[method] ?? 0) + total;
+        const method = (inv.paymentMethod || "CASH").toUpperCase();
+        day.byPaymentMethod[method] =
+          (day.byPaymentMethod[method] ?? 0) + total;
       }
     }
 
@@ -626,7 +689,7 @@ export class InvoicesService {
         company: true,
       },
       orderBy: {
-        markedAsPaidAt: 'desc',
+        markedAsPaidAt: "desc",
       },
       take: limit,
     });
@@ -643,7 +706,7 @@ export class InvoicesService {
     });
     if (!user?.isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo el Super Admin puede borrar el historial de ventas',
+        "Solo el Super Admin puede borrar el historial de ventas",
       );
     }
 
@@ -653,7 +716,7 @@ export class InvoicesService {
     });
     const invoiceIds = invoices.map((i) => i.id);
     if (invoiceIds.length === 0) {
-      return { message: 'No hay facturas para eliminar', deleted: 0 };
+      return { message: "No hay facturas para eliminar", deleted: 0 };
     }
 
     await this.prisma.$transaction([
@@ -668,7 +731,7 @@ export class InvoicesService {
     ]);
 
     return {
-      message: 'Historial de ventas/facturación eliminado correctamente',
+      message: "Historial de ventas/facturación eliminado correctamente",
       deleted: invoiceIds.length,
     };
   }
@@ -682,7 +745,9 @@ export class InvoicesService {
       select: { isSuperAdmin: true },
     });
     if (!user?.isSuperAdmin) {
-      throw new ForbiddenException('Solo el Super Admin puede eliminar facturas');
+      throw new ForbiddenException(
+        "Solo el Super Admin puede eliminar facturas",
+      );
     }
 
     const invoice = await this.prisma.invoice.findFirst({
@@ -696,15 +761,15 @@ export class InvoicesService {
     await this.activityLog.log({
       organizationId,
       userId,
-      action: 'INVOICE_DELETED',
-      entityType: 'invoice',
+      action: "INVOICE_DELETED",
+      entityType: "invoice",
       entityId: String(id),
       newValue: {
         totalAmount: Number(invoice.totalAmount),
         paymentMethod: invoice.paymentMethod,
         status: invoice.status,
       },
-      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? 'N/A'}.`,
+      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? "N/A"}.`,
     });
 
     await this.prisma.$transaction([
@@ -716,7 +781,7 @@ export class InvoicesService {
       this.prisma.invoice.delete({ where: { id } }),
     ]);
 
-    return { message: 'Factura eliminada correctamente' };
+    return { message: "Factura eliminada correctamente" };
   }
 
   async findOne(id: number, organizationId: number) {
@@ -801,12 +866,12 @@ export class InvoicesService {
     });
 
     if (!invoice) {
-      throw new NotFoundException('Factura no encontrada o enlace inválido');
+      throw new NotFoundException("Factura no encontrada o enlace inválido");
     }
 
     // Incrementar contador de vistas de forma asíncrona (no bloquea la respuesta)
     this.incrementViewCount(invoice.id).catch((err) => {
-      console.error('Error al incrementar contador de vistas:', err);
+      console.error("Error al incrementar contador de vistas:", err);
     });
 
     return invoice;
@@ -843,11 +908,11 @@ export class InvoicesService {
     });
 
     if (!invoice) {
-      throw new NotFoundException('Factura no encontrada o enlace inválido');
+      throw new NotFoundException("Factura no encontrada o enlace inválido");
     }
 
     if (invoice.markedAsPaidByClient) {
-      throw new BadRequestException('Esta factura ya fue marcada como pagada');
+      throw new BadRequestException("Esta factura ya fue marcada como pagada");
     }
 
     // Actualizar la factura
@@ -856,8 +921,8 @@ export class InvoicesService {
       data: {
         markedAsPaidByClient: true,
         markedAsPaidAt: new Date(),
-        markedAsPaidBy: markedBy || invoice.customer?.name || 'Cliente',
-        status: 'PAID', // También actualizar el status general
+        markedAsPaidBy: markedBy || invoice.customer?.name || "Cliente",
+        status: "PAID", // También actualizar el status general
       },
       include: {
         items: {
@@ -881,8 +946,9 @@ export class InvoicesService {
   /** Convierte Prisma Decimal o cualquier valor a number de forma segura. */
   private toNum(v: unknown): number {
     if (v == null) return 0;
-    if (typeof v === 'number' && !Number.isNaN(v)) return v;
-    if (typeof v === 'object' && typeof (v as any).toNumber === 'function') return (v as any).toNumber();
+    if (typeof v === "number" && !Number.isNaN(v)) return v;
+    if (typeof v === "object" && typeof (v as any).toNumber === "function")
+      return (v as any).toNumber();
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   }
@@ -895,33 +961,45 @@ export class InvoicesService {
   async generatePDF(id: number, organizationId: number): Promise<Buffer> {
     const invoice = await this.findOne(id, organizationId);
     const orgId = invoice.organizationId ?? organizationId;
-    let org: { nombre: string; exchangeRate: unknown; currencyCode: string | null; currencySymbol: string | null } | null = null;
-    if (orgId != null && typeof orgId === 'number') {
+    let org: {
+      nombre: string;
+      exchangeRate: unknown;
+      currencyCode: string | null;
+      currencySymbol: string | null;
+    } | null = null;
+    if (orgId != null && typeof orgId === "number") {
       org = await this.prisma.organization.findUnique({
         where: { id: orgId },
-        select: { nombre: true, exchangeRate: true, currencyCode: true, currencySymbol: true },
+        select: {
+          nombre: true,
+          exchangeRate: true,
+          currencyCode: true,
+          currencySymbol: true,
+        },
       });
     }
-    const currencySymbol = org?.currencySymbol ?? '$';
-    const currencyCode = org?.currencyCode ?? 'USD';
+    const currencySymbol = org?.currencySymbol ?? "$";
+    const currencyCode = org?.currencyCode ?? "USD";
     const exchangeRate = this.toNum(org?.exchangeRate ?? 1);
-    const orgName = org?.nombre ?? (invoice.company as any)?.name ?? 'Organización';
+    const orgName =
+      org?.nombre ?? (invoice.company as any)?.name ?? "Organización";
 
-    const formatMoney = (value: number) => `${currencySymbol} ${value.toFixed(2)}`;
+    const formatMoney = (value: number) =>
+      `${currencySymbol} ${value.toFixed(2)}`;
 
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
       const buffers: Buffer[] = [];
 
-      doc.on('data', (chunk: Buffer) => buffers.push(chunk));
-      doc.on('end', () => {
+      doc.on("data", (chunk: Buffer) => buffers.push(chunk));
+      doc.on("end", () => {
         try {
           resolve(Buffer.concat(buffers));
         } catch (e) {
           reject(e);
         }
       });
-      doc.on('error', (err) => {
+      doc.on("error", (err) => {
         try {
           (doc as any).destroy?.();
         } catch (_) {}
@@ -929,40 +1007,67 @@ export class InvoicesService {
       });
 
       try {
-        doc.font('Helvetica');
-        const primary = '#1e40af';
-        const text = '#1f2937';
-        const border = '#e5e7eb';
+        doc.font("Helvetica");
+        const primary = "#1e40af";
+        const text = "#1f2937";
+        const border = "#e5e7eb";
 
-        const company = invoice.company as { name?: string; taxId?: string; address?: string } | null;
-        doc.fontSize(20).fillColor(primary).text('MARFYL', 50, 50);
-        doc.fontSize(10).fillColor(text).text(String(orgName ?? '').slice(0, 80), 50, 72);
-        if (company?.taxId) doc.text(`RIF: ${String(company.taxId).slice(0, 30)}`, 50, 85);
-        if (company?.address) doc.text(String(company.address).slice(0, 80), 50, 98);
+        const company = invoice.company as {
+          name?: string;
+          taxId?: string;
+          address?: string;
+        } | null;
+        doc.fontSize(20).fillColor(primary).text("MARFYL", 50, 50);
+        doc
+          .fontSize(10)
+          .fillColor(text)
+          .text(String(orgName ?? "").slice(0, 80), 50, 72);
+        if (company?.taxId)
+          doc.text(`RIF: ${String(company.taxId).slice(0, 30)}`, 50, 85);
+        if (company?.address)
+          doc.text(String(company.address).slice(0, 80), 50, 98);
 
         // Documento de venta (derecha) — alineado con ticket térmico "venta"
-        doc.fontSize(16).fillColor(primary).text('VENTA', 350, 50, { align: 'right' });
-        let dateStr = '';
+        doc
+          .fontSize(16)
+          .fillColor(primary)
+          .text("VENTA", 350, 50, { align: "right" });
+        let dateStr = "";
         try {
-          dateStr = new Date(invoice.createdAt).toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' });
+          dateStr = new Date(invoice.createdAt).toLocaleDateString("es-VE", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
         } catch {
           dateStr = new Date(invoice.createdAt).toISOString().slice(0, 10);
         }
-        const displayNumber = (invoice as { consecutiveNumber?: number }).consecutiveNumber ?? invoice.id;
-        doc.fontSize(10).fillColor(text)
-          .text(`#${displayNumber}`, 500, 72, { align: 'right' })
-          .text(dateStr, 500, 85, { align: 'right' });
+        const displayNumber =
+          (invoice as { consecutiveNumber?: number }).consecutiveNumber ??
+          invoice.id;
+        doc
+          .fontSize(10)
+          .fillColor(text)
+          .text(`#${displayNumber}`, 500, 72, { align: "right" })
+          .text(dateStr, 500, 85, { align: "right" });
 
         // Separador
         const sepY = 115;
-        doc.moveTo(50, sepY).lineTo(550, sepY).strokeColor(border).lineWidth(1).stroke();
+        doc
+          .moveTo(50, sepY)
+          .lineTo(550, sepY)
+          .strokeColor(border)
+          .lineWidth(1)
+          .stroke();
 
         // Cliente
         const clientY = sepY + 15;
-        doc.fontSize(11).fillColor(primary).text('CLIENTE', 50, clientY);
-        const customerName = invoice.customer?.name ?? 'Cliente General';
-        const customerDoc = invoice.customer?.taxId ?? 'N/A';
-        doc.fontSize(10).fillColor(text)
+        doc.fontSize(11).fillColor(primary).text("CLIENTE", 50, clientY);
+        const customerName = invoice.customer?.name ?? "Cliente General";
+        const customerDoc = invoice.customer?.taxId ?? "N/A";
+        doc
+          .fontSize(10)
+          .fillColor(text)
           .text(`Nombre: ${customerName}`, 50, clientY + 14)
           .text(`Documento: ${customerDoc}`, 50, clientY + 28);
 
@@ -970,11 +1075,11 @@ export class InvoicesService {
         const tableTop = clientY + 55;
         let y = tableTop;
         doc.fontSize(9).fillColor(primary);
-        doc.text('Código', 50, y, { width: 55 });
-        doc.text('Descripción', 108, y, { width: 200 });
-        doc.text('Cant.', 310, y, { width: 45, align: 'right' });
-        doc.text('P. Unit.', 358, y, { width: 75, align: 'right' });
-        doc.text('Total', 436, y, { width: 115, align: 'right' });
+        doc.text("Código", 50, y, { width: 55 });
+        doc.text("Descripción", 108, y, { width: 200 });
+        doc.text("Cant.", 310, y, { width: 45, align: "right" });
+        doc.text("P. Unit.", 358, y, { width: 75, align: "right" });
+        doc.text("Total", 436, y, { width: 115, align: "right" });
         y += 12;
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 10;
@@ -984,16 +1089,31 @@ export class InvoicesService {
           if (y > 700) {
             doc.addPage();
             y = 50;
-            doc.font('Helvetica').fontSize(9).fillColor(text);
+            doc.font("Helvetica").fontSize(9).fillColor(text);
           }
-          const product = item.product as { sku?: string; barcode?: string; id?: number; name?: string } | null;
-          const codigo = product?.sku ?? product?.barcode ?? String(product?.id ?? '');
-          const desc = String(product?.name ?? 'Producto').slice(0, 50);
-          doc.text((codigo || '-').slice(0, 12), 50, y, { width: 55 });
+          const product = item.product as {
+            sku?: string;
+            barcode?: string;
+            id?: number;
+            name?: string;
+          } | null;
+          const codigo =
+            product?.sku ?? product?.barcode ?? String(product?.id ?? "");
+          const desc = String(product?.name ?? "Producto").slice(0, 50);
+          doc.text((codigo || "-").slice(0, 12), 50, y, { width: 55 });
           doc.text(desc, 108, y, { width: 200 });
-          doc.text(String(Number(item.quantity) || 0), 310, y, { width: 45, align: 'right' });
-          doc.text(formatMoney(this.toNum(item.unitPrice)), 358, y, { width: 75, align: 'right' });
-          doc.text(formatMoney(this.toNum(item.subtotal)), 436, y, { width: 115, align: 'right' });
+          doc.text(String(Number(item.quantity) || 0), 310, y, {
+            width: 45,
+            align: "right",
+          });
+          doc.text(formatMoney(this.toNum(item.unitPrice)), 358, y, {
+            width: 75,
+            align: "right",
+          });
+          doc.text(formatMoney(this.toNum(item.subtotal)), 436, y, {
+            width: 115,
+            align: "right",
+          });
           y += 22;
         }
 
@@ -1007,26 +1127,51 @@ export class InvoicesService {
         const tx = 350;
 
         doc.fontSize(10).fillColor(text);
-        doc.text('Subtotal:', tx, y, { width: 90, align: 'right' }).text(formatMoney(subtotalVal), 440, y, { width: 110, align: 'right' });
+        doc
+          .text("Subtotal:", tx, y, { width: 90, align: "right" })
+          .text(formatMoney(subtotalVal), 440, y, {
+            width: 110,
+            align: "right",
+          });
         y += 14;
-        doc.text('Impuestos:', tx, y, { width: 90, align: 'right' }).text(formatMoney(taxVal), 440, y, { width: 110, align: 'right' });
+        doc
+          .text("Impuestos:", tx, y, { width: 90, align: "right" })
+          .text(formatMoney(taxVal), 440, y, { width: 110, align: "right" });
         y += 20;
-        doc.moveTo(tx, y).lineTo(550, y).strokeColor(primary).lineWidth(1.5).stroke();
+        doc
+          .moveTo(tx, y)
+          .lineTo(550, y)
+          .strokeColor(primary)
+          .lineWidth(1.5)
+          .stroke();
         y += 10;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor(primary);
-        doc.text('TOTAL:', tx, y, { width: 90, align: 'right' }).text(formatMoney(totalVal), 440, y, { width: 110, align: 'right' });
+        doc.fontSize(12).font("Helvetica-Bold").fillColor(primary);
+        doc
+          .text("TOTAL:", tx, y, { width: 90, align: "right" })
+          .text(formatMoney(totalVal), 440, y, { width: 110, align: "right" });
 
         // Pie
         const footerY = 750;
-        doc.font('Helvetica').fontSize(9).fillColor(text).text('Gracias por su compra', 50, footerY, { align: 'center', width: 500 });
-        let footer = '';
+        doc
+          .font("Helvetica")
+          .fontSize(9)
+          .fillColor(text)
+          .text("Gracias por su compra", 50, footerY, {
+            align: "center",
+            width: 500,
+          });
+        let footer = "";
         try {
-          footer = `Generado ${new Date().toLocaleDateString('es-VE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+          footer = `Generado ${new Date().toLocaleDateString("es-VE", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
         } catch {
-          footer = `Generado ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+          footer = `Generado ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
         }
-        if (currencyCode === 'USD' && exchangeRate !== 1) footer += ` · 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
-        doc.fontSize(8).fillColor('#9ca3af').text(footer, 50, footerY + 12, { align: 'center', width: 500 });
+        if (currencyCode === "USD" && exchangeRate !== 1)
+          footer += ` · 1 USD = ${exchangeRate.toFixed(2)} Bs.`;
+        doc
+          .fontSize(8)
+          .fillColor("#9ca3af")
+          .text(footer, 50, footerY + 12, { align: "center", width: 500 });
 
         doc.end();
       } catch (err) {

@@ -3,7 +3,7 @@
  * Desactivar solo en casos excepcionales: MARFYL_SKIP_DATABASE_GUARD=true
  */
 export function assertMarfylDatabaseUrl(databaseUrl: string | undefined): void {
-  if (process.env.MARFYL_SKIP_DATABASE_GUARD === 'true') {
+  if (process.env.MARFYL_SKIP_DATABASE_GUARD === "true") {
     return;
   }
 
@@ -14,9 +14,9 @@ export function assertMarfylDatabaseUrl(databaseUrl: string | undefined): void {
 
   const markers = (
     process.env.MARFYL_FORBIDDEN_DB_MARKERS ??
-    'disis_db,disis_user,disisapp,disis-monorepo'
+    "disis_db,disis_user,disisapp,disis-monorepo"
   )
-    .split(',')
+    .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
@@ -26,7 +26,7 @@ export function assertMarfylDatabaseUrl(databaseUrl: string | undefined): void {
   if (hit) {
     throw new Error(
       `[MARFYL] DATABASE_URL no debe usar la base de DISIS (detectado: "${hit}"). ` +
-        'Crea una PostgreSQL nueva y configura backend/.env. Guía: docs/DATABASE.md',
+        "Crea una PostgreSQL nueva y configura backend/.env. Guía: docs/DATABASE.md",
     );
   }
 }

@@ -1,0 +1,442 @@
+;
+; Archive created at 2026-06-03 14:43:21
+;     dbname: neondb
+;     TOC Entries: 432
+;     Compression: gzip
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.10 (6a49db4)
+;     Dumped by pg_dump version: 18.4
+;
+;
+; Selected TOC Entries:
+;
+1010; 1247 42354 TYPE public CierreCajaEstado neondb_owner
+1007; 1247 42338 TYPE public ConsumptionReason neondb_owner
+983; 1247 17563 TYPE public CreditStatus neondb_owner
+986; 1247 17568 TYPE public CreditTransactionType neondb_owner
+1043; 1247 139276 TYPE public DisisInventorySyncStatus neondb_owner
+1040; 1247 139270 TYPE public DisisTransactionStatus neondb_owner
+1037; 1247 139265 TYPE public DisisTransactionType neondb_owner
+926; 1247 17142 TYPE public ExpenseStatus neondb_owner
+920; 1247 17124 TYPE public InvitationStatus neondb_owner
+923; 1247 17134 TYPE public InvoiceStatus neondb_owner
+998; 1247 17638 TYPE public MovementType neondb_owner
+1028; 1247 42478 TYPE public PaymentLineCurrency neondb_owner
+1025; 1247 42465 TYPE public PaymentLineMethod neondb_owner
+989; 1247 17574 TYPE public PaymentStatus neondb_owner
+917; 1247 17114 TYPE public Plan neondb_owner
+914; 1247 17102 TYPE public Role neondb_owner
+974; 1247 17492 TYPE public TaskPriority neondb_owner
+971; 1247 17485 TYPE public TaskStatus neondb_owner
+217; 1259 17092 TABLE public _prisma_migrations neondb_owner
+263; 1259 42404 TABLE public activity_logs neondb_owner
+262; 1259 42403 SEQUENCE public activity_logs_id_seq neondb_owner
+4009; 0 0 SEQUENCE OWNED BY public activity_logs_id_seq neondb_owner
+249; 1259 17538 TABLE public audit_logs neondb_owner
+248; 1259 17537 SEQUENCE public audit_logs_id_seq neondb_owner
+4010; 0 0 SEQUENCE OWNED BY public audit_logs_id_seq neondb_owner
+282; 1259 157326 TABLE public auditorias neondb_owner
+281; 1259 157325 SEQUENCE public auditorias_id_seq neondb_owner
+4011; 0 0 SEQUENCE OWNED BY public auditorias_id_seq neondb_owner
+259; 1259 42360 TABLE public cierres_caja neondb_owner
+258; 1259 42359 SEQUENCE public cierres_caja_id_seq neondb_owner
+4012; 0 0 SEQUENCE OWNED BY public cierres_caja_id_seq neondb_owner
+221; 1259 17159 TABLE public companies neondb_owner
+220; 1259 17158 SEQUENCE public companies_id_seq neondb_owner
+4013; 0 0 SEQUENCE OWNED BY public companies_id_seq neondb_owner
+223; 1259 17171 TABLE public company_members neondb_owner
+222; 1259 17170 SEQUENCE public company_members_id_seq neondb_owner
+4014; 0 0 SEQUENCE OWNED BY public company_members_id_seq neondb_owner
+276; 1259 157300 TABLE public contribuyentes neondb_owner
+275; 1259 157299 SEQUENCE public contribuyentes_id_seq neondb_owner
+4015; 0 0 SEQUENCE OWNED BY public contribuyentes_id_seq neondb_owner
+253; 1259 17594 TABLE public credit_transactions neondb_owner
+252; 1259 17593 SEQUENCE public credit_transactions_id_seq neondb_owner
+4016; 0 0 SEQUENCE OWNED BY public credit_transactions_id_seq neondb_owner
+251; 1259 17583 TABLE public customer_credits neondb_owner
+250; 1259 17582 SEQUENCE public customer_credits_id_seq neondb_owner
+4017; 0 0 SEQUENCE OWNED BY public customer_credits_id_seq neondb_owner
+233; 1259 17232 TABLE public customers neondb_owner
+232; 1259 17231 SEQUENCE public customers_id_seq neondb_owner
+4018; 0 0 SEQUENCE OWNED BY public customers_id_seq neondb_owner
+280; 1259 157318 TABLE public declaraciones_islr neondb_owner
+279; 1259 157317 SEQUENCE public declaraciones_islr_id_seq neondb_owner
+4019; 0 0 SEQUENCE OWNED BY public declaraciones_islr_id_seq neondb_owner
+278; 1259 157310 TABLE public declaraciones_iva neondb_owner
+277; 1259 157309 SEQUENCE public declaraciones_iva_id_seq neondb_owner
+4020; 0 0 SEQUENCE OWNED BY public declaraciones_iva_id_seq neondb_owner
+270; 1259 139284 TABLE public disis_clients neondb_owner
+269; 1259 139283 SEQUENCE public disis_clients_id_seq neondb_owner
+4021; 0 0 SEQUENCE OWNED BY public disis_clients_id_seq neondb_owner
+272; 1259 139296 TABLE public disis_transactions neondb_owner
+271; 1259 139295 SEQUENCE public disis_transactions_id_seq neondb_owner
+4022; 0 0 SEQUENCE OWNED BY public disis_transactions_id_seq neondb_owner
+245; 1259 17295 TABLE public documents neondb_owner
+244; 1259 17294 SEQUENCE public documents_id_seq neondb_owner
+4023; 0 0 SEQUENCE OWNED BY public documents_id_seq neondb_owner
+241; 1259 17273 TABLE public expense_categories neondb_owner
+240; 1259 17272 SEQUENCE public expense_categories_id_seq neondb_owner
+4024; 0 0 SEQUENCE OWNED BY public expense_categories_id_seq neondb_owner
+274; 1259 157289 TABLE public expense_payments neondb_owner
+273; 1259 157288 SEQUENCE public expense_payments_id_seq neondb_owner
+4025; 0 0 SEQUENCE OWNED BY public expense_payments_id_seq neondb_owner
+243; 1259 17283 TABLE public expenses neondb_owner
+242; 1259 17282 SEQUENCE public expenses_id_seq neondb_owner
+4026; 0 0 SEQUENCE OWNED BY public expenses_id_seq neondb_owner
+265; 1259 42414 TABLE public fcm_tokens neondb_owner
+264; 1259 42413 SEQUENCE public fcm_tokens_id_seq neondb_owner
+4027; 0 0 SEQUENCE OWNED BY public fcm_tokens_id_seq neondb_owner
+255; 1259 17650 TABLE public inventory_movements neondb_owner
+254; 1259 17649 SEQUENCE public inventory_movements_id_seq neondb_owner
+4028; 0 0 SEQUENCE OWNED BY public inventory_movements_id_seq neondb_owner
+227; 1259 17194 TABLE public invitations neondb_owner
+226; 1259 17193 SEQUENCE public invitations_id_seq neondb_owner
+4029; 0 0 SEQUENCE OWNED BY public invitations_id_seq neondb_owner
+237; 1259 17256 TABLE public invoice_items neondb_owner
+236; 1259 17255 SEQUENCE public invoice_items_id_seq neondb_owner
+4030; 0 0 SEQUENCE OWNED BY public invoice_items_id_seq neondb_owner
+267; 1259 42484 TABLE public invoice_payment_lines neondb_owner
+266; 1259 42483 SEQUENCE public invoice_payment_lines_id_seq neondb_owner
+4031; 0 0 SEQUENCE OWNED BY public invoice_payment_lines_id_seq neondb_owner
+235; 1259 17242 TABLE public invoices neondb_owner
+234; 1259 17241 SEQUENCE public invoices_id_seq neondb_owner
+4032; 0 0 SEQUENCE OWNED BY public invoices_id_seq neondb_owner
+229; 1259 17206 TABLE public members neondb_owner
+228; 1259 17205 SEQUENCE public members_id_seq neondb_owner
+4033; 0 0 SEQUENCE OWNED BY public members_id_seq neondb_owner
+225; 1259 17183 TABLE public organizations neondb_owner
+224; 1259 17182 SEQUENCE public organizations_id_seq neondb_owner
+4034; 0 0 SEQUENCE OWNED BY public organizations_id_seq neondb_owner
+268; 1259 42501 TABLE public pagos neondb_owner
+231; 1259 17218 TABLE public products neondb_owner
+230; 1259 17217 SEQUENCE public products_id_seq neondb_owner
+4035; 0 0 SEQUENCE OWNED BY public products_id_seq neondb_owner
+239; 1259 17263 TABLE public suppliers neondb_owner
+238; 1259 17262 SEQUENCE public suppliers_id_seq neondb_owner
+4036; 0 0 SEQUENCE OWNED BY public suppliers_id_seq neondb_owner
+261; 1259 42392 TABLE public tasas_historicas neondb_owner
+260; 1259 42391 SEQUENCE public tasas_historicas_id_seq neondb_owner
+4037; 0 0 SEQUENCE OWNED BY public tasas_historicas_id_seq neondb_owner
+247; 1259 17498 TABLE public tasks neondb_owner
+246; 1259 17497 SEQUENCE public tasks_id_seq neondb_owner
+4038; 0 0 SEQUENCE OWNED BY public tasks_id_seq neondb_owner
+219; 1259 17148 TABLE public users neondb_owner
+218; 1259 17147 SEQUENCE public users_id_seq neondb_owner
+4039; 0 0 SEQUENCE OWNED BY public users_id_seq neondb_owner
+257; 1259 17660 TABLE public vehicle_inspections neondb_owner
+256; 1259 17659 SEQUENCE public vehicle_inspections_id_seq neondb_owner
+4040; 0 0 SEQUENCE OWNED BY public vehicle_inspections_id_seq neondb_owner
+3521; 2604 42407 DEFAULT public activity_logs id neondb_owner
+3492; 2604 17541 DEFAULT public audit_logs id neondb_owner
+3544; 2604 157329 DEFAULT public auditorias id neondb_owner
+3505; 2604 42363 DEFAULT public cierres_caja id neondb_owner
+3434; 2604 17162 DEFAULT public companies id neondb_owner
+3438; 2604 17174 DEFAULT public company_members id neondb_owner
+3538; 2604 157303 DEFAULT public contribuyentes id neondb_owner
+3499; 2604 17597 DEFAULT public credit_transactions id neondb_owner
+3494; 2604 17586 DEFAULT public customer_credits id neondb_owner
+3467; 2604 17235 DEFAULT public customers id neondb_owner
+3542; 2604 157321 DEFAULT public declaraciones_islr id neondb_owner
+3540; 2604 157313 DEFAULT public declaraciones_iva id neondb_owner
+3528; 2604 139287 DEFAULT public disis_clients id neondb_owner
+3531; 2604 139299 DEFAULT public disis_transactions id neondb_owner
+3485; 2604 17298 DEFAULT public documents id neondb_owner
+3479; 2604 17276 DEFAULT public expense_categories id neondb_owner
+3535; 2604 157292 DEFAULT public expense_payments id neondb_owner
+3481; 2604 17286 DEFAULT public expenses id neondb_owner
+3523; 2604 42417 DEFAULT public fcm_tokens id neondb_owner
+3501; 2604 17653 DEFAULT public inventory_movements id neondb_owner
+3448; 2604 17197 DEFAULT public invitations id neondb_owner
+3476; 2604 17259 DEFAULT public invoice_items id neondb_owner
+3525; 2604 42487 DEFAULT public invoice_payment_lines id neondb_owner
+3469; 2604 17245 DEFAULT public invoices id neondb_owner
+3452; 2604 17209 DEFAULT public members id neondb_owner
+3442; 2604 17186 DEFAULT public organizations id neondb_owner
+3456; 2604 17221 DEFAULT public products id neondb_owner
+3477; 2604 17266 DEFAULT public suppliers id neondb_owner
+3517; 2604 42395 DEFAULT public tasas_historicas id neondb_owner
+3487; 2604 17501 DEFAULT public tasks id neondb_owner
+3429; 2604 17151 DEFAULT public users id neondb_owner
+3503; 2604 17663 DEFAULT public vehicle_inspections id neondb_owner
+3936; 0 17092 TABLE DATA public _prisma_migrations neondb_owner
+3982; 0 42404 TABLE DATA public activity_logs neondb_owner
+3968; 0 17538 TABLE DATA public audit_logs neondb_owner
+4001; 0 157326 TABLE DATA public auditorias neondb_owner
+3978; 0 42360 TABLE DATA public cierres_caja neondb_owner
+3940; 0 17159 TABLE DATA public companies neondb_owner
+3942; 0 17171 TABLE DATA public company_members neondb_owner
+3995; 0 157300 TABLE DATA public contribuyentes neondb_owner
+3972; 0 17594 TABLE DATA public credit_transactions neondb_owner
+3970; 0 17583 TABLE DATA public customer_credits neondb_owner
+3952; 0 17232 TABLE DATA public customers neondb_owner
+3999; 0 157318 TABLE DATA public declaraciones_islr neondb_owner
+3997; 0 157310 TABLE DATA public declaraciones_iva neondb_owner
+3989; 0 139284 TABLE DATA public disis_clients neondb_owner
+3991; 0 139296 TABLE DATA public disis_transactions neondb_owner
+3964; 0 17295 TABLE DATA public documents neondb_owner
+3960; 0 17273 TABLE DATA public expense_categories neondb_owner
+3993; 0 157289 TABLE DATA public expense_payments neondb_owner
+3962; 0 17283 TABLE DATA public expenses neondb_owner
+3984; 0 42414 TABLE DATA public fcm_tokens neondb_owner
+3974; 0 17650 TABLE DATA public inventory_movements neondb_owner
+3946; 0 17194 TABLE DATA public invitations neondb_owner
+3956; 0 17256 TABLE DATA public invoice_items neondb_owner
+3986; 0 42484 TABLE DATA public invoice_payment_lines neondb_owner
+3954; 0 17242 TABLE DATA public invoices neondb_owner
+3948; 0 17206 TABLE DATA public members neondb_owner
+3944; 0 17183 TABLE DATA public organizations neondb_owner
+3987; 0 42501 TABLE DATA public pagos neondb_owner
+3950; 0 17218 TABLE DATA public products neondb_owner
+3958; 0 17263 TABLE DATA public suppliers neondb_owner
+3980; 0 42392 TABLE DATA public tasas_historicas neondb_owner
+3966; 0 17498 TABLE DATA public tasks neondb_owner
+3938; 0 17148 TABLE DATA public users neondb_owner
+3976; 0 17660 TABLE DATA public vehicle_inspections neondb_owner
+4041; 0 0 SEQUENCE SET public activity_logs_id_seq neondb_owner
+4042; 0 0 SEQUENCE SET public audit_logs_id_seq neondb_owner
+4043; 0 0 SEQUENCE SET public auditorias_id_seq neondb_owner
+4044; 0 0 SEQUENCE SET public cierres_caja_id_seq neondb_owner
+4045; 0 0 SEQUENCE SET public companies_id_seq neondb_owner
+4046; 0 0 SEQUENCE SET public company_members_id_seq neondb_owner
+4047; 0 0 SEQUENCE SET public contribuyentes_id_seq neondb_owner
+4048; 0 0 SEQUENCE SET public credit_transactions_id_seq neondb_owner
+4049; 0 0 SEQUENCE SET public customer_credits_id_seq neondb_owner
+4050; 0 0 SEQUENCE SET public customers_id_seq neondb_owner
+4051; 0 0 SEQUENCE SET public declaraciones_islr_id_seq neondb_owner
+4052; 0 0 SEQUENCE SET public declaraciones_iva_id_seq neondb_owner
+4053; 0 0 SEQUENCE SET public disis_clients_id_seq neondb_owner
+4054; 0 0 SEQUENCE SET public disis_transactions_id_seq neondb_owner
+4055; 0 0 SEQUENCE SET public documents_id_seq neondb_owner
+4056; 0 0 SEQUENCE SET public expense_categories_id_seq neondb_owner
+4057; 0 0 SEQUENCE SET public expense_payments_id_seq neondb_owner
+4058; 0 0 SEQUENCE SET public expenses_id_seq neondb_owner
+4059; 0 0 SEQUENCE SET public fcm_tokens_id_seq neondb_owner
+4060; 0 0 SEQUENCE SET public inventory_movements_id_seq neondb_owner
+4061; 0 0 SEQUENCE SET public invitations_id_seq neondb_owner
+4062; 0 0 SEQUENCE SET public invoice_items_id_seq neondb_owner
+4063; 0 0 SEQUENCE SET public invoice_payment_lines_id_seq neondb_owner
+4064; 0 0 SEQUENCE SET public invoices_id_seq neondb_owner
+4065; 0 0 SEQUENCE SET public members_id_seq neondb_owner
+4066; 0 0 SEQUENCE SET public organizations_id_seq neondb_owner
+4067; 0 0 SEQUENCE SET public products_id_seq neondb_owner
+4068; 0 0 SEQUENCE SET public suppliers_id_seq neondb_owner
+4069; 0 0 SEQUENCE SET public tasas_historicas_id_seq neondb_owner
+4070; 0 0 SEQUENCE SET public tasks_id_seq neondb_owner
+4071; 0 0 SEQUENCE SET public users_id_seq neondb_owner
+4072; 0 0 SEQUENCE SET public vehicle_inspections_id_seq neondb_owner
+3547; 2606 17100 CONSTRAINT public _prisma_migrations _prisma_migrations_pkey neondb_owner
+3682; 2606 42412 CONSTRAINT public activity_logs activity_logs_pkey neondb_owner
+3639; 2606 17546 CONSTRAINT public audit_logs audit_logs_pkey neondb_owner
+3727; 2606 157334 CONSTRAINT public auditorias auditorias_pkey neondb_owner
+3668; 2606 42373 CONSTRAINT public cierres_caja cierres_caja_pkey neondb_owner
+3553; 2606 17169 CONSTRAINT public companies companies_pkey neondb_owner
+3556; 2606 17181 CONSTRAINT public company_members company_members_pkey neondb_owner
+3714; 2606 157308 CONSTRAINT public contribuyentes contribuyentes_pkey neondb_owner
+3651; 2606 17602 CONSTRAINT public credit_transactions credit_transactions_pkey neondb_owner
+3645; 2606 17592 CONSTRAINT public customer_credits customer_credits_pkey neondb_owner
+3588; 2606 17240 CONSTRAINT public customers customers_pkey neondb_owner
+3722; 2606 157324 CONSTRAINT public declaraciones_islr declaraciones_islr_pkey neondb_owner
+3718; 2606 157316 CONSTRAINT public declaraciones_iva declaraciones_iva_pkey neondb_owner
+3699; 2606 139294 CONSTRAINT public disis_clients disis_clients_pkey neondb_owner
+3705; 2606 139307 CONSTRAINT public disis_transactions disis_transactions_pkey neondb_owner
+3625; 2606 17303 CONSTRAINT public documents documents_pkey neondb_owner
+3612; 2606 17281 CONSTRAINT public expense_categories expense_categories_pkey neondb_owner
+3710; 2606 157298 CONSTRAINT public expense_payments expense_payments_pkey neondb_owner
+3620; 2606 17293 CONSTRAINT public expenses expenses_pkey neondb_owner
+3685; 2606 42423 CONSTRAINT public fcm_tokens fcm_tokens_pkey neondb_owner
+3655; 2606 17658 CONSTRAINT public inventory_movements inventory_movements_pkey neondb_owner
+3568; 2606 17204 CONSTRAINT public invitations invitations_pkey neondb_owner
+3602; 2606 17261 CONSTRAINT public invoice_items invoice_items_pkey neondb_owner
+3690; 2606 42490 CONSTRAINT public invoice_payment_lines invoice_payment_lines_pkey neondb_owner
+3596; 2606 17254 CONSTRAINT public invoices invoices_pkey neondb_owner
+3574; 2606 17216 CONSTRAINT public members members_pkey neondb_owner
+3561; 2606 17192 CONSTRAINT public organizations organizations_pkey neondb_owner
+3694; 2606 42508 CONSTRAINT public pagos pagos_pkey neondb_owner
+3583; 2606 17230 CONSTRAINT public products products_pkey neondb_owner
+3608; 2606 17271 CONSTRAINT public suppliers suppliers_pkey neondb_owner
+3677; 2606 42402 CONSTRAINT public tasas_historicas tasas_historicas_pkey neondb_owner
+3632; 2606 17509 CONSTRAINT public tasks tasks_pkey neondb_owner
+3551; 2606 17157 CONSTRAINT public users users_pkey neondb_owner
+3662; 2606 17668 CONSTRAINT public vehicle_inspections vehicle_inspections_pkey neondb_owner
+3678; 1259 42428 INDEX public activity_logs_action_idx neondb_owner
+3679; 1259 42429 INDEX public activity_logs_createdAt_idx neondb_owner
+3680; 1259 42426 INDEX public activity_logs_organizationId_idx neondb_owner
+3683; 1259 42427 INDEX public activity_logs_userId_idx neondb_owner
+3635; 1259 17550 INDEX public audit_logs_action_idx neondb_owner
+3636; 1259 17549 INDEX public audit_logs_createdAt_idx neondb_owner
+3637; 1259 17547 INDEX public audit_logs_organizationId_idx neondb_owner
+3640; 1259 17548 INDEX public audit_logs_userId_idx neondb_owner
+3723; 1259 157346 INDEX public auditorias_entidad_entidad_id_idx neondb_owner
+3724; 1259 157344 INDEX public auditorias_entidad_idx neondb_owner
+3725; 1259 157345 INDEX public auditorias_fecha_idx neondb_owner
+3728; 1259 157343 INDEX public auditorias_usuario_id_idx neondb_owner
+3664; 1259 42376 INDEX public cierres_caja_estado_idx neondb_owner
+3665; 1259 42377 INDEX public cierres_caja_fechaApertura_idx neondb_owner
+3666; 1259 42378 INDEX public cierres_caja_fechaCierre_idx neondb_owner
+3669; 1259 42390 INDEX public cierres_caja_publicToken_idx neondb_owner
+3670; 1259 42389 INDEX public cierres_caja_publicToken_key neondb_owner
+3671; 1259 42433 INDEX public cierres_caja_tasaHistoricaId_idx neondb_owner
+3672; 1259 42374 INDEX public cierres_caja_tenantId_idx neondb_owner
+3673; 1259 42375 INDEX public cierres_caja_userId_idx neondb_owner
+3554; 1259 17307 INDEX public company_members_companyId_idx neondb_owner
+3557; 1259 17308 INDEX public company_members_status_idx neondb_owner
+3558; 1259 17309 INDEX public company_members_userId_companyId_key neondb_owner
+3559; 1259 17306 INDEX public company_members_userId_idx neondb_owner
+3711; 1259 157337 INDEX public contribuyentes_RIF_key neondb_owner
+3712; 1259 157338 INDEX public contribuyentes_deleted_at_idx neondb_owner
+3647; 1259 17609 INDEX public credit_transactions_createdAt_idx neondb_owner
+3648; 1259 17607 INDEX public credit_transactions_creditId_idx neondb_owner
+3649; 1259 17608 INDEX public credit_transactions_invoiceId_idx neondb_owner
+3641; 1259 17604 INDEX public customer_credits_customerId_idx neondb_owner
+3642; 1259 17603 INDEX public customer_credits_customerId_key neondb_owner
+3643; 1259 17605 INDEX public customer_credits_organizationId_idx neondb_owner
+3646; 1259 17606 INDEX public customer_credits_status_idx neondb_owner
+3584; 1259 17325 INDEX public customers_companyId_idx neondb_owner
+3585; 1259 17327 INDEX public customers_name_idx neondb_owner
+3586; 1259 17326 INDEX public customers_organizationId_idx neondb_owner
+3589; 1259 17328 INDEX public customers_taxId_idx neondb_owner
+3719; 1259 157341 INDEX public declaraciones_islr_contribuyente_id_idx neondb_owner
+3720; 1259 157342 INDEX public declaraciones_islr_deleted_at_idx neondb_owner
+3715; 1259 157339 INDEX public declaraciones_iva_contribuyente_id_idx neondb_owner
+3716; 1259 157340 INDEX public declaraciones_iva_deleted_at_idx neondb_owner
+3696; 1259 139309 INDEX public disis_clients_organizationId_idx neondb_owner
+3697; 1259 139308 INDEX public disis_clients_organizationId_nationalId_key neondb_owner
+3700; 1259 139313 INDEX public disis_transactions_clientId_idx neondb_owner
+3701; 1259 139310 INDEX public disis_transactions_organizationId_idempotencyKey_key neondb_owner
+3702; 1259 139312 INDEX public disis_transactions_organizationId_inventorySyncStatus_idx neondb_owner
+3703; 1259 139311 INDEX public disis_transactions_organizationId_status_idx neondb_owner
+3706; 1259 139314 INDEX public disis_transactions_productId_idx neondb_owner
+3621; 1259 17345 INDEX public documents_companyId_idx neondb_owner
+3622; 1259 17347 INDEX public documents_entityType_entityId_idx neondb_owner
+3623; 1259 17346 INDEX public documents_organizationId_idx neondb_owner
+3609; 1259 17339 INDEX public expense_categories_companyId_idx neondb_owner
+3610; 1259 17340 INDEX public expense_categories_organizationId_idx neondb_owner
+3707; 1259 157335 INDEX public expense_payments_expenseId_idx neondb_owner
+3708; 1259 157336 INDEX public expense_payments_organizationId_idx neondb_owner
+3613; 1259 17344 INDEX public expenses_categoryId_idx neondb_owner
+3614; 1259 17341 INDEX public expenses_companyId_idx neondb_owner
+3615; 1259 17343 INDEX public expenses_date_idx neondb_owner
+3616; 1259 42347 INDEX public expenses_inventoryMovementId_idx neondb_owner
+3617; 1259 42345 INDEX public expenses_inventoryMovementId_key neondb_owner
+3618; 1259 17342 INDEX public expenses_organizationId_idx neondb_owner
+3686; 1259 42430 INDEX public fcm_tokens_token_key neondb_owner
+3687; 1259 42431 INDEX public fcm_tokens_userId_idx neondb_owner
+3652; 1259 42346 INDEX public inventory_movements_consumptionReason_idx neondb_owner
+3653; 1259 17673 INDEX public inventory_movements_createdAt_idx neondb_owner
+3656; 1259 17669 INDEX public inventory_movements_productId_idx neondb_owner
+3657; 1259 17671 INDEX public inventory_movements_tenantId_idx neondb_owner
+3658; 1259 17672 INDEX public inventory_movements_type_idx neondb_owner
+3659; 1259 17670 INDEX public inventory_movements_userId_idx neondb_owner
+3564; 1259 17313 INDEX public invitations_email_idx neondb_owner
+3565; 1259 17317 INDEX public invitations_expiresAt_idx neondb_owner
+3566; 1259 17315 INDEX public invitations_organizationId_idx neondb_owner
+3569; 1259 17316 INDEX public invitations_status_idx neondb_owner
+3570; 1259 17314 INDEX public invitations_token_idx neondb_owner
+3571; 1259 17312 INDEX public invitations_token_key neondb_owner
+3600; 1259 17334 INDEX public invoice_items_invoiceId_idx neondb_owner
+3603; 1259 17335 INDEX public invoice_items_productId_idx neondb_owner
+3688; 1259 42491 INDEX public invoice_payment_lines_invoiceId_idx neondb_owner
+3590; 1259 17330 INDEX public invoices_companyId_idx neondb_owner
+3591; 1259 17333 INDEX public invoices_markedAsPaidByClient_idx neondb_owner
+3592; 1259 44085 INDEX public invoices_organizationId_createdAt_idx neondb_owner
+3593; 1259 17331 INDEX public invoices_organizationId_idx neondb_owner
+3594; 1259 17610 INDEX public invoices_paymentStatus_idx neondb_owner
+3597; 1259 17332 INDEX public invoices_publicToken_idx neondb_owner
+3598; 1259 17329 INDEX public invoices_publicToken_key neondb_owner
+3599; 1259 42432 INDEX public invoices_tasaHistoricaId_idx neondb_owner
+3572; 1259 17319 INDEX public members_organizationId_idx neondb_owner
+3575; 1259 17320 INDEX public members_status_idx neondb_owner
+3576; 1259 17318 INDEX public members_userId_idx neondb_owner
+3577; 1259 17321 INDEX public members_userId_organizationId_key neondb_owner
+3562; 1259 17311 INDEX public organizations_slug_idx neondb_owner
+3563; 1259 17310 INDEX public organizations_slug_key neondb_owner
+3691; 1259 42511 INDEX public pagos_createdAt_idx neondb_owner
+3692; 1259 42509 INDEX public pagos_facturaId_idx neondb_owner
+3695; 1259 42510 INDEX public pagos_tenantId_idx neondb_owner
+3578; 1259 17324 INDEX public products_barcode_idx neondb_owner
+3579; 1259 17322 INDEX public products_companyId_idx neondb_owner
+3580; 1259 17323 INDEX public products_organizationId_idx neondb_owner
+3581; 1259 17483 INDEX public products_organizationId_sku_key neondb_owner
+3604; 1259 17336 INDEX public suppliers_companyId_idx neondb_owner
+3605; 1259 17338 INDEX public suppliers_name_idx neondb_owner
+3606; 1259 17337 INDEX public suppliers_organizationId_idx neondb_owner
+3674; 1259 42425 INDEX public tasas_historicas_effectiveAt_idx neondb_owner
+3675; 1259 42424 INDEX public tasas_historicas_organizationId_idx neondb_owner
+3626; 1259 17511 INDEX public tasks_assignedToId_idx neondb_owner
+3627; 1259 17611 INDEX public tasks_category_idx neondb_owner
+3628; 1259 17512 INDEX public tasks_createdById_idx neondb_owner
+3629; 1259 17612 INDEX public tasks_dueDate_idx neondb_owner
+3630; 1259 17510 INDEX public tasks_organizationId_idx neondb_owner
+3633; 1259 17514 INDEX public tasks_read_idx neondb_owner
+3634; 1259 17513 INDEX public tasks_status_idx neondb_owner
+3548; 1259 17304 INDEX public users_email_key neondb_owner
+3549; 1259 17305 INDEX public users_isSuperAdmin_idx neondb_owner
+3660; 1259 17675 INDEX public vehicle_inspections_createdAt_idx neondb_owner
+3663; 1259 17674 INDEX public vehicle_inspections_tenantId_idx neondb_owner
+3776; 2606 42439 FK CONSTRAINT public activity_logs activity_logs_organizationId_fkey neondb_owner
+3777; 2606 42444 FK CONSTRAINT public activity_logs activity_logs_userId_fkey neondb_owner
+3762; 2606 17551 FK CONSTRAINT public audit_logs audit_logs_organizationId_fkey neondb_owner
+3763; 2606 17556 FK CONSTRAINT public audit_logs audit_logs_userId_fkey neondb_owner
+3790; 2606 157367 FK CONSTRAINT public auditorias auditorias_usuario_id_fkey neondb_owner
+3772; 2606 42459 FK CONSTRAINT public cierres_caja cierres_caja_tasaHistoricaId_fkey neondb_owner
+3773; 2606 42379 FK CONSTRAINT public cierres_caja cierres_caja_tenantId_fkey neondb_owner
+3774; 2606 42384 FK CONSTRAINT public cierres_caja cierres_caja_userId_fkey neondb_owner
+3729; 2606 17353 FK CONSTRAINT public company_members company_members_companyId_fkey neondb_owner
+3730; 2606 17348 FK CONSTRAINT public company_members company_members_userId_fkey neondb_owner
+3766; 2606 17623 FK CONSTRAINT public credit_transactions credit_transactions_creditId_fkey neondb_owner
+3767; 2606 17628 FK CONSTRAINT public credit_transactions credit_transactions_invoiceId_fkey neondb_owner
+3764; 2606 17613 FK CONSTRAINT public customer_credits customer_credits_customerId_fkey neondb_owner
+3765; 2606 17618 FK CONSTRAINT public customer_credits customer_credits_organizationId_fkey neondb_owner
+3737; 2606 17388 FK CONSTRAINT public customers customers_companyId_fkey neondb_owner
+3738; 2606 17393 FK CONSTRAINT public customers customers_organizationId_fkey neondb_owner
+3789; 2606 157362 FK CONSTRAINT public declaraciones_islr declaraciones_islr_contribuyente_id_fkey neondb_owner
+3788; 2606 157357 FK CONSTRAINT public declaraciones_iva declaraciones_iva_contribuyente_id_fkey neondb_owner
+3782; 2606 139315 FK CONSTRAINT public disis_clients disis_clients_organizationId_fkey neondb_owner
+3783; 2606 139325 FK CONSTRAINT public disis_transactions disis_transactions_clientId_fkey neondb_owner
+3784; 2606 139320 FK CONSTRAINT public disis_transactions disis_transactions_organizationId_fkey neondb_owner
+3785; 2606 139330 FK CONSTRAINT public disis_transactions disis_transactions_productId_fkey neondb_owner
+3755; 2606 17468 FK CONSTRAINT public documents documents_companyId_fkey neondb_owner
+3756; 2606 17473 FK CONSTRAINT public documents documents_organizationId_fkey neondb_owner
+3757; 2606 17478 FK CONSTRAINT public documents documents_uploadedBy_fkey neondb_owner
+3748; 2606 17438 FK CONSTRAINT public expense_categories expense_categories_companyId_fkey neondb_owner
+3749; 2606 17443 FK CONSTRAINT public expense_categories expense_categories_organizationId_fkey neondb_owner
+3786; 2606 157352 FK CONSTRAINT public expense_payments expense_payments_expenseId_fkey neondb_owner
+3787; 2606 157347 FK CONSTRAINT public expense_payments expense_payments_organizationId_fkey neondb_owner
+3750; 2606 17463 FK CONSTRAINT public expenses expenses_categoryId_fkey neondb_owner
+3751; 2606 17448 FK CONSTRAINT public expenses expenses_companyId_fkey neondb_owner
+3752; 2606 42348 FK CONSTRAINT public expenses expenses_inventoryMovementId_fkey neondb_owner
+3753; 2606 17453 FK CONSTRAINT public expenses expenses_organizationId_fkey neondb_owner
+3754; 2606 17458 FK CONSTRAINT public expenses expenses_supplierId_fkey neondb_owner
+3778; 2606 42449 FK CONSTRAINT public fcm_tokens fcm_tokens_userId_fkey neondb_owner
+3768; 2606 17676 FK CONSTRAINT public inventory_movements inventory_movements_productId_fkey neondb_owner
+3769; 2606 17686 FK CONSTRAINT public inventory_movements inventory_movements_tenantId_fkey neondb_owner
+3770; 2606 17681 FK CONSTRAINT public inventory_movements inventory_movements_userId_fkey neondb_owner
+3731; 2606 17363 FK CONSTRAINT public invitations invitations_invitedBy_fkey neondb_owner
+3732; 2606 17358 FK CONSTRAINT public invitations invitations_organizationId_fkey neondb_owner
+3744; 2606 17418 FK CONSTRAINT public invoice_items invoice_items_invoiceId_fkey neondb_owner
+3745; 2606 17423 FK CONSTRAINT public invoice_items invoice_items_productId_fkey neondb_owner
+3779; 2606 42492 FK CONSTRAINT public invoice_payment_lines invoice_payment_lines_invoiceId_fkey neondb_owner
+3739; 2606 17398 FK CONSTRAINT public invoices invoices_companyId_fkey neondb_owner
+3740; 2606 17408 FK CONSTRAINT public invoices invoices_customerId_fkey neondb_owner
+3741; 2606 17403 FK CONSTRAINT public invoices invoices_organizationId_fkey neondb_owner
+3742; 2606 17413 FK CONSTRAINT public invoices invoices_sellerId_fkey neondb_owner
+3743; 2606 42454 FK CONSTRAINT public invoices invoices_tasaHistoricaId_fkey neondb_owner
+3733; 2606 17373 FK CONSTRAINT public members members_organizationId_fkey neondb_owner
+3734; 2606 17368 FK CONSTRAINT public members members_userId_fkey neondb_owner
+3780; 2606 42512 FK CONSTRAINT public pagos pagos_facturaId_fkey neondb_owner
+3781; 2606 42517 FK CONSTRAINT public pagos pagos_tenantId_fkey neondb_owner
+3735; 2606 17378 FK CONSTRAINT public products products_companyId_fkey neondb_owner
+3736; 2606 17383 FK CONSTRAINT public products products_organizationId_fkey neondb_owner
+3746; 2606 17428 FK CONSTRAINT public suppliers suppliers_companyId_fkey neondb_owner
+3747; 2606 17433 FK CONSTRAINT public suppliers suppliers_organizationId_fkey neondb_owner
+3775; 2606 42434 FK CONSTRAINT public tasas_historicas tasas_historicas_organizationId_fkey neondb_owner
+3758; 2606 17520 FK CONSTRAINT public tasks tasks_assignedToId_fkey neondb_owner
+3759; 2606 17525 FK CONSTRAINT public tasks tasks_createdById_fkey neondb_owner
+3760; 2606 17530 FK CONSTRAINT public tasks tasks_invoiceId_fkey neondb_owner
+3761; 2606 17515 FK CONSTRAINT public tasks tasks_organizationId_fkey neondb_owner
+3771; 2606 17691 FK CONSTRAINT public vehicle_inspections vehicle_inspections_tenantId_fkey neondb_owner
+2262; 826 16394 DEFAULT ACL public DEFAULT PRIVILEGES FOR SEQUENCES cloud_admin
+2261; 826 16393 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES cloud_admin

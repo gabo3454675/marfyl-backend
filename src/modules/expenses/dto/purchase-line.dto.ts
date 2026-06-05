@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, Min } from "class-validator";
 
 export class PurchaseLineDto {
   @IsInt()

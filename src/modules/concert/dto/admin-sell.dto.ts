@@ -1,6 +1,16 @@
-import { ArrayMinSize, IsArray, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
-import { ConcertPaymentMethod } from '@prisma/client';
-import { IsSafeText } from '@/common/validators/safe-text.validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "class-validator";
+import { ConcertPaymentMethod } from "@prisma/client";
+import { IsSafeText } from "@/common/validators/safe-text.validator";
 
 export class AdminSellDto {
   @IsArray()

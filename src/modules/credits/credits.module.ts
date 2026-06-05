@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
-import { CreditsController } from './credits.controller';
-import { CreditsService } from './credits.service';
+import { Module } from "@nestjs/common";
+import { CreditsController } from "./credits.controller";
+import { CreditsService } from "./credits.service";
 
 @Module({
   controllers: [CreditsController],

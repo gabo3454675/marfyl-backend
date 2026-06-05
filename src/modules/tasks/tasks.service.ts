@@ -3,11 +3,11 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { getRoleOrder } from '@/common/constants/roles.constants';
-import { CreateTaskDto } from './dto/create-task.dto';
-import { TaskStatus, TaskPriority } from '@prisma/client';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { getRoleOrder } from "@/common/constants/roles.constants";
+import { CreateTaskDto } from "./dto/create-task.dto";
+import { TaskStatus, TaskPriority } from "@prisma/client";
 
 @Injectable()
 export class TasksService {
@@ -29,12 +29,12 @@ export class TasksService {
       where: {
         userId: createdById,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
     if (!creatorMembership) {
       throw new ForbiddenException(
-        'No tienes acceso a esta organización para crear tareas',
+        "No tienes acceso a esta organización para crear tareas",
       );
     }
 
@@ -43,12 +43,12 @@ export class TasksService {
       where: {
         userId: dto.assignedToId,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
     if (!assignedMembership) {
       throw new BadRequestException(
-        'El usuario asignado no pertenece a esta organización o no está activo',
+        "El usuario asignado no pertenece a esta organización o no está activo",
       );
     }
 
@@ -57,7 +57,7 @@ export class TasksService {
     const assignedWeight = getRoleOrder(assignedMembership.role);
     if (creatorWeight < assignedWeight) {
       throw new ForbiddenException(
-        'No puedes asignar tareas a un usuario con rol superior al tuyo',
+        "No puedes asignar tareas a un usuario con rol superior al tuyo",
       );
     }
 
@@ -71,7 +71,7 @@ export class TasksService {
       });
       if (!invoice) {
         throw new BadRequestException(
-          'La factura indicada no existe o no pertenece a esta organización',
+          "La factura indicada no existe o no pertenece a esta organización",
         );
       }
     }
@@ -127,7 +127,11 @@ export class TasksService {
   /**
    * Tareas pendientes asignadas al usuario, solo de la organización activa (x-tenant-id).
    */
-  async getMyPending(userId: number, organizationId: number, category?: string) {
+  async getMyPending(
+    userId: number,
+    organizationId: number,
+    category?: string,
+  ) {
     const tasks = await this.prisma.task.findMany({
       where: {
         assignedToId: userId,
@@ -159,7 +163,7 @@ export class TasksService {
           },
         },
       },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     });
 
     return tasks;
@@ -183,7 +187,7 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException('Tarea no encontrada');
+      throw new NotFoundException("Tarea no encontrada");
     }
 
     const isAssigned = task.assignedToId === userId;
@@ -191,16 +195,16 @@ export class TasksService {
       where: {
         userId,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
     const isAdmin =
       membership &&
-      (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN');
+      (membership.role === "ADMIN" || membership.role === "SUPER_ADMIN");
 
     if (!isAssigned && !isAdmin) {
       throw new ForbiddenException(
-        'Solo el asignado o un administrador pueden cambiar el estado de la tarea',
+        "Solo el asignado o un administrador pueden cambiar el estado de la tarea",
       );
     }
 
@@ -241,7 +245,10 @@ export class TasksService {
   /**
    * Cuenta de tareas no leídas del usuario en la organización activa.
    */
-  async getMyUnreadCount(userId: number, organizationId: number): Promise<{ count: number }> {
+  async getMyUnreadCount(
+    userId: number,
+    organizationId: number,
+  ): Promise<{ count: number }> {
     const count = await this.prisma.task.count({
       where: {
         assignedToId: userId,
@@ -262,19 +269,19 @@ export class TasksService {
       where: { id: taskId },
     });
     if (!task) {
-      throw new NotFoundException('Tarea no encontrada');
+      throw new NotFoundException("Tarea no encontrada");
     }
     const organizationId = task.organizationId;
     const isAssigned = task.assignedToId === userId;
     const membership = await this.prisma.member.findFirst({
-      where: { userId, organizationId, status: 'ACTIVE' },
+      where: { userId, organizationId, status: "ACTIVE" },
     });
     const isAdmin =
       membership &&
-      (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN');
+      (membership.role === "ADMIN" || membership.role === "SUPER_ADMIN");
     if (!isAssigned && !isAdmin) {
       throw new ForbiddenException(
-        'Solo el asignado o un administrador pueden marcar la tarea como leída',
+        "Solo el asignado o un administrador pueden marcar la tarea como leída",
       );
     }
     await this.prisma.task.update({
@@ -308,7 +315,7 @@ export class TasksService {
           select: { id: true, totalAmount: true, status: true },
         },
       },
-      orderBy: [{ updatedAt: 'desc' }],
+      orderBy: [{ updatedAt: "desc" }],
     });
     return tasks;
   }

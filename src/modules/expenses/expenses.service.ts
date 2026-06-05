@@ -2,20 +2,25 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { CreateExpenseDto } from './dto/create-expense.dto';
-import { UpdateExpenseDto } from './dto/update-expense.dto';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import { FiscalEngineService } from '@/modules/fiscal/fiscal-engine.service';
-import { computeExpenseFiscal } from '@/modules/fiscal/helpers/expense-fiscal.helper';
-import type { PurchaseLineDto } from './dto/purchase-line.dto';
-import * as ExcelJS from 'exceljs';
-import pdfParse from 'pdf-parse';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { CreateExpenseDto } from "./dto/create-expense.dto";
+import { UpdateExpenseDto } from "./dto/update-expense.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
+import { computeExpenseFiscal } from "@/modules/fiscal/helpers/expense-fiscal.helper";
+import type { PurchaseLineDto } from "./dto/purchase-line.dto";
+import * as ExcelJS from "exceljs";
+import pdfParse from "pdf-parse";
 
 function num(v: unknown): number {
   if (v == null) return 0;
-  if (typeof v === 'object' && v !== null && 'toNumber' in v && typeof (v as { toNumber: () => number }).toNumber === 'function') {
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    "toNumber" in v &&
+    typeof (v as { toNumber: () => number }).toNumber === "function"
+  ) {
     return (v as { toNumber: () => number }).toNumber();
   }
   const n = Number(v);
@@ -35,15 +40,27 @@ export class ExpensesService {
     status: string;
     payments?: { amount: unknown }[];
   }): number {
-    const paySum = (expense.payments ?? []).reduce((s, p) => s + num(p.amount), 0);
-    if (paySum === 0 && expense.status === 'PAID') return num(expense.amount);
+    const paySum = (expense.payments ?? []).reduce(
+      (s, p) => s + num(p.amount),
+      0,
+    );
+    if (paySum === 0 && expense.status === "PAID") return num(expense.amount);
     return paySum;
   }
 
-  enrichExpense<T extends { amount: unknown; status: string; payments?: { amount: unknown }[] }>(expense: T) {
+  enrichExpense<
+    T extends {
+      amount: unknown;
+      status: string;
+      payments?: { amount: unknown }[];
+    },
+  >(expense: T) {
     const amount = num(expense.amount);
     const amountPaid = this.computeAmountPaid(expense);
-    const balanceDue = Math.max(0, Math.round((amount - amountPaid) * 100) / 100);
+    const balanceDue = Math.max(
+      0,
+      Math.round((amount - amountPaid) * 100) / 100,
+    );
     return {
       ...expense,
       amountPaid,
@@ -51,7 +68,11 @@ export class ExpensesService {
     };
   }
 
-  async create(createExpenseDto: CreateExpenseDto, organizationId: number, userId: number) {
+  async create(
+    createExpenseDto: CreateExpenseDto,
+    organizationId: number,
+    userId: number,
+  ) {
     const {
       purchaseLines,
       initialPayment,
@@ -92,19 +113,28 @@ export class ExpensesService {
     }
 
     if (purchaseLines?.length && !userId) {
-      throw new BadRequestException('Se requiere usuario autenticado para cargar inventario desde la compra.');
+      throw new BadRequestException(
+        "Se requiere usuario autenticado para cargar inventario desde la compra.",
+      );
     }
 
     if (initialPayment != null && initialPayment > 0) {
       const total = num(createExpenseDto.amount);
       if (initialPayment > total + 0.01) {
-        throw new BadRequestException('El abono inicial no puede superar el monto del gasto.');
+        throw new BadRequestException(
+          "El abono inicial no puede superar el monto del gasto.",
+        );
       }
     }
 
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
-    const profile = await this.prisma.fiscalProfile.findUnique({ where: { organizationId } });
+    const profile = await this.prisma.fiscalProfile.findUnique({
+      where: { organizationId },
+    });
     const fiscal = computeExpenseFiscal({
       amount: num(createExpenseDto.amount),
       baseExempt: createExpenseDto.baseExempt,
@@ -120,9 +150,10 @@ export class ExpensesService {
           companyId,
           date: new Date(createExpenseDto.date),
           organizationId,
-          status: createExpenseDto.status || 'PENDING',
+          status: createExpenseDto.status || "PENDING",
           supplierInvoiceNumber:
-            createExpenseDto.supplierInvoiceNumber ?? createExpenseDto.referenceNumber,
+            createExpenseDto.supplierInvoiceNumber ??
+            createExpenseDto.referenceNumber,
           supplierControlNumber: createExpenseDto.supplierControlNumber,
           baseExempt: fiscal.baseExempt,
           baseReduced: fiscal.baseReduced,
@@ -153,7 +184,7 @@ export class ExpensesService {
             organizationId,
             expenseId: created.id,
             amount: initialPayment,
-            notes: 'Abono al registrar el gasto',
+            notes: "Abono al registrar el gasto",
           },
         });
         const total = num(created.amount);
@@ -161,7 +192,7 @@ export class ExpensesService {
         await tx.expense.update({
           where: { id: created.id },
           data: {
-            status: paid >= total - 0.01 ? 'PAID' : 'PENDING',
+            status: paid >= total - 0.01 ? "PAID" : "PENDING",
           },
         });
       }
@@ -173,13 +204,13 @@ export class ExpensesService {
     });
 
     if (!expense) {
-      throw new NotFoundException('No se pudo crear el gasto');
+      throw new NotFoundException("No se pudo crear el gasto");
     }
 
     try {
       await this.fiscalEngine.projectPurchase(organizationId, expense.id);
     } catch (err) {
-      console.error('FiscalEngine.projectPurchase:', err);
+      console.error("FiscalEngine.projectPurchase:", err);
     }
 
     return this.enrichExpense(expense);
@@ -203,7 +234,9 @@ export class ExpensesService {
         where: { id: line.productId, organizationId },
       });
       if (!product) {
-        throw new NotFoundException(`Producto ${line.productId} no encontrado en la organización`);
+        throw new NotFoundException(
+          `Producto ${line.productId} no encontrado en la organización`,
+        );
       }
       if (product.isBundle) {
         throw new BadRequestException(
@@ -221,7 +254,7 @@ export class ExpensesService {
 
       await tx.inventoryMovement.create({
         data: {
-          type: 'COMPRA',
+          type: "COMPRA",
           quantity: qty,
           reason: `Entrada por compra / factura proveedor (gasto #${expenseId})`,
           productId: line.productId,
@@ -252,7 +285,7 @@ export class ExpensesService {
         payments: true,
       },
       orderBy: {
-        date: 'desc',
+        date: "desc",
       },
     });
     return rows.map((e) => this.enrichExpense(e));
@@ -306,7 +339,7 @@ export class ExpensesService {
       await tx.expense.update({
         where: { id },
         data: {
-          status: after >= total - 0.01 ? 'PAID' : 'PENDING',
+          status: after >= total - 0.01 ? "PAID" : "PENDING",
         },
       });
     });
@@ -320,7 +353,11 @@ export class ExpensesService {
     return rows.filter((e) => e.balanceDue > 0.01);
   }
 
-  async update(id: number, updateExpenseDto: UpdateExpenseDto, organizationId: number) {
+  async update(
+    id: number,
+    updateExpenseDto: UpdateExpenseDto,
+    organizationId: number,
+  ) {
     await this.findOne(id, organizationId);
 
     if (updateExpenseDto.categoryId) {
@@ -382,7 +419,14 @@ export class ExpensesService {
   async getStats(organizationId: number) {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+    );
 
     const totalExpenses = await this.prisma.expense.aggregate({
       where: {
@@ -398,7 +442,7 @@ export class ExpensesService {
     });
 
     const expensesByCategory = await this.prisma.expense.groupBy({
-      by: ['categoryId'],
+      by: ["categoryId"],
       where: {
         organizationId,
         date: {
@@ -424,7 +468,7 @@ export class ExpensesService {
     const inventoryCategory = await this.prisma.expenseCategory.findFirst({
       where: {
         organizationId,
-        name: 'Inventario',
+        name: "Inventario",
       },
     });
 
@@ -446,11 +490,12 @@ export class ExpensesService {
       inventoryTotal = Number(inventoryExpenses._sum.amount || 0);
     }
 
-    const operationalTotal = Number(totalExpenses._sum.amount || 0) - inventoryTotal;
+    const operationalTotal =
+      Number(totalExpenses._sum.amount || 0) - inventoryTotal;
 
     const categoryBreakdown = expensesByCategory.map((exp) => ({
       categoryId: exp.categoryId,
-      categoryName: categoryMap.get(exp.categoryId) || 'Desconocida',
+      categoryName: categoryMap.get(exp.categoryId) || "Desconocida",
       amount: Number(exp._sum.amount || 0),
     }));
 
@@ -465,16 +510,16 @@ export class ExpensesService {
   /** Plantilla Excel para importar facturas de compra (SKU o código de barras, cantidad, costo USD). */
   async generatePurchaseInvoiceTemplateBuffer(): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'DISIS';
-    const ws = workbook.addWorksheet('Factura compra');
-    const headers = ['SKU_O_CODIGO_BARRAS', 'CANTIDAD', 'COSTO_UNITARIO_USD'];
+    workbook.creator = "DISIS";
+    const ws = workbook.addWorksheet("Factura compra");
+    const headers = ["SKU_O_CODIGO_BARRAS", "CANTIDAD", "COSTO_UNITARIO_USD"];
     ws.addRow(headers);
     const hr = ws.getRow(1);
     hr.font = { bold: true };
-    ws.addRow(['EJ-SKU-001', 12, 4.5]);
+    ws.addRow(["EJ-SKU-001", 12, 4.5]);
     ws.columns = [{ width: 22 }, { width: 12 }, { width: 18 }];
-    ws.getCell('A1').note =
-      'Use el mismo SKU o código de barras que en Inventario. Si omite costo, se usa el costo actual del producto.';
+    ws.getCell("A1").note =
+      "Use el mismo SKU o código de barras que en Inventario. Si omite costo, se usa el costo actual del producto.";
     const buf = await workbook.xlsx.writeBuffer();
     return Buffer.from(buf as ArrayBuffer);
   }
@@ -485,24 +530,32 @@ export class ExpensesService {
 
   private parseFlexibleNumber(value: unknown): number | null {
     if (value == null) return null;
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    const raw = String(value).trim().replace(/\s/g, '').replace(',', '.');
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const raw = String(value).trim().replace(/\s/g, "").replace(",", ".");
     const n = parseFloat(raw);
     return Number.isFinite(n) ? n : null;
   }
 
-  private async resolveInventoryCategoryId(organizationId: number): Promise<number> {
+  private async resolveInventoryCategoryId(
+    organizationId: number,
+  ): Promise<number> {
     let cat = await this.prisma.expenseCategory.findFirst({
-      where: { organizationId, name: { equals: 'Inventario', mode: 'insensitive' } },
+      where: {
+        organizationId,
+        name: { equals: "Inventario", mode: "insensitive" },
+      },
     });
     if (!cat) {
       cat = await this.prisma.expenseCategory.findFirst({
-        where: { organizationId, name: { contains: 'inventario', mode: 'insensitive' } },
+        where: {
+          organizationId,
+          name: { contains: "inventario", mode: "insensitive" },
+        },
       });
     }
     if (!cat) {
       throw new BadRequestException(
-        'No existe una categoría de gasto de inventario. Cree una categoría llamada «Inventario» o similar.',
+        "No existe una categoría de gasto de inventario. Cree una categoría llamada «Inventario» o similar.",
       );
     }
     return cat.id;
@@ -526,15 +579,17 @@ export class ExpensesService {
   }) {
     const { file, organizationId, userId } = params;
     if (!file?.buffer?.length) {
-      throw new BadRequestException('Archivo no válido');
+      throw new BadRequestException("Archivo no válido");
     }
 
-    const ext = (file.originalname || '').toLowerCase().split('.').pop() || '';
-    const isExcel = ext === 'xlsx' || ext === 'xls';
-    const isPdf = ext === 'pdf';
+    const ext = (file.originalname || "").toLowerCase().split(".").pop() || "";
+    const isExcel = ext === "xlsx" || ext === "xls";
+    const isPdf = ext === "pdf";
 
     if (!isExcel && !isPdf) {
-      throw new BadRequestException('Use un archivo Excel (.xlsx, .xls) o PDF (.pdf).');
+      throw new BadRequestException(
+        "Use un archivo Excel (.xlsx, .xls) o PDF (.pdf).",
+      );
     }
 
     const products = await this.prisma.product.findMany({
@@ -561,7 +616,13 @@ export class ExpensesService {
       return bySku.get(k) ?? byBarcode.get(k) ?? null;
     };
 
-    type RawRow = { rowNum?: number; line?: number; code: string; qty: number; unitCost: number | null };
+    type RawRow = {
+      rowNum?: number;
+      line?: number;
+      code: string;
+      qty: number;
+      unitCost: number | null;
+    };
     const rawRows: RawRow[] = [];
     const parseErrors: { row?: number; line?: number; message: string }[] = [];
 
@@ -570,23 +631,25 @@ export class ExpensesService {
       await workbook.xlsx.load(file.buffer as any);
       const worksheet = workbook.worksheets[0];
       if (!worksheet || worksheet.rowCount < 2) {
-        throw new BadRequestException('El Excel debe tener encabezados y al menos una fila de datos.');
+        throw new BadRequestException(
+          "El Excel debe tener encabezados y al menos una fila de datos.",
+        );
       }
 
       const headerRow = worksheet.getRow(1);
       const headers: string[] = [];
       const lastCol = Math.min(headerRow.cellCount || 20, 30);
       for (let c = 1; c <= lastCol; c++) {
-        headers[c - 1] = String(headerRow.getCell(c).value ?? '')
+        headers[c - 1] = String(headerRow.getCell(c).value ?? "")
           .toLowerCase()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
           .trim();
       }
 
       const findCol = (candidates: string[]): number => {
         for (let i = 0; i < headers.length; i++) {
-          const h = headers[i] || '';
+          const h = headers[i] || "";
           if (!h) continue;
           for (const c of candidates) {
             if (h === c || h.includes(c)) return i;
@@ -595,43 +658,68 @@ export class ExpensesService {
         return -1;
       };
 
-      const colCode = findCol(['sku_o_codigo_barras', 'sku', 'codigo', 'codigo de barras', 'barcode', 'ref']);
-      const colQty = findCol(['cantidad', 'qty', 'quantity', 'uds', 'unidades']);
+      const colCode = findCol([
+        "sku_o_codigo_barras",
+        "sku",
+        "codigo",
+        "codigo de barras",
+        "barcode",
+        "ref",
+      ]);
+      const colQty = findCol([
+        "cantidad",
+        "qty",
+        "quantity",
+        "uds",
+        "unidades",
+      ]);
       const colCost = findCol([
-        'costo_unitario_usd',
-        'costo',
-        'costo unitario',
-        'precio costo',
-        'unit cost',
-        'p. costo',
+        "costo_unitario_usd",
+        "costo",
+        "costo unitario",
+        "precio costo",
+        "unit cost",
+        "p. costo",
       ]);
 
       if (colCode < 0 || colQty < 0) {
         throw new BadRequestException(
-          'No se encontraron columnas obligatorias. Incluya encabezados reconocibles: código/SKU y CANTIDAD.',
+          "No se encontraron columnas obligatorias. Incluya encabezados reconocibles: código/SKU y CANTIDAD.",
         );
       }
 
       for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
-        const code = String(row.getCell(colCode + 1)?.value ?? '').trim();
+        const code = String(row.getCell(colCode + 1)?.value ?? "").trim();
         const qtyNum = this.parseFlexibleNumber(row.getCell(colQty + 1)?.value);
         const costCell = colCost >= 0 ? row.getCell(colCost + 1)?.value : null;
-        const unitCost = costCell != null && String(costCell).trim() !== '' ? this.parseFlexibleNumber(costCell) : null;
+        const unitCost =
+          costCell != null && String(costCell).trim() !== ""
+            ? this.parseFlexibleNumber(costCell)
+            : null;
 
         if (!code && (qtyNum == null || qtyNum === 0)) continue;
 
         if (!code) {
-          parseErrors.push({ row: rowNum, message: 'Falta código/SKU en una fila con cantidad.' });
+          parseErrors.push({
+            row: rowNum,
+            message: "Falta código/SKU en una fila con cantidad.",
+          });
           continue;
         }
         if (qtyNum == null || qtyNum < 1 || !Number.isFinite(qtyNum)) {
-          parseErrors.push({ row: rowNum, message: `Cantidad inválida para "${code}"` });
+          parseErrors.push({
+            row: rowNum,
+            message: `Cantidad inválida para "${code}"`,
+          });
           continue;
         }
         const qty = Math.floor(qtyNum);
         if (Math.abs(qtyNum - qty) > 0.0001) {
-          parseErrors.push({ row: rowNum, message: `La cantidad debe ser entera para "${code}"` });
+          parseErrors.push({
+            row: rowNum,
+            message: `La cantidad debe ser entera para "${code}"`,
+          });
           continue;
         }
 
@@ -644,15 +732,23 @@ export class ExpensesService {
       }
     } else {
       // pdf-parse 1.x: ligero y compatible con Node 18 (v2/pdfjs en Render rompe process.getBuiltinModule)
-      const buf = Buffer.isBuffer(file.buffer) ? file.buffer : Buffer.from(file.buffer);
+      const buf = Buffer.isBuffer(file.buffer)
+        ? file.buffer
+        : Buffer.from(file.buffer);
       const pdfData = await pdfParse(buf);
-      const text = pdfData.text || '';
+      const text = pdfData.text || "";
 
-      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
       let lineNo = 0;
       for (const line of lines) {
         lineNo++;
-        const tabParts = line.split('\t').map((p) => p.trim()).filter(Boolean);
+        const tabParts = line
+          .split("\t")
+          .map((p) => p.trim())
+          .filter(Boolean);
         let parts: string[];
         if (tabParts.length >= 3) {
           parts = tabParts;
@@ -676,17 +772,28 @@ export class ExpensesService {
 
       if (rawRows.length === 0) {
         throw new BadRequestException(
-          'No se pudieron leer líneas de compra desde el PDF. Use la plantilla Excel o un PDF con una línea por ítem: CODIGO CANTIDAD COSTO (separados por espacios o tabuladores).',
+          "No se pudieron leer líneas de compra desde el PDF. Use la plantilla Excel o un PDF con una línea por ítem: CODIGO CANTIDAD COSTO (separados por espacios o tabuladores).",
         );
       }
     }
 
     const merged = new Map<
       number,
-      { productId: number; quantity: number; unitCostUsd?: number; name: string; sku: string | null }
+      {
+        productId: number;
+        quantity: number;
+        unitCostUsd?: number;
+        name: string;
+        sku: string | null;
+      }
     >();
 
-    const unmatched: { row?: number; line?: number; code: string; reason: string }[] = [];
+    const unmatched: {
+      row?: number;
+      line?: number;
+      code: string;
+      reason: string;
+    }[] = [];
 
     for (const r of rawRows) {
       const p = resolveProduct(r.code);
@@ -695,7 +802,7 @@ export class ExpensesService {
           row: r.rowNum,
           line: r.line,
           code: r.code,
-          reason: 'No hay producto con ese SKU o código de barras',
+          reason: "No hay producto con ese SKU o código de barras",
         });
         continue;
       }
@@ -704,7 +811,7 @@ export class ExpensesService {
           row: r.rowNum,
           line: r.line,
           code: r.code,
-          reason: 'Es un combo; cargue los productos sueltos',
+          reason: "Es un combo; cargue los productos sueltos",
         });
         continue;
       }
@@ -713,13 +820,14 @@ export class ExpensesService {
           row: r.rowNum,
           line: r.line,
           code: r.code,
-          reason: 'Es un servicio (sin inventario)',
+          reason: "Es un servicio (sin inventario)",
         });
         continue;
       }
 
       const defaultCost = num(p.costPrice);
-      const unit = r.unitCost != null && r.unitCost >= 0 ? r.unitCost : defaultCost;
+      const unit =
+        r.unitCost != null && r.unitCost >= 0 ? r.unitCost : defaultCost;
       if (unit < 0 || !Number.isFinite(unit)) {
         parseErrors.push({
           row: r.rowNum,
@@ -786,19 +894,21 @@ export class ExpensesService {
     }
 
     if (purchaseLines.length === 0) {
-      throw new BadRequestException('No hay líneas válidas para registrar el gasto.');
+      throw new BadRequestException(
+        "No hay líneas válidas para registrar el gasto.",
+      );
     }
     if (blocking) {
       throw new BadRequestException(
-        'Corrija los errores del archivo antes de confirmar (revise la vista previa).',
+        "Corrija los errores del archivo antes de confirmar (revise la vista previa).",
       );
     }
 
     const categoryId = await this.resolveInventoryCategoryId(organizationId);
-    const dateStr = params.date || new Date().toISOString().split('T')[0];
+    const dateStr = params.date || new Date().toISOString().split("T")[0];
     const desc =
       params.description?.trim() ||
-      `Compra de inventario importada (${isExcel ? 'Excel' : 'PDF'})`;
+      `Compra de inventario importada (${isExcel ? "Excel" : "PDF"})`;
 
     const dto: CreateExpenseDto = {
       date: dateStr,
@@ -807,10 +917,12 @@ export class ExpensesService {
       referenceNumber: params.referenceNumber,
       categoryId,
       supplierId: params.supplierId,
-      status: 'PENDING',
+      status: "PENDING",
       purchaseLines,
       initialPayment:
-        params.initialPayment != null && params.initialPayment > 0 ? params.initialPayment : undefined,
+        params.initialPayment != null && params.initialPayment > 0
+          ? params.initialPayment
+          : undefined,
     };
 
     return this.create(dto, organizationId, userId);

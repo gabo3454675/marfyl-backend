@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
-import { FiscalAlertsService } from './fiscal-alerts.service';
-import { FiscalCalendarService } from './fiscal-calendar.service';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
+import { FiscalAlertsService } from "./fiscal-alerts.service";
+import { FiscalCalendarService } from "./fiscal-calendar.service";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 @Injectable()
 export class FiscalSchedulerService {
@@ -14,9 +14,9 @@ export class FiscalSchedulerService {
     private readonly prisma: PrismaService,
   ) {}
 
-  @Cron('0 8 * * *')
+  @Cron("0 8 * * *")
   async dailyFiscalChecks() {
-    this.logger.log('Ejecutando revisión fiscal diaria');
+    this.logger.log("Ejecutando revisión fiscal diaria");
     await this.calendar.seedTemplatesFromJsonIfEmpty();
 
     const orgs = await this.prisma.organization.findMany({

@@ -1,5 +1,5 @@
-import { IsString, IsEmail, IsEnum, IsNotEmpty } from 'class-validator';
-import { Role } from '@prisma/client';
+import { IsString, IsEmail, IsEnum, IsNotEmpty } from "class-validator";
+import { Role } from "@prisma/client";
 
 export class InviteMemberDto {
   @IsEmail()

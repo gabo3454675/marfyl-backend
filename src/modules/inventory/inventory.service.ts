@@ -1,7 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import * as ExcelJS from 'exceljs';
+import { Injectable, BadRequestException } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import * as ExcelJS from "exceljs";
 
 @Injectable()
 export class InventoryService {
@@ -13,42 +13,42 @@ export class InventoryService {
    * Mantener sincronizado con el parser de Excel.
    */
   static readonly INVENTORY_IMPORT_HEADERS = [
-    'SKU',
-    'NOMBRE',
-    'PRECIO',
-    'STOCK',
-    'DESCRIPCION',
-    'EXENTO',
+    "SKU",
+    "NOMBRE",
+    "PRECIO",
+    "STOCK",
+    "DESCRIPCION",
+    "EXENTO",
   ] as const;
 
   private static readonly HEADER_NOTES: Record<
     (typeof InventoryService.INVENTORY_IMPORT_HEADERS)[number],
     string
   > = {
-    SKU: 'SKU: Obligatorio. Debe ser único por organización. Ej: ABC-001',
-    NOMBRE: 'NOMBRE: Obligatorio. Nombre del producto.',
-    PRECIO: 'PRECIO: Obligatorio. Solo números (ej: 10.50).',
-    STOCK: 'STOCK: Obligatorio. Entero >= 0.',
-    DESCRIPCION: 'DESCRIPCION: Opcional. Texto libre.',
-    EXENTO: 'EXENTO: SI o NO (impuesto). Use el desplegable.',
+    SKU: "SKU: Obligatorio. Debe ser único por organización. Ej: ABC-001",
+    NOMBRE: "NOMBRE: Obligatorio. Nombre del producto.",
+    PRECIO: "PRECIO: Obligatorio. Solo números (ej: 10.50).",
+    STOCK: "STOCK: Obligatorio. Entero >= 0.",
+    DESCRIPCION: "DESCRIPCION: Opcional. Texto libre.",
+    EXENTO: "EXENTO: SI o NO (impuesto). Use el desplegable.",
   };
 
   getTemplateFormat() {
     return {
       headers: [...InventoryService.INVENTORY_IMPORT_HEADERS],
       exampleRow: {
-        SKU: 'ABC-001',
-        NOMBRE: 'Café 250g',
+        SKU: "ABC-001",
+        NOMBRE: "Café 250g",
         PRECIO: 4.99,
         STOCK: 20,
-        DESCRIPCION: 'Café molido, presentación 250g',
-        EXENTO: 'NO',
+        DESCRIPCION: "Café molido, presentación 250g",
+        EXENTO: "NO",
       },
       notes: [
-        'La primera fila debe contener exactamente estos headers (mismos textos).',
-        'SKU es obligatorio y debe ser único por organización.',
-        'PRECIO debe ser numérico (ej: 10.5). STOCK entero >= 0.',
-        'EXENTO: use el desplegable (SI o NO).',
+        "La primera fila debe contener exactamente estos headers (mismos textos).",
+        "SKU es obligatorio y debe ser único por organización.",
+        "PRECIO debe ser numérico (ej: 10.5). STOCK entero >= 0.",
+        "EXENTO: use el desplegable (SI o NO).",
       ],
     };
   }
@@ -63,10 +63,10 @@ export class InventoryService {
    */
   async generateTemplateXlsxBuffer() {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'DISIS';
+    workbook.creator = "DISIS";
     workbook.created = new Date();
 
-    const worksheet = workbook.addWorksheet('Inventario');
+    const worksheet = workbook.addWorksheet("Inventario");
 
     // Columnas exactas: A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
     const headers = [...InventoryService.INVENTORY_IMPORT_HEADERS];
@@ -74,7 +74,7 @@ export class InventoryService {
 
     const headerRow = worksheet.getRow(1);
     headerRow.font = { bold: true };
-    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
     headerRow.height = 22;
 
     // Notas en cada header
@@ -85,40 +85,41 @@ export class InventoryService {
 
     // Fila de ejemplo
     worksheet.addRow([
-      'ABC-001',
-      'Café 250g',
+      "ABC-001",
+      "Café 250g",
       4.99,
       20,
-      'Café molido, presentación 250g',
-      'NO',
+      "Café molido, presentación 250g",
+      "NO",
     ]);
 
     // Validación de datos en columna F (EXENTO): lista "SI", "NO" — por celda (evita worksheet.dataValidations sin tipos)
     const listValidation = {
-      type: 'list' as const,
+      type: "list" as const,
       allowBlank: true,
       formulae: ['"SI,NO"'],
       showErrorMessage: true,
-      errorTitle: 'Valor no permitido',
-      error: 'Seleccione SI o NO.',
+      errorTitle: "Valor no permitido",
+      error: "Seleccione SI o NO.",
     };
     for (let i = 2; i <= 1001; i++) {
-      const cell = worksheet.getCell('F' + i);
-      (cell as { dataValidation?: typeof listValidation }).dataValidation = listValidation;
+      const cell = worksheet.getCell("F" + i);
+      (cell as { dataValidation?: typeof listValidation }).dataValidation =
+        listValidation;
     }
 
     // Anchos de columnas para lectura fácil
-    worksheet.getColumn(1).width = 16;  // A: SKU
-    worksheet.getColumn(2).width = 32;   // B: NOMBRE
-    worksheet.getColumn(3).width = 14;   // C: PRECIO
-    worksheet.getColumn(4).width = 12;   // D: STOCK
-    worksheet.getColumn(5).width = 42;   // E: DESCRIPCION
-    worksheet.getColumn(6).width = 12;   // F: EXENTO
+    worksheet.getColumn(1).width = 16; // A: SKU
+    worksheet.getColumn(2).width = 32; // B: NOMBRE
+    worksheet.getColumn(3).width = 14; // C: PRECIO
+    worksheet.getColumn(4).width = 12; // D: STOCK
+    worksheet.getColumn(5).width = 42; // E: DESCRIPCION
+    worksheet.getColumn(6).width = 12; // F: EXENTO
 
-    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
-    worksheet.getColumn(3).numFmt = '#,##0.00'; // PRECIO
-    worksheet.getColumn(4).numFmt = '0';       // STOCK
+    worksheet.getColumn(3).numFmt = "#,##0.00"; // PRECIO
+    worksheet.getColumn(4).numFmt = "0"; // STOCK
 
     return workbook.xlsx.writeBuffer();
   }
@@ -130,25 +131,27 @@ export class InventoryService {
         organizationId, // OBLIGATORIO: aislamiento multi-tenant
       },
       orderBy: {
-        updatedAt: 'desc',
+        updatedAt: "desc",
       },
     });
   }
 
   private normalizeHeader(s: string) {
-    return String(s ?? '').trim().toLowerCase();
+    return String(s ?? "")
+      .trim()
+      .toLowerCase();
   }
 
   private parseNumber(value: any): number {
-    if (value === null || value === undefined || value === '') return NaN;
-    if (typeof value === 'number') return value;
-    const s = String(value).trim().replace(',', '.');
+    if (value === null || value === undefined || value === "") return NaN;
+    if (typeof value === "number") return value;
+    const s = String(value).trim().replace(",", ".");
     return parseFloat(s);
   }
 
   private parseIntSafe(value: any): number {
-    if (value === null || value === undefined || value === '') return NaN;
-    if (typeof value === 'number') return Math.trunc(value);
+    if (value === null || value === undefined || value === "") return NaN;
+    if (typeof value === "number") return Math.trunc(value);
     const s = String(value).trim();
     return parseInt(s, 10);
   }
@@ -168,7 +171,7 @@ export class InventoryService {
     const confirm = params.confirm === true;
 
     if (!file || !file.buffer) {
-      throw new BadRequestException('Archivo no válido');
+      throw new BadRequestException("Archivo no válido");
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -176,12 +179,12 @@ export class InventoryService {
 
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
-      throw new BadRequestException('El archivo Excel no contiene hojas');
+      throw new BadRequestException("El archivo Excel no contiene hojas");
     }
 
     if (worksheet.rowCount < 2) {
       throw new BadRequestException(
-        'El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)',
+        "El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)",
       );
     }
 
@@ -191,15 +194,18 @@ export class InventoryService {
     const received: string[] = [];
     headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       if (colNumber <= expected.length) {
-        received.push(String(cell.value ?? '').trim());
+        received.push(String(cell.value ?? "").trim());
       }
     });
 
     for (let i = 0; i < expected.length; i++) {
-      if (this.normalizeHeader(received[i] || '') !== this.normalizeHeader(expected[i])) {
+      if (
+        this.normalizeHeader(received[i] || "") !==
+        this.normalizeHeader(expected[i])
+      ) {
         throw new BadRequestException(
           `Formato inválido. Header columna ${i + 1} debe ser "${expected[i]}". ` +
-            `Recibido: "${received[i] || ''}".`,
+            `Recibido: "${received[i] || ""}".`,
         );
       }
     }
@@ -212,11 +218,11 @@ export class InventoryService {
       stock: number;
       description: string | null;
       isExempt: boolean;
-      action: 'create' | 'update' | 'skip';
+      action: "create" | "update" | "skip";
     };
 
     const errors: Array<{ row: number; field?: string; message: string }> = [];
-    const previewRowsRaw: Array<Omit<PreviewRow, 'action'>> = [];
+    const previewRowsRaw: Array<Omit<PreviewRow, "action">> = [];
 
     const seenSku = new Set<string>();
 
@@ -231,27 +237,37 @@ export class InventoryService {
     for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
       const row = worksheet.getRow(rowNum);
 
-      const sku = String(row.getCell(COL_SKU)?.value ?? '').trim();
-      const name = String(row.getCell(COL_NAME)?.value ?? '').trim();
+      const sku = String(row.getCell(COL_SKU)?.value ?? "").trim();
+      const name = String(row.getCell(COL_NAME)?.value ?? "").trim();
       const price = this.parseNumber(row.getCell(COL_PRICE)?.value);
       const stock = this.parseIntSafe(row.getCell(COL_STOCK)?.value);
-      const description = String(row.getCell(COL_DESC)?.value ?? '').trim() || null;
-      const exento = String(row.getCell(COL_EXENTO)?.value ?? '').trim().toUpperCase() || null;
+      const description =
+        String(row.getCell(COL_DESC)?.value ?? "").trim() || null;
+      const exento =
+        String(row.getCell(COL_EXENTO)?.value ?? "")
+          .trim()
+          .toUpperCase() || null;
 
       // Ignorar filas completamente vacías
-      if (!sku && !name && (Number.isNaN(price) || price === 0) && (Number.isNaN(stock) || stock === 0) && !description) {
+      if (
+        !sku &&
+        !name &&
+        (Number.isNaN(price) || price === 0) &&
+        (Number.isNaN(stock) || stock === 0) &&
+        !description
+      ) {
         continue;
       }
 
       if (!sku) {
-        errors.push({ row: rowNum, field: 'SKU', message: 'SKU es requerido' });
+        errors.push({ row: rowNum, field: "SKU", message: "SKU es requerido" });
         continue;
       }
       const skuKey = sku.toUpperCase();
       if (seenSku.has(skuKey)) {
         errors.push({
           row: rowNum,
-          field: 'SKU',
+          field: "SKU",
           message: `SKU duplicado en el archivo: "${sku}"`,
         });
         continue;
@@ -261,38 +277,38 @@ export class InventoryService {
       if (!name) {
         errors.push({
           row: rowNum,
-          field: 'NOMBRE',
-          message: 'NOMBRE es requerido',
+          field: "NOMBRE",
+          message: "NOMBRE es requerido",
         });
         continue;
       }
       if (Number.isNaN(price) || price < 0) {
         errors.push({
           row: rowNum,
-          field: 'PRECIO',
-          message: 'PRECIO debe ser numérico y >= 0',
+          field: "PRECIO",
+          message: "PRECIO debe ser numérico y >= 0",
         });
         continue;
       }
       if (Number.isNaN(stock) || stock < 0) {
         errors.push({
           row: rowNum,
-          field: 'STOCK',
-          message: 'STOCK debe ser entero y >= 0',
+          field: "STOCK",
+          message: "STOCK debe ser entero y >= 0",
         });
         continue;
       }
-      if (exento && exento !== 'SI' && exento !== 'NO') {
+      if (exento && exento !== "SI" && exento !== "NO") {
         errors.push({
           row: rowNum,
-          field: 'EXENTO',
-          message: 'EXENTO debe ser SI o NO',
+          field: "EXENTO",
+          message: "EXENTO debe ser SI o NO",
         });
         continue;
       }
 
       // EXENTO: "SI" -> isExempt true; "NO" o vacío -> false
-      const isExempt = exento === 'SI';
+      const isExempt = exento === "SI";
 
       previewRowsRaw.push({
         rowNumber: rowNum,
@@ -318,17 +334,17 @@ export class InventoryService {
       : [];
 
     const existingSkuSet = new Set(
-      existing.map((e) => (e.sku ? e.sku.toUpperCase() : '')).filter(Boolean),
+      existing.map((e) => (e.sku ? e.sku.toUpperCase() : "")).filter(Boolean),
     );
 
     const preview: PreviewRow[] = previewRowsRaw.map((r) => ({
       ...r,
-      action: existingSkuSet.has(r.sku.toUpperCase()) ? 'update' : 'create',
+      action: existingSkuSet.has(r.sku.toUpperCase()) ? "update" : "create",
     }));
 
     const summary = {
-      toCreate: preview.filter((p) => p.action === 'create').length,
-      toUpdate: preview.filter((p) => p.action === 'update').length,
+      toCreate: preview.filter((p) => p.action === "create").length,
+      toUpdate: preview.filter((p) => p.action === "update").length,
     };
 
     // Modo previsualización: nunca escribir
@@ -344,17 +360,20 @@ export class InventoryService {
     // Modo ejecución: bloquear si hay errores
     if (errors.length) {
       throw new BadRequestException({
-        message: 'El archivo contiene errores. Corrige y vuelve a intentar.',
+        message: "El archivo contiene errores. Corrige y vuelve a intentar.",
         errors,
         summary,
       });
     }
 
     // Ejecutar transacción
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
-    const toCreate = preview.filter((p) => p.action === 'create');
-    const toUpdate = preview.filter((p) => p.action === 'update');
+    const toCreate = preview.filter((p) => p.action === "create");
+    const toUpdate = preview.filter((p) => p.action === "update");
 
     const result = await this.prisma.$transaction(async (tx) => {
       let createdCount = 0;
@@ -414,7 +433,11 @@ export class InventoryService {
    */
   async importFromExcel(file: Express.Multer.File, organizationId: number) {
     // Mantener compatibilidad: import directo ejecuta como confirm=true.
-    return this.importFromExcelWithDryRun({ file, organizationId, confirm: true });
+    return this.importFromExcelWithDryRun({
+      file,
+      organizationId,
+      confirm: true,
+    });
   }
 
   /**
@@ -451,10 +474,10 @@ export class InventoryService {
       });
       return result;
     } catch (err: any) {
-      if (err?.code === 'P2003' || err?.message?.includes('Foreign key')) {
+      if (err?.code === "P2003" || err?.message?.includes("Foreign key")) {
         throw new BadRequestException(
-          'No se pueden eliminar productos que están referenciados en facturas. ' +
-            'Elimine o edite primero las facturas que los contienen.',
+          "No se pueden eliminar productos que están referenciados en facturas. " +
+            "Elimine o edite primero las facturas que los contienen.",
         );
       }
       throw err;

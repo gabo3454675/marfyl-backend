@@ -4,8 +4,8 @@ import {
   ExecutionContext,
   ForbiddenException,
   BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -16,18 +16,19 @@ export class TenantGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('Usuario no autenticado');
+      throw new ForbiddenException("Usuario no autenticado");
     }
 
-    const companyId = request.headers['x-tenant-id'] || request.headers['x-company-id'];
+    const companyId =
+      request.headers["x-tenant-id"] || request.headers["x-company-id"];
 
     if (!companyId) {
-      throw new BadRequestException('Header x-tenant-id es requerido');
+      throw new BadRequestException("Header x-tenant-id es requerido");
     }
 
     const companyIdNum = parseInt(companyId, 10);
     if (isNaN(companyIdNum)) {
-      throw new BadRequestException('x-tenant-id debe ser un número válido');
+      throw new BadRequestException("x-tenant-id debe ser un número válido");
     }
 
     // Verificar que el usuario pertenece a esta empresa
@@ -35,7 +36,7 @@ export class TenantGuard implements CanActivate {
       where: {
         userId: user.id,
         companyId: companyIdNum,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         company: true,
@@ -44,7 +45,7 @@ export class TenantGuard implements CanActivate {
 
     if (!membership) {
       throw new ForbiddenException(
-        'No tienes acceso a esta empresa o la membresía está inactiva',
+        "No tienes acceso a esta empresa o la membresía está inactiva",
       );
     }
 

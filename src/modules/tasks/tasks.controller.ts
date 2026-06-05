@@ -8,16 +8,16 @@ import {
   ParseIntPipe,
   UseGuards,
   Query,
-} from '@nestjs/common';
-import { TasksService } from './tasks.service';
-import { CreateTaskDto } from './dto/create-task.dto';
-import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { OrganizationGuard } from '@/common/guards/organization.guard';
-import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
-import { ActiveUser } from '@/common/decorators/active-user.decorator';
+} from "@nestjs/common";
+import { TasksService } from "./tasks.service";
+import { CreateTaskDto } from "./dto/create-task.dto";
+import { UpdateTaskStatusDto } from "./dto/update-task-status.dto";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
+import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
-@Controller('tasks')
+@Controller("tasks")
 @UseGuards(JwtAuthGuard)
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
@@ -33,23 +33,19 @@ export class TasksController {
     @ActiveOrganization() organizationId: number,
     @ActiveUser() user: { id: number },
   ) {
-    return this.tasksService.create(
-      createTaskDto,
-      organizationId,
-      user.id,
-    );
+    return this.tasksService.create(createTaskDto, organizationId, user.id);
   }
 
   /**
    * Obtener tareas pendientes (PENDING / IN_PROGRESS) del usuario en la organización activa.
    * Requiere x-tenant-id. Query: category (ej. COBRANZA) para filtrar por categoría.
    */
-  @Get('my-pending')
+  @Get("my-pending")
   @UseGuards(OrganizationGuard)
   getMyPending(
     @ActiveUser() user: { id: number },
     @ActiveOrganization() organizationId: number,
-    @Query('category') category?: string,
+    @Query("category") category?: string,
   ) {
     return this.tasksService.getMyPending(user.id, organizationId, category);
   }
@@ -58,7 +54,7 @@ export class TasksController {
    * Contar tareas no leídas asignadas al usuario en la organización activa (para badge).
    * Requiere x-tenant-id.
    */
-  @Get('my-unread-count')
+  @Get("my-unread-count")
   @UseGuards(OrganizationGuard)
   getMyUnreadCount(
     @ActiveUser() user: { id: number },
@@ -71,7 +67,7 @@ export class TasksController {
    * Tareas creadas por el usuario en la organización activa.
    * Requiere x-tenant-id.
    */
-  @Get('created-by-me')
+  @Get("created-by-me")
   @UseGuards(OrganizationGuard)
   getCreatedByMe(
     @ActiveUser() user: { id: number },
@@ -83,9 +79,9 @@ export class TasksController {
   /**
    * Marcar tarea como leída (solo asignado o admin). No requiere x-tenant-id.
    */
-  @Patch(':id/read')
+  @Patch(":id/read")
   markAsRead(
-    @Param('id', ParseIntPipe) id: number,
+    @Param("id", ParseIntPipe) id: number,
     @ActiveUser() user: { id: number },
   ) {
     return this.tasksService.markAsRead(id, user.id);
@@ -95,10 +91,10 @@ export class TasksController {
    * Actualizar estado de una tarea (ej. marcar como DONE).
    * Requiere organización para verificar permisos.
    */
-  @Patch(':id/status')
+  @Patch(":id/status")
   @UseGuards(OrganizationGuard)
   updateStatus(
-    @Param('id', ParseIntPipe) id: number,
+    @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateTaskStatusDto,
     @ActiveOrganization() organizationId: number,
     @ActiveUser() user: { id: number },

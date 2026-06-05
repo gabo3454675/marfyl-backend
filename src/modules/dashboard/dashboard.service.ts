@@ -1,23 +1,23 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { DashboardSummaryDto } from './dto/dashboard-summary.dto';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { DashboardSummaryDto } from "./dto/dashboard-summary.dto";
 import type {
   DashboardHealthDto,
   SalesChartDayDto,
   TopProductMarginDto,
-} from './dto/dashboard-health.dto';
+} from "./dto/dashboard-health.dto";
 import type {
   DashboardDiagnosisDto,
   MarginErosionProductDto,
   DebtAgeCustomerDto,
-} from './dto/dashboard-diagnosis.dto';
+} from "./dto/dashboard-diagnosis.dto";
 import type {
   DashboardStrategyDto,
   ParetoCustomerDto,
   FrictionFunnelDto,
   StrategyInsightDto,
-} from './dto/dashboard-strategy.dto';
-import { Prisma } from '@prisma/client';
+} from "./dto/dashboard-strategy.dto";
+import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class DashboardService {
@@ -31,11 +31,11 @@ export class DashboardService {
     const invoices = await this.prisma.invoice.findMany({
       where: {
         organizationId,
-        status: 'PENDING',
+        status: "PENDING",
       },
       take: 5,
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
       include: {
         customer: {
@@ -49,7 +49,7 @@ export class DashboardService {
       status: inv.status,
       createdAt: inv.createdAt,
       totalAmount: Number(inv.totalAmount),
-      customerName: inv.customer?.name || 'Cliente General',
+      customerName: inv.customer?.name || "Cliente General",
     }));
   }
 
@@ -68,8 +68,8 @@ export class DashboardService {
       },
       take: 5,
       orderBy: [
-        { stock: 'asc' }, // prioridad: más crítico primero
-        { updatedAt: 'desc' },
+        { stock: "asc" }, // prioridad: más crítico primero
+        { updatedAt: "desc" },
       ],
       select: {
         id: true,
@@ -104,78 +104,78 @@ export class DashboardService {
     }
 
     try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Suma de ventas del día (solo facturas pagadas)
-    const invoicesToday = await this.prisma.invoice.aggregate({
-      where: {
-        organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-        createdAt: {
-          gte: today,
-          lt: tomorrow,
+      // Suma de ventas del día (solo facturas pagadas)
+      const invoicesToday = await this.prisma.invoice.aggregate({
+        where: {
+          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
+          createdAt: {
+            gte: today,
+            lt: tomorrow,
+          },
+          status: "PAID",
         },
-        status: 'PAID',
-      },
-      _sum: {
-        totalAmount: true,
-      },
-    });
+        _sum: {
+          totalAmount: true,
+        },
+      });
 
-    const totalSalesToday = invoicesToday._sum.totalAmount
-      ? Number(invoicesToday._sum.totalAmount)
-      : 0;
+      const totalSalesToday = invoicesToday._sum.totalAmount
+        ? Number(invoicesToday._sum.totalAmount)
+        : 0;
 
-    // Conteo total de productos
-    const productsCount = await this.prisma.product.count({
-      where: {
-        organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-      },
-    });
+      // Conteo total de productos
+      const productsCount = await this.prisma.product.count({
+        where: {
+          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
+        },
+      });
 
-    // Productos con stock bajo (conteo)
-    // Performance: conteo directo por umbral fijo para evitar traer todo a memoria.
-    const lowStockCount = await this.prisma.product.count({
-      where: {
-        organizationId,
-        stock: { lt: 5 },
-      },
-    });
+      // Productos con stock bajo (conteo)
+      // Performance: conteo directo por umbral fijo para evitar traer todo a memoria.
+      const lowStockCount = await this.prisma.product.count({
+        where: {
+          organizationId,
+          stock: { lt: 5 },
+        },
+      });
 
-    // Últimas 5 facturas
-    const recentInvoices = await this.prisma.invoice.findMany({
-      where: {
-        organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-      },
-      take: 5,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      include: {
-        customer: {
-          select: {
-            name: true,
+      // Últimas 5 facturas
+      const recentInvoices = await this.prisma.invoice.findMany({
+        where: {
+          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
+        },
+        take: 5,
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          customer: {
+            select: {
+              name: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    const recentTransactions = recentInvoices.map((invoice) => ({
-      id: invoice.id,
-      customerName: invoice.customer?.name || 'Cliente General',
-      amount: Number(invoice.totalAmount),
-      status: invoice.status,
-      createdAt: invoice.createdAt,
-    }));
+      const recentTransactions = recentInvoices.map((invoice) => ({
+        id: invoice.id,
+        customerName: invoice.customer?.name || "Cliente General",
+        amount: Number(invoice.totalAmount),
+        status: invoice.status,
+        createdAt: invoice.createdAt,
+      }));
 
-    return {
-      totalSalesToday,
-      productsCount,
-      lowStockCount,
-      recentTransactions,
-    };
+      return {
+        totalSalesToday,
+        productsCount,
+        lowStockCount,
+        recentTransactions,
+      };
     } catch {
       return empty;
     }
@@ -194,11 +194,25 @@ export class DashboardService {
 
     const now = new Date();
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const firstDayLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      1,
+    );
+    const lastDayLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
 
     // Ventas último mes por día (solo PAID) - OPTIMIZADO con raw SQL para GROUP BY
-    const dailySalesRaw = await this.prisma.$queryRaw<Array<{ date: string; total: Prisma.Decimal }>>`
+    const dailySalesRaw = await this.prisma.$queryRaw<
+      Array<{ date: string; total: Prisma.Decimal }>
+    >`
       SELECT DATE("createdAt") as date, SUM("totalAmount") as total
       FROM "invoices"
       WHERE "organizationId" = ${organizationId}
@@ -211,7 +225,10 @@ export class DashboardService {
 
     const byDay = new Map<string, number>();
     for (const row of dailySalesRaw) {
-      const dateStr = typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0, 10);
+      const dateStr =
+        typeof row.date === "string"
+          ? row.date
+          : new Date(row.date).toISOString().slice(0, 10);
       byDay.set(dateStr.slice(0, 10), Number(row.total));
     }
 
@@ -234,7 +251,7 @@ export class DashboardService {
       where: {
         invoice: {
           organizationId,
-          status: 'PAID',
+          status: "PAID",
           createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
         },
       },
@@ -253,12 +270,21 @@ export class DashboardService {
       if (existing) {
         existing.margin += margin;
       } else {
-        marginByProduct.set(item.productId, { name: item.product.name, margin });
+        marginByProduct.set(item.productId, {
+          name: item.product.name,
+          margin,
+        });
       }
     }
 
-    const topProductsByMargin: TopProductMarginDto[] = Array.from(marginByProduct.entries())
-      .map(([productId, { name, margin }]) => ({ productId, productName: name, margin }))
+    const topProductsByMargin: TopProductMarginDto[] = Array.from(
+      marginByProduct.entries(),
+    )
+      .map(([productId, { name, margin }]) => ({
+        productId,
+        productName: name,
+        margin,
+      }))
       .sort((a, b) => b.margin - a.margin)
       .slice(0, 5);
 
@@ -267,7 +293,7 @@ export class DashboardService {
       this.prisma.invoice.aggregate({
         where: {
           organizationId,
-          status: 'PAID',
+          status: "PAID",
           createdAt: { gte: firstDayThisMonth },
         },
         _sum: { totalAmount: true },
@@ -276,7 +302,7 @@ export class DashboardService {
       this.prisma.invoice.aggregate({
         where: {
           organizationId,
-          status: 'PAID',
+          status: "PAID",
           createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
         },
         _sum: { totalAmount: true },
@@ -287,9 +313,12 @@ export class DashboardService {
     const totalThisMonth = Number(invoicesThisMonthAgg._sum.totalAmount ?? 0);
     const totalLastMonth = Number(invoicesLastMonthAgg._sum.totalAmount ?? 0);
     const countThisMonth = invoicesThisMonthAgg._count.id;
-    const ticketPromedio = countThisMonth > 0 ? totalThisMonth / countThisMonth : 0;
+    const ticketPromedio =
+      countThisMonth > 0 ? totalThisMonth / countThisMonth : 0;
     const crecimientoMensual =
-      totalLastMonth > 0 ? ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 : 0;
+      totalLastMonth > 0
+        ? ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100
+        : 0;
 
     return {
       salesChartLastMonth,
@@ -334,7 +363,7 @@ export class DashboardService {
     today.setHours(0, 0, 0, 0);
 
     const pendingInvoices = await this.prisma.invoice.findMany({
-      where: { organizationId, status: 'PENDING' },
+      where: { organizationId, status: "PENDING" },
       select: {
         id: true,
         customerId: true,
@@ -346,7 +375,12 @@ export class DashboardService {
 
     const byCustomer = new Map<
       number,
-      { name: string; aTiempo: number; vencidas1_15: number; criticas30: number }
+      {
+        name: string;
+        aTiempo: number;
+        vencidas1_15: number;
+        criticas30: number;
+      }
     >();
 
     for (const inv of pendingInvoices) {
@@ -354,14 +388,19 @@ export class DashboardService {
       dueDate.setDate(dueDate.getDate() + PAYMENT_TERM_DAYS);
       dueDate.setHours(0, 0, 0, 0);
       const daysOverdue = Math.floor(
-        (today.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)
+        (today.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000),
       );
       const amount = Number(inv.totalAmount);
       const cid = inv.customerId ?? 0;
-      const name = inv.customer?.name ?? 'Cliente general';
+      const name = inv.customer?.name ?? "Cliente general";
 
       if (!byCustomer.has(cid)) {
-        byCustomer.set(cid, { name, aTiempo: 0, vencidas1_15: 0, criticas30: 0 });
+        byCustomer.set(cid, {
+          name,
+          aTiempo: 0,
+          vencidas1_15: 0,
+          criticas30: 0,
+        });
       }
       const row = byCustomer.get(cid)!;
 
@@ -374,7 +413,9 @@ export class DashboardService {
       }
     }
 
-    const debtAgeByCustomer: DebtAgeCustomerDto[] = Array.from(byCustomer.entries())
+    const debtAgeByCustomer: DebtAgeCustomerDto[] = Array.from(
+      byCustomer.entries(),
+    )
       .map(([customerId, row]) => ({
         customerId,
         customerName: row.name,
@@ -403,10 +444,14 @@ export class DashboardService {
     const invoicesForPareto = await this.prisma.invoice.findMany({
       where: {
         organizationId,
-        status: 'PAID',
+        status: "PAID",
         createdAt: { gte: twelveMonthsAgo },
       },
-      select: { customerId: true, customer: { select: { id: true, name: true } }, totalAmount: true },
+      select: {
+        customerId: true,
+        customer: { select: { id: true, name: true } },
+        totalAmount: true,
+      },
     });
 
     const customerMap = new Map<
@@ -415,7 +460,7 @@ export class DashboardService {
     >();
     for (const inv of invoicesForPareto) {
       const cid = inv.customerId ?? 0;
-      const name = inv.customer?.name ?? 'Cliente general';
+      const name = inv.customer?.name ?? "Cliente general";
       const amt = Number(inv.totalAmount);
       if (!customerMap.has(cid)) {
         customerMap.set(cid, { name, volume: 0, frequency: 0 });
@@ -425,17 +470,24 @@ export class DashboardService {
       row.frequency += 1;
     }
 
-    const volumes = Array.from(customerMap.values()).map((r) => r.volume).filter((v) => v > 0);
-    const frequencies = Array.from(customerMap.values()).map((r) => r.frequency);
+    const volumes = Array.from(customerMap.values())
+      .map((r) => r.volume)
+      .filter((v) => v > 0);
+    const frequencies = Array.from(customerMap.values()).map(
+      (r) => r.frequency,
+    );
     const medVol = this.median(volumes) || 0;
     const medFreq = this.median(frequencies) || 0;
 
-    const paretoCustomers: ParetoCustomerDto[] = Array.from(customerMap.entries())
+    const paretoCustomers: ParetoCustomerDto[] = Array.from(
+      customerMap.entries(),
+    )
       .filter(([, r]) => r.volume > 0)
       .map(([customerId, r]) => {
-        let segment: ParetoCustomerDto['segment'] = 'En Riesgo';
-        if (r.volume >= medVol && r.frequency >= medFreq) segment = 'Leales';
-        else if (r.frequency >= medFreq && r.volume < medVol) segment = 'Transaccionales';
+        let segment: ParetoCustomerDto["segment"] = "En Riesgo";
+        if (r.volume >= medVol && r.frequency >= medFreq) segment = "Leales";
+        else if (r.frequency >= medFreq && r.volume < medVol)
+          segment = "Transaccionales";
         return {
           customerId,
           customerName: r.name,
@@ -448,7 +500,7 @@ export class DashboardService {
 
     // --- Embudo de fricción: tiempo desde creación hasta pago (PAID)
     const paidInvoices = await this.prisma.invoice.findMany({
-      where: { organizationId, status: 'PAID' },
+      where: { organizationId, status: "PAID" },
       select: { createdAt: true, updatedAt: true, markedAsPaidAt: true },
     });
 
@@ -457,28 +509,33 @@ export class DashboardService {
       const paidAt = inv.markedAsPaidAt ?? inv.updatedAt;
       timesMs.push(paidAt.getTime() - inv.createdAt.getTime());
     }
-    const avgMs = timesMs.length > 0 ? timesMs.reduce((a, b) => a + b, 0) / timesMs.length : 0;
-    const tiempoPromedioHoras = Math.round((avgMs / (1000 * 60 * 60)) * 10) / 10;
-    const tiempoPromedioDias = Math.round((avgMs / (1000 * 60 * 60 * 24)) * 10) / 10;
+    const avgMs =
+      timesMs.length > 0
+        ? timesMs.reduce((a, b) => a + b, 0) / timesMs.length
+        : 0;
+    const tiempoPromedioHoras =
+      Math.round((avgMs / (1000 * 60 * 60)) * 10) / 10;
+    const tiempoPromedioDias =
+      Math.round((avgMs / (1000 * 60 * 60 * 24)) * 10) / 10;
 
     const totalCreadas = await this.prisma.invoice.count({
-      where: { organizationId, status: { in: ['PENDING', 'PAID'] } },
+      where: { organizationId, status: { in: ["PENDING", "PAID"] } },
     });
     const totalPagadas = await this.prisma.invoice.count({
-      where: { organizationId, status: 'PAID' },
+      where: { organizationId, status: "PAID" },
     });
 
-    let cuelloDeBotella: FrictionFunnelDto['cuelloDeBotella'] = null;
+    let cuelloDeBotella: FrictionFunnelDto["cuelloDeBotella"] = null;
     let mensajeAlerta: string | null = null;
     const avgDays = avgMs / (1000 * 60 * 60 * 24);
     if (timesMs.length > 0 && avgDays > 7) {
-      cuelloDeBotella = 'cobranza';
+      cuelloDeBotella = "cobranza";
       mensajeAlerta =
-        'El tiempo promedio de cobro es alto. Revisa el seguimiento de cobranza para mejorar liquidez.';
+        "El tiempo promedio de cobro es alto. Revisa el seguimiento de cobranza para mejorar liquidez.";
     } else if (timesMs.length > 0 && avgDays > 3 && avgDays <= 7) {
-      cuelloDeBotella = 'despacho';
+      cuelloDeBotella = "despacho";
       mensajeAlerta =
-        'El tiempo entre creación y pago sugiere fricción operativa. Verifica despacho y entrega.';
+        "El tiempo entre creación y pago sugiere fricción operativa. Verifica despacho y entrega.";
     }
 
     const frictionFunnel: FrictionFunnelDto = {
@@ -495,10 +552,12 @@ export class DashboardService {
 
     // Productos con margen bajo (erosión)
     const erosion = await this.getDiagnosis(organizationId);
-    const lowMarginProducts = erosion.marginErosion.filter((p) => p.marginCritical);
+    const lowMarginProducts = erosion.marginErosion.filter(
+      (p) => p.marginCritical,
+    );
     for (const p of lowMarginProducts.slice(0, 3)) {
       insights.push({
-        tipo: 'producto_margen',
+        tipo: "producto_margen",
         texto: `Tu producto "${p.productName}" se vende mucho pero tu margen es bajo (${p.marginPct}%). Considera revisar su precio.`,
         entidad: p.productName,
       });
@@ -507,16 +566,18 @@ export class DashboardService {
     // Cuello de botella
     if (mensajeAlerta) {
       insights.push({
-        tipo: 'cuello_botella',
+        tipo: "cuello_botella",
         texto: mensajeAlerta,
       });
     }
 
     // Clientes en riesgo (bajo frecuencia / bajo volumen)
-    const enRiesgo = paretoCustomers.filter((c) => c.segment === 'En Riesgo').slice(0, 2);
+    const enRiesgo = paretoCustomers
+      .filter((c) => c.segment === "En Riesgo")
+      .slice(0, 2);
     for (const c of enRiesgo) {
       insights.push({
-        tipo: 'cliente_riesgo',
+        tipo: "cliente_riesgo",
         texto: `${c.customerName} tiene bajo volumen o poca frecuencia de compra. Considera ofertas o seguimiento para recuperar ventas.`,
         entidad: c.customerName,
       });
@@ -529,6 +590,8 @@ export class DashboardService {
     if (arr.length === 0) return 0;
     const sorted = [...arr].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 !== 0 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+    return sorted.length % 2 !== 0
+      ? sorted[mid]!
+      : (sorted[mid - 1]! + sorted[mid]!) / 2;
   }
 }

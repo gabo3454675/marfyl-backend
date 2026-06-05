@@ -3,17 +3,17 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   FiscalDocumentType,
   FiscalDocumentKind,
   FiscalPeriodStatus,
   LibroLineStatus,
-} from '@prisma/client';
-import { computeWithholdingIva } from './helpers/tax-calculator';
-import { FiscalAlertsService } from './fiscal-alerts.service';
-import * as crypto from 'crypto';
+} from "@prisma/client";
+import { computeWithholdingIva } from "./helpers/tax-calculator";
+import { FiscalAlertsService } from "./fiscal-alerts.service";
+import * as crypto from "crypto";
 
 @Injectable()
 export class FiscalEngineService {
@@ -50,7 +50,11 @@ export class FiscalEngineService {
     });
   }
 
-  async projectSale(organizationId: number, invoiceId: number, userId?: number) {
+  async projectSale(
+    organizationId: number,
+    invoiceId: number,
+    userId?: number,
+  ) {
     const existing = await this.prisma.libroVentaLine.findUnique({
       where: { invoiceId },
     });
@@ -72,7 +76,9 @@ export class FiscalEngineService {
     const periodMonth = issueDate.getMonth() + 1;
     const invoiceNumber =
       invoice.fiscalInvoiceNumber ??
-      (invoice.consecutiveNumber != null ? String(invoice.consecutiveNumber) : String(invoice.id));
+      (invoice.consecutiveNumber != null
+        ? String(invoice.consecutiveNumber)
+        : String(invoice.id));
 
     const totalAmount =
       Number(invoice.baseExempt) +
@@ -104,7 +110,7 @@ export class FiscalEngineService {
     if (Number(invoice.baseGeneral) > 0 && !invoice.customer?.taxId?.trim()) {
       await this.fiscalAlerts.notifyMissingCustomerRif({
         organizationId,
-        organizationName: invoice.organization?.nombre ?? 'Organización',
+        organizationName: invoice.organization?.nombre ?? "Organización",
         invoiceId: invoice.id,
         userId,
       });
@@ -114,7 +120,9 @@ export class FiscalEngineService {
   }
 
   async voidSaleLine(organizationId: number, invoiceId: number) {
-    const line = await this.prisma.libroVentaLine.findUnique({ where: { invoiceId } });
+    const line = await this.prisma.libroVentaLine.findUnique({
+      where: { invoiceId },
+    });
     if (!line || line.organizationId !== organizationId) return null;
     return this.prisma.libroVentaLine.update({
       where: { id: line.id },
@@ -174,10 +182,14 @@ export class FiscalEngineService {
   }
 
   async generateWithholdingIfNeeded(organizationId: number, expenseId: number) {
-    const profile = await this.prisma.fiscalProfile.findUnique({ where: { organizationId } });
+    const profile = await this.prisma.fiscalProfile.findUnique({
+      where: { organizationId },
+    });
     if (!profile?.isWithholdingAgent) return null;
 
-    const existing = await this.prisma.retencionIVA.findUnique({ where: { expenseId } });
+    const existing = await this.prisma.retencionIVA.findUnique({
+      where: { expenseId },
+    });
     if (existing) return existing;
 
     const expense = await this.prisma.expense.findFirst({
@@ -190,7 +202,7 @@ export class FiscalEngineService {
     const issueDate = expense.date;
     const periodYear = issueDate.getFullYear();
     const periodMonth = issueDate.getMonth() + 1;
-    const certificateNumber = `RET-${periodYear}${String(periodMonth).padStart(2, '0')}-${expenseId}`;
+    const certificateNumber = `RET-${periodYear}${String(periodMonth).padStart(2, "0")}-${expenseId}`;
 
     const doc = await this.prisma.fiscalDocument.create({
       data: {
@@ -229,26 +241,36 @@ export class FiscalEngineService {
       where: { organizationId_year_month: { organizationId, year, month } },
     });
     if (!period) {
-      throw new BadRequestException('Período fiscal no encontrado');
+      throw new BadRequestException("Período fiscal no encontrado");
     }
     if (period.status === FiscalPeriodStatus.CLOSED) {
-      throw new BadRequestException('El período ya está cerrado');
+      throw new BadRequestException("El período ya está cerrado");
     }
 
     const [ventas, compras] = await Promise.all([
       this.prisma.libroVentaLine.findMany({
-        where: { organizationId, periodYear: year, periodMonth: month, status: 'ACTIVE' },
+        where: {
+          organizationId,
+          periodYear: year,
+          periodMonth: month,
+          status: "ACTIVE",
+        },
       }),
       this.prisma.libroCompraLine.findMany({
-        where: { organizationId, periodYear: year, periodMonth: month, status: 'ACTIVE' },
+        where: {
+          organizationId,
+          periodYear: year,
+          periodMonth: month,
+          status: "ACTIVE",
+        },
       }),
     ]);
 
     const snapshot = { ventas, compras, closedAt: new Date().toISOString() };
     const integrityHash = crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(JSON.stringify(snapshot))
-      .digest('hex');
+      .digest("hex");
 
     const totals = {
       ventasIva: ventas.reduce((s, l) => s + Number(l.ivaAmount), 0),
@@ -272,14 +294,14 @@ export class FiscalEngineService {
     if (existingDecl) {
       await this.prisma.declaracion_IVA.update({
         where: { id: existingDecl.id },
-        data: { status: 'LISTO', totals },
+        data: { status: "LISTO", totals },
       });
     } else {
       await this.prisma.declaracion_IVA.create({
         data: {
           organizationId,
           fiscalPeriodId: period.id,
-          status: 'LISTO',
+          status: "LISTO",
           totals,
         },
       });

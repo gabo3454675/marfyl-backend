@@ -1,5 +1,5 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { Organization } from '@prisma/client';
+import { createParamDecorator, ExecutionContext } from "@nestjs/common";
+import { Organization } from "@prisma/client";
 
 /**
  * Decorador para obtener el objeto completo de la organización activa desde el request

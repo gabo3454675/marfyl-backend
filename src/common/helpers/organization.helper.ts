@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 
 /**
  * Helper para obtener el companyId correspondiente a una organizationId
@@ -32,7 +32,7 @@ export async function getCompanyIdFromOrganization(
       data: {
         name: organization.nombre,
         taxId: `J-${Math.floor(Math.random() * 10000000)}-${Math.floor(Math.random() * 10)}`,
-        currency: 'USD',
+        currency: "USD",
         isActive: true,
       },
       select: { id: true },

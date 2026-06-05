@@ -4,24 +4,27 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import * as bcrypt from 'bcryptjs';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import * as bcrypt from "bcryptjs";
+import { LoginDto } from "./dto/login.dto";
+import { RegisterDto } from "./dto/register.dto";
 import {
   mapOrganizationForClient,
   organizationSelectForAuth,
-} from '@/common/organization-mapper';
-import { filterOrganizationsForLogin, isFoundingOrgSlug } from '@/common/founding-orgs';
+} from "@/common/organization-mapper";
+import {
+  filterOrganizationsForLogin,
+  isFoundingOrgSlug,
+} from "@/common/founding-orgs";
 import {
   assertOrganizationSlugAvailable,
   normalizeOrganizationSlug,
-} from '@/common/org-slug';
-import { SetupOrganizationDto } from './dto/setup-organization.dto';
-import { CompletePasswordResetDto } from './dto/complete-password-reset.dto';
-import { RecoverPasswordDto } from './dto/recover-password.dto';
+} from "@/common/org-slug";
+import { SetupOrganizationDto } from "./dto/setup-organization.dto";
+import { CompletePasswordResetDto } from "./dto/complete-password-reset.dto";
+import { RecoverPasswordDto } from "./dto/recover-password.dto";
 
 @Injectable()
 export class AuthService {
@@ -36,23 +39,25 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
+      throw new UnauthorizedException("Credenciales inválidas");
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciales inválidas');
+      throw new UnauthorizedException("Credenciales inválidas");
     }
 
     if (user.isActive === false) {
-      throw new UnauthorizedException('Cuenta desactivada. Contacte al administrador.');
+      throw new UnauthorizedException(
+        "Cuenta desactivada. Contacte al administrador.",
+      );
     }
 
     // Password Reset Required: usuario provisionado con clave temporal (incluir email para prellenar en front)
     if (user.requiresPasswordChange === true) {
       throw new ForbiddenException({
-        message: 'RESET_REQUIRED',
+        message: "RESET_REQUIRED",
         email: user.email,
       });
     }
@@ -65,15 +70,17 @@ export class AuthService {
 
     if (isSuperAdmin) {
       const allOrgs = await this.prisma.organization.findMany({
-        orderBy: { nombre: 'asc' },
+        orderBy: { nombre: "asc" },
         select: organizationSelectForAuth,
       });
-      organizations = allOrgs.map((o) => mapOrganizationForClient(o, 'SUPER_ADMIN'));
+      organizations = allOrgs.map((o) =>
+        mapOrganizationForClient(o, "SUPER_ADMIN"),
+      );
     } else {
       const organizationMemberships = await this.prisma.member.findMany({
         where: {
           userId: user.id,
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
         include: {
           organization: { select: organizationSelectForAuth },
@@ -92,7 +99,7 @@ export class AuthService {
     const companyMemberships = await this.prisma.companyMember.findMany({
       where: {
         userId: user.id,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         company: {
@@ -136,16 +143,21 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
+      throw new UnauthorizedException("Credenciales inválidas");
     }
 
     if (!user.requiresPasswordChange) {
-      throw new BadRequestException('Este usuario no requiere cambio de contraseña');
+      throw new BadRequestException(
+        "Este usuario no requiere cambio de contraseña",
+      );
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
-      throw new UnauthorizedException('La contraseña actual no es correcta');
+      throw new UnauthorizedException("La contraseña actual no es correcta");
     }
 
     const saltRounds = 10;
@@ -161,7 +173,7 @@ export class AuthService {
 
     // Auditoría: registrar cambio de contraseña (en la primera org del usuario si tiene)
     const firstMembership = await this.prisma.member.findFirst({
-      where: { userId: user.id, status: 'ACTIVE' },
+      where: { userId: user.id, status: "ACTIVE" },
       select: { organizationId: true },
     });
     if (firstMembership) {
@@ -169,8 +181,8 @@ export class AuthService {
         data: {
           organizationId: firstMembership.organizationId,
           userId: user.id,
-          action: 'PASSWORD_CHANGE',
-          entityType: 'user',
+          action: "PASSWORD_CHANGE",
+          entityType: "user",
           entityId: String(user.id),
           actorEmail: user.email,
           targetSummary: `Cambio de contraseña: ${user.email}`,
@@ -182,7 +194,12 @@ export class AuthService {
     const validatedUser = await this.validateUser(dto.email, dto.newPassword);
 
     const organizationId = validatedUser.organizations?.[0]?.id ?? null;
-    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
+    const payload: {
+      email: string;
+      sub: number;
+      isSuperAdmin: boolean;
+      organizationId?: number;
+    } = {
       email: validatedUser.email,
       sub: validatedUser.id,
       isSuperAdmin: validatedUser.isSuperAdmin ?? false,
@@ -218,17 +235,19 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('No se pudo validar tu identidad');
+      throw new UnauthorizedException("No se pudo validar tu identidad");
     }
 
     if (user.isActive === false) {
-      throw new UnauthorizedException('Cuenta desactivada. Contacte al administrador.');
+      throw new UnauthorizedException(
+        "Cuenta desactivada. Contacte al administrador.",
+      );
     }
 
-    const storedName = (user.fullName ?? '').trim().toLowerCase();
+    const storedName = (user.fullName ?? "").trim().toLowerCase();
     const providedName = dto.fullName.trim().toLowerCase();
     if (!storedName || storedName !== providedName) {
-      throw new UnauthorizedException('No se pudo validar tu identidad');
+      throw new UnauthorizedException("No se pudo validar tu identidad");
     }
 
     const saltRounds = 10;
@@ -243,7 +262,7 @@ export class AuthService {
     });
 
     return {
-      message: 'Clave actualizada correctamente. Ya puedes iniciar sesión.',
+      message: "Clave actualizada correctamente. Ya puedes iniciar sesión.",
     };
   }
 
@@ -252,7 +271,12 @@ export class AuthService {
 
     // Tenant en JWT: organización activa (primera de la lista). El backend no confía en el frontend.
     const organizationId = user.organizations?.[0]?.id ?? null;
-    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
+    const payload: {
+      email: string;
+      sub: number;
+      isSuperAdmin: boolean;
+      organizationId?: number;
+    } = {
       email: user.email,
       sub: user.id,
       isSuperAdmin: user.isSuperAdmin ?? false,
@@ -281,24 +305,24 @@ export class AuthService {
       where: { id: userId },
       select: { id: true, email: true, isSuperAdmin: true },
     });
-    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user) throw new UnauthorizedException("Usuario no encontrado");
 
     const membership = await this.prisma.member.findFirst({
       where: {
         userId,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
     const isSuperAdmin = user.isSuperAdmin ?? false;
     if (!membership && !isSuperAdmin) {
-      throw new ForbiddenException('No tienes acceso a esta organización');
+      throw new ForbiddenException("No tienes acceso a esta organización");
     }
 
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
     });
-    if (!org) throw new BadRequestException('Organización no encontrada');
+    if (!org) throw new BadRequestException("Organización no encontrada");
 
     const payload = {
       email: user.email,
@@ -322,30 +346,36 @@ export class AuthService {
       assertOrganizationSlugAvailable(slug);
     } catch {
       throw new BadRequestException(
-        'El identificador de empresa no es válido o está reservado',
+        "El identificador de empresa no es válido o está reservado",
       );
     }
     if (isFoundingOrgSlug(slug)) {
-      throw new ConflictException('Este identificador de empresa está reservado');
+      throw new ConflictException(
+        "Este identificador de empresa está reservado",
+      );
     }
 
     const existingOrg = await this.prisma.organization.findUnique({
       where: { slug },
     });
     if (existingOrg) {
-      throw new ConflictException('Ya existe una empresa con ese identificador');
+      throw new ConflictException(
+        "Ya existe una empresa con ese identificador",
+      );
     }
 
     const existingMembership = await this.prisma.member.findFirst({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId, status: "ACTIVE" },
     });
     if (existingMembership) {
-      throw new ConflictException('Este usuario ya tiene una empresa registrada');
+      throw new ConflictException(
+        "Este usuario ya tiene una empresa registrada",
+      );
     }
 
     const nombre = organizationName.trim();
     if (!nombre) {
-      throw new BadRequestException('El nombre de la empresa es obligatorio');
+      throw new BadRequestException("El nombre de la empresa es obligatorio");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -353,7 +383,7 @@ export class AuthService {
         data: {
           nombre,
           slug,
-          plan: 'BASIC',
+          plan: "BASIC",
           billingExempt: false,
           concertModuleEnabled: false,
         },
@@ -364,8 +394,8 @@ export class AuthService {
         data: {
           userId,
           organizationId: organization.id,
-          role: 'ADMIN',
-          status: 'ACTIVE',
+          role: "ADMIN",
+          status: "ACTIVE",
         },
       });
 
@@ -379,7 +409,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException('El email ya está registrado');
+      throw new ConflictException("El email ya está registrado");
     }
 
     const saltRounds = 10;
@@ -405,7 +435,12 @@ export class AuthService {
       registerDto.password,
     );
     const organizationId = validatedUser.organizations?.[0]?.id ?? null;
-    const payload: { email: string; sub: number; isSuperAdmin: boolean; organizationId?: number } = {
+    const payload: {
+      email: string;
+      sub: number;
+      isSuperAdmin: boolean;
+      organizationId?: number;
+    } = {
       email: validatedUser.email,
       sub: validatedUser.id,
       isSuperAdmin: false,
@@ -433,10 +468,10 @@ export class AuthService {
       where: { id: userId },
       select: { id: true, email: true, isSuperAdmin: true },
     });
-    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    if (!user) throw new UnauthorizedException("Usuario no encontrado");
     if (user.isSuperAdmin) {
       throw new ForbiddenException(
-        'El administrador de plataforma crea empresas desde Configuración',
+        "El administrador de plataforma crea empresas desde Configuración",
       );
     }
 
@@ -474,13 +509,13 @@ export class AuthService {
   async getUserOrganizations(userId: number, isSuperAdmin = false) {
     if (isSuperAdmin) {
       const allOrgs = await this.prisma.organization.findMany({
-        orderBy: { nombre: 'asc' },
+        orderBy: { nombre: "asc" },
         select: organizationSelectForAuth,
       });
       return allOrgs.map((o) => ({
-        ...mapOrganizationForClient(o, 'SUPER_ADMIN'),
+        ...mapOrganizationForClient(o, "SUPER_ADMIN"),
         nombre: o.nombre,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         joinedAt: new Date(),
       }));
     }
@@ -488,13 +523,13 @@ export class AuthService {
     const memberships = await this.prisma.member.findMany({
       where: {
         userId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         organization: { select: organizationSelectForAuth },
       },
       orderBy: {
-        joinedAt: 'desc',
+        joinedAt: "desc",
       },
     });
 

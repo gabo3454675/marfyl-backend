@@ -8,8 +8,8 @@ import {
   IsNumber,
   IsIn,
   IsString,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 export class CreateInvoiceItemDto {
   @IsInt()
@@ -21,8 +21,15 @@ export class CreateInvoiceItemDto {
   quantity: number;
 }
 
-const PAYMENT_METHODS = ['CASH_USD', 'CASH_BS', 'PAGO_MOVIL', 'ZELLE', 'CARD', 'CREDIT'] as const;
-const CURRENCIES = ['USD', 'VES'] as const;
+const PAYMENT_METHODS = [
+  "CASH_USD",
+  "CASH_BS",
+  "PAGO_MOVIL",
+  "ZELLE",
+  "CARD",
+  "CREDIT",
+] as const;
+const CURRENCIES = ["USD", "VES"] as const;
 
 export class CreateInvoicePaymentLineDto {
   @IsString()

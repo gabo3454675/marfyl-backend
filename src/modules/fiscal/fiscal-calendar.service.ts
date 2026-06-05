@@ -1,15 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { ComplianceStatus, FiscalTaxpayerType } from '@prisma/client';
-import { rifLastDigitFromTaxId } from './helpers/fiscal-validators';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Injectable, Logger } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { ComplianceStatus, FiscalTaxpayerType } from "@prisma/client";
+import { rifLastDigitFromTaxId } from "./helpers/fiscal-validators";
+import * as fs from "fs";
+import * as path from "path";
 
 interface ObligationDef {
   code: string;
   name: string;
   taxpayerTypes: FiscalTaxpayerType[];
-  periodicity: 'MENSUAL' | 'QUINCENAL' | 'ANUAL';
+  periodicity: "MENSUAL" | "QUINCENAL" | "ANUAL";
   dueMonthOffset?: number;
   dueDayOfMonth?: number;
   fortnight?: number;
@@ -32,8 +32,8 @@ export class FiscalCalendarService {
 
   private resolveRulesPath(): string | null {
     const candidates = [
-      path.join(process.cwd(), 'docs', 'FISCAL-CALENDARIO-REGLAS.json'),
-      path.join(process.cwd(), '..', 'docs', 'FISCAL-CALENDARIO-REGLAS.json'),
+      path.join(process.cwd(), "docs", "FISCAL-CALENDARIO-REGLAS.json"),
+      path.join(process.cwd(), "..", "docs", "FISCAL-CALENDARIO-REGLAS.json"),
     ];
     for (const p of candidates) {
       if (fs.existsSync(p)) return p;
@@ -44,20 +44,23 @@ export class FiscalCalendarService {
   loadRulesJson(): RulesJson | null {
     const file = this.resolveRulesPath();
     if (!file) return null;
-    return JSON.parse(fs.readFileSync(file, 'utf-8')) as RulesJson;
+    return JSON.parse(fs.readFileSync(file, "utf-8")) as RulesJson;
   }
 
   /** Sincroniza plantillas y reglas desde JSON (reemplaza reglas por codigo de obligacion). */
   async syncSeniatRulesFromJson(force = false) {
     const data = this.loadRulesJson();
     if (!data) {
-      this.logger.warn('FISCAL-CALENDARIO-REGLAS.json no encontrado');
+      this.logger.warn("FISCAL-CALENDARIO-REGLAS.json no encontrado");
       return { synced: false };
     }
 
     const count = await this.prisma.fiscalObligationTemplate.count();
     if (count > 0 && !force) {
-      return { synced: false, message: 'Ya existen plantillas. Use force=true para resincronizar.' };
+      return {
+        synced: false,
+        message: "Ya existen plantillas. Use force=true para resincronizar.",
+      };
     }
 
     if (force) {
@@ -85,7 +88,9 @@ export class FiscalCalendarService {
         },
       });
 
-      await this.prisma.fiscalCalendarRule.deleteMany({ where: { templateId: template.id } });
+      await this.prisma.fiscalCalendarRule.deleteMany({
+        where: { templateId: template.id },
+      });
 
       if (ob.rulesByRifDigit) {
         for (let d = 0; d <= 9; d++) {
@@ -128,7 +133,11 @@ export class FiscalCalendarService {
       }
     }
 
-    return { synced: true, version: data.version, obligations: data.obligations.length };
+    return {
+      synced: true,
+      version: data.version,
+      obligations: data.obligations.length,
+    };
   }
 
   async seedTemplatesFromJsonIfEmpty() {
@@ -138,7 +147,11 @@ export class FiscalCalendarService {
     }
   }
 
-  async recalculateDeadlines(organizationId: number, year: number, month: number) {
+  async recalculateDeadlines(
+    organizationId: number,
+    year: number,
+    month: number,
+  ) {
     await this.seedTemplatesFromJsonIfEmpty();
 
     const [org, profile] = await Promise.all([
@@ -149,7 +162,9 @@ export class FiscalCalendarService {
 
     const taxpayerType =
       profile?.taxpayerType ??
-      (org.isSpecialTaxpayer ? FiscalTaxpayerType.ESPECIAL : FiscalTaxpayerType.ORDINARIO);
+      (org.isSpecialTaxpayer
+        ? FiscalTaxpayerType.ESPECIAL
+        : FiscalTaxpayerType.ORDINARIO);
 
     const digit =
       profile?.rifLastDigit ??
@@ -163,11 +178,13 @@ export class FiscalCalendarService {
 
     const results = [];
     for (const tpl of templates) {
-      if (tpl.code === 'RETENCIONES_IVA' && !profile?.isWithholdingAgent) {
+      if (tpl.code === "RETENCIONES_IVA" && !profile?.isWithholdingAgent) {
         continue;
       }
 
-      const rule = tpl.rules.find((r) => digit >= r.rifDigitMin && digit <= r.rifDigitMax);
+      const rule = tpl.rules.find(
+        (r) => digit >= r.rifDigitMin && digit <= r.rifDigitMax,
+      );
       if (!rule) continue;
 
       const dueDate = new Date(
@@ -220,17 +237,29 @@ export class FiscalCalendarService {
     const period = await this.prisma.fiscalPeriod.findUnique({
       where: { organizationId_year_month: { organizationId, year, month } },
     });
-    if (period?.status === 'CLOSED') return ComplianceStatus.CLOSED;
+    if (period?.status === "CLOSED") return ComplianceStatus.CLOSED;
 
-    const profile = await this.prisma.fiscalProfile.findUnique({ where: { organizationId } });
+    const profile = await this.prisma.fiscalProfile.findUnique({
+      where: { organizationId },
+    });
     if (!profile?.taxId?.trim()) return ComplianceStatus.RED;
 
     const [ventas, compras] = await Promise.all([
       this.prisma.libroVentaLine.count({
-        where: { organizationId, periodYear: year, periodMonth: month, status: 'ACTIVE' },
+        where: {
+          organizationId,
+          periodYear: year,
+          periodMonth: month,
+          status: "ACTIVE",
+        },
       }),
       this.prisma.libroCompraLine.count({
-        where: { organizationId, periodYear: year, periodMonth: month, status: 'ACTIVE' },
+        where: {
+          organizationId,
+          periodYear: year,
+          periodMonth: month,
+          status: "ACTIVE",
+        },
       }),
     ]);
 
@@ -241,9 +270,9 @@ export class FiscalCalendarService {
         organizationId,
         periodYear: year,
         periodMonth: month,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         baseGeneral: { gt: 0 },
-        OR: [{ customerTaxId: null }, { customerTaxId: '' }],
+        OR: [{ customerTaxId: null }, { customerTaxId: "" }],
       },
     });
 
@@ -254,15 +283,15 @@ export class FiscalCalendarService {
         organizationId,
         periodYear: year,
         periodMonth: month,
-        status: 'ACTIVE',
-        OR: [{ controlNumber: null }, { controlNumber: '' }],
+        status: "ACTIVE",
+        OR: [{ controlNumber: null }, { controlNumber: "" }],
       },
     });
-    if (missingControl > 0 && obligationCode.startsWith('IVA')) {
+    if (missingControl > 0 && obligationCode.startsWith("IVA")) {
       return ComplianceStatus.YELLOW;
     }
 
-    if (obligationCode === 'RETENCIONES_IVA' && profile.isWithholdingAgent) {
+    if (obligationCode === "RETENCIONES_IVA" && profile.isWithholdingAgent) {
       const retCount = await this.prisma.retencionIVA.count({
         where: { organizationId, periodYear: year, periodMonth: month },
       });
@@ -292,13 +321,15 @@ export class FiscalCalendarService {
     const deadlines = await this.prisma.fiscalDeadline.findMany({
       where: { organizationId, periodYear: year, periodMonth: month },
       include: { template: true },
-      orderBy: { dueDate: 'asc' },
+      orderBy: { dueDate: "asc" },
     });
 
     const profile = await this.prisma.fiscalProfile.findUnique({
       where: { organizationId },
     });
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
     const digit =
       profile?.rifLastDigit ??
       rifLastDigitFromTaxId(profile?.taxId ?? org?.taxId);

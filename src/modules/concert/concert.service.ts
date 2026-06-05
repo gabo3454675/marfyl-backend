@@ -4,26 +4,29 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 import {
   ConcertOrderStatus,
   ConcertPaymentMethod,
   ConcertSeatStatus,
   Prisma,
-} from '@prisma/client';
-import { randomUUID } from 'crypto';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { assertDbAvailable } from '@/common/prisma/assert-db-available';
-import { UploadService } from '@/common/services/upload.service';
-import { EmailService } from '@/modules/email/email.service';
+} from "@prisma/client";
+import { randomUUID } from "crypto";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { assertDbAvailable } from "@/common/prisma/assert-db-available";
+import { UploadService } from "@/common/services/upload.service";
+import { EmailService } from "@/modules/email/email.service";
 import {
   CONCERT_HOLD_MINUTES,
   isConcertEnabledForOrganization,
   isConcertFeatureEnabled,
-} from './concert.config';
-import { ConcertCheckoutDto } from './dto/checkout.dto';
-import { AdminSellDto } from './dto/admin-sell.dto';
-import { HEMENEGILDA_SEAT_CATALOG, type SeatCatalogEntry } from './hemenegilda-seat-catalog';
+} from "./concert.config";
+import { ConcertCheckoutDto } from "./dto/checkout.dto";
+import { AdminSellDto } from "./dto/admin-sell.dto";
+import {
+  HEMENEGILDA_SEAT_CATALOG,
+  type SeatCatalogEntry,
+} from "./hemenegilda-seat-catalog";
 
 @Injectable()
 export class ConcertService {
@@ -37,7 +40,7 @@ export class ConcertService {
 
   private assertEnabled() {
     if (!isConcertFeatureEnabled()) {
-      throw new NotFoundException('Módulo de concierto no disponible');
+      throw new NotFoundException("Módulo de concierto no disponible");
     }
   }
 
@@ -48,7 +51,7 @@ export class ConcertService {
     this.assertEnabled();
     if (!isConcertEnabledForOrganization(org)) {
       throw new NotFoundException(
-        'Módulo de concierto no disponible para esta organización',
+        "Módulo de concierto no disponible para esta organización",
       );
     }
   }
@@ -58,7 +61,7 @@ export class ConcertService {
       where: { id: organizationId },
       select: { slug: true, concertModuleEnabled: true },
     });
-    if (!org) throw new NotFoundException('Organización no encontrada');
+    if (!org) throw new NotFoundException("Organización no encontrada");
     this.assertConcertForOrganization(org);
   }
 
@@ -66,7 +69,7 @@ export class ConcertService {
     const event = await this.prisma.concertEvent.findFirst({
       where: { slug, isActive: true },
       include: {
-        sections: { orderBy: { sortOrder: 'asc' }, include: { seats: true } },
+        sections: { orderBy: { sortOrder: "asc" }, include: { seats: true } },
         organization: {
           select: {
             id: true,
@@ -78,7 +81,7 @@ export class ConcertService {
         },
       },
     });
-    if (!event) throw new NotFoundException('Evento no encontrado');
+    if (!event) throw new NotFoundException("Evento no encontrado");
     this.assertConcertForOrganization(event.organization);
     return event;
   }
@@ -101,19 +104,32 @@ export class ConcertService {
   }
 
   private sumSeatTotals(
-    seats: { priceUsd: number | null; priceBs: number | null; section: { code: string } }[],
-    event: { priceUsdVip: number; priceBsVip: number | null; priceUsdStandard: number; organization: { exchangeRate: number | null } },
+    seats: {
+      priceUsd: number | null;
+      priceBs: number | null;
+      section: { code: string };
+    }[],
+    event: {
+      priceUsdVip: number;
+      priceBsVip: number | null;
+      priceUsdStandard: number;
+      organization: { exchangeRate: number | null };
+    },
   ) {
     let amountUsd = 0;
     let amountBs = 0;
-    const fallbackBsVip = event.priceBsVip ?? event.priceUsdVip * (event.organization.exchangeRate || 1);
+    const fallbackBsVip =
+      event.priceBsVip ??
+      event.priceUsdVip * (event.organization.exchangeRate || 1);
     for (const seat of seats) {
       const usd =
         seat.priceUsd ??
-        (seat.section.code === 'VIP' ? event.priceUsdVip : event.priceUsdStandard);
+        (seat.section.code === "VIP"
+          ? event.priceUsdVip
+          : event.priceUsdStandard);
       const bs =
         seat.priceBs ??
-        (seat.section.code === 'VIP'
+        (seat.section.code === "VIP"
           ? fallbackBsVip
           : usd * (event.organization.exchangeRate || 1));
       amountUsd += usd;
@@ -140,7 +156,9 @@ export class ConcertService {
   }) {
     const now = new Date();
     const effectiveStatus =
-      seat.status === ConcertSeatStatus.HELD && seat.heldUntil && seat.heldUntil < now
+      seat.status === ConcertSeatStatus.HELD &&
+      seat.heldUntil &&
+      seat.heldUntil < now
         ? ConcertSeatStatus.AVAILABLE
         : seat.status;
     return {
@@ -159,9 +177,12 @@ export class ConcertService {
 
   private buildSectionPublicView(
     section: { id: number; code: string; label: string },
-    seats: ReturnType<ConcertService['mapSeatForPublic']>[],
+    seats: ReturnType<ConcertService["mapSeatForPublic"]>[],
   ) {
-    const mesaMap = new Map<number, ReturnType<ConcertService['mapSeatForPublic']>[]>();
+    const mesaMap = new Map<
+      number,
+      ReturnType<ConcertService["mapSeatForPublic"]>[]
+    >();
     for (const s of seats) {
       const mesa = s.mesaNumber ?? 0;
       const list = mesaMap.get(mesa) ?? [];
@@ -181,7 +202,9 @@ export class ConcertService {
         ),
       }));
 
-    const tiers = [...new Set(seats.map((s) => s.tierCode).filter(Boolean))] as string[];
+    const tiers = [
+      ...new Set(seats.map((s) => s.tierCode).filter(Boolean)),
+    ] as string[];
 
     return {
       code: section.code,
@@ -204,7 +227,8 @@ export class ConcertService {
 
     const stats = {
       total: seats.length,
-      available: seats.filter((s) => s.status === ConcertSeatStatus.AVAILABLE).length,
+      available: seats.filter((s) => s.status === ConcertSeatStatus.AVAILABLE)
+        .length,
       sold: seats.filter((s) => s.status === ConcertSeatStatus.SOLD).length,
     };
 
@@ -229,7 +253,7 @@ export class ConcertService {
       ],
       stats,
       pricingNote:
-        'Montos en USD y Bs fijos por asiento según planilla del organizador (no calculados por tasa BCV).',
+        "Montos en USD y Bs fijos por asiento según planilla del organizador (no calculados por tasa BCV).",
       sections: event.sections.map((sec) =>
         this.buildSectionPublicView(
           sec,
@@ -254,12 +278,14 @@ export class ConcertService {
       include: { section: true },
     });
     if (seats.length !== seatIds.length) {
-      throw new BadRequestException('Algunos asientos no existen');
+      throw new BadRequestException("Algunos asientos no existen");
     }
 
     for (const seat of seats) {
       if (seat.status === ConcertSeatStatus.SOLD) {
-        throw new ConflictException(`Asiento ${seat.rowLabel}-${seat.seatNumber} ya vendido`);
+        throw new ConflictException(
+          `Asiento ${seat.rowLabel}-${seat.seatNumber} ya vendido`,
+        );
       }
       if (
         seat.status === ConcertSeatStatus.HELD &&
@@ -267,7 +293,9 @@ export class ConcertService {
         seat.heldUntil > new Date() &&
         seat.holdToken !== holdToken
       ) {
-        throw new ConflictException(`Asiento ${seat.rowLabel}-${seat.seatNumber} en reserva`);
+        throw new ConflictException(
+          `Asiento ${seat.rowLabel}-${seat.seatNumber} en reserva`,
+        );
       }
     }
 
@@ -307,7 +335,9 @@ export class ConcertService {
       include: { section: true },
     });
     if (seats.length === 0) {
-      throw new BadRequestException('Reserva expirada o inválida. Vuelva a elegir asientos.');
+      throw new BadRequestException(
+        "Reserva expirada o inválida. Vuelva a elegir asientos.",
+      );
     }
 
     if (
@@ -315,7 +345,7 @@ export class ConcertService {
         dto.paymentMethod === ConcertPaymentMethod.BANK_TRANSFER) &&
       !dto.paymentReference?.trim()
     ) {
-      throw new BadRequestException('Indique número de referencia del pago');
+      throw new BadRequestException("Indique número de referencia del pago");
     }
 
     const totals = this.sumSeatTotals(seats, event);
@@ -323,7 +353,10 @@ export class ConcertService {
 
     let paymentProofUrl: string | null = null;
     if (paymentProof) {
-      paymentProofUrl = await this.uploadService.uploadFile(paymentProof, 'private/concert/payments');
+      paymentProofUrl = await this.uploadService.uploadFile(
+        paymentProof,
+        "private/concert/payments",
+      );
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -355,14 +388,18 @@ export class ConcertService {
         },
       });
 
-return created;
+      return created;
     });
 
     // Fire-and-forget: notify owner of new pending order
     setImmediate(() => {
       this.emailService
         .sendConcertOrderPendingToOwner(order, event)
-        .catch((err) => this.logger.error(`Failed to send order pending email: ${err.message}`));
+        .catch((err) =>
+          this.logger.error(
+            `Failed to send order pending email: ${err.message}`,
+          ),
+        );
     });
 
     return {
@@ -372,8 +409,8 @@ return created;
       amountBs: order.amountBs,
       message:
         dto.paymentMethod === ConcertPaymentMethod.CASH_USD
-          ? 'Reserva registrada. Acérquese a taquilla con efectivo en divisas para confirmar y recibir su QR.'
-          : 'Pago en revisión. Recibirá su entrada digital cuando el organizador confirme el pago.',
+          ? "Reserva registrada. Acérquese a taquilla con efectivo en divisas para confirmar y recibir su QR."
+          : "Pago en revisión. Recibirá su entrada digital cuando el organizador confirme el pago.",
     };
   }
 
@@ -385,12 +422,12 @@ return created;
         tickets: true,
       },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
     if (order.status === ConcertOrderStatus.PAID) {
       return this.getOrderDetail(order.organizationId, order.publicToken);
     }
     if (order.status === ConcertOrderStatus.CANCELLED) {
-      throw new BadRequestException('Orden cancelada');
+      throw new BadRequestException("Orden cancelada");
     }
 
     const seats = await this.prisma.concertSeat.findMany({
@@ -414,7 +451,9 @@ return created;
           data: { status: ConcertSeatStatus.SOLD },
         });
 
-        const existing = await tx.concertTicket.findUnique({ where: { seatId: seat.id } });
+        const existing = await tx.concertTicket.findUnique({
+          where: { seatId: seat.id },
+        });
         if (!existing) {
           const qrPayload = `MARFYL-TKT-${randomUUID()}`;
           const seatLabel =
@@ -443,14 +482,23 @@ return created;
     if (paidOrder) {
       setImmediate(() => {
         this.emailService
-          .sendConcertTicketsToBuyer(paidOrder, paidOrder.event, paidOrder.tickets)
+          .sendConcertTicketsToBuyer(
+            paidOrder,
+            paidOrder.event,
+            paidOrder.tickets,
+          )
           .then(async () => {
             await this.prisma.concertOrder.update({
               where: { id: orderId },
-              data: { emailSentAt: new Date(), emailSentTo: paidOrder.buyerEmail },
+              data: {
+                emailSentAt: new Date(),
+                emailSentTo: paidOrder.buyerEmail,
+              },
             });
           })
-          .catch((err) => this.logger.error(`Failed to send tickets email: ${err.message}`));
+          .catch((err) =>
+            this.logger.error(`Failed to send tickets email: ${err.message}`),
+          );
       });
     }
 
@@ -461,10 +509,14 @@ return created;
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
     const order = await this.prisma.concertOrder.findFirst({
-      where: { publicToken: orderToken, eventId: event.id, organizationId: event.organization.id },
-      include: { tickets: { orderBy: { id: 'asc' } } },
+      where: {
+        publicToken: orderToken,
+        eventId: event.id,
+        organizationId: event.organization.id,
+      },
+      include: { tickets: { orderBy: { id: "asc" } } },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
 
     if (order.status !== ConcertOrderStatus.PAID) {
       return {
@@ -473,7 +525,7 @@ return created;
         buyerName: order.buyerName,
         amountUsd: order.amountUsd,
         amountBs: order.amountBs,
-        message: 'Pago pendiente de confirmación',
+        message: "Pago pendiente de confirmación",
       };
     }
 
@@ -503,29 +555,42 @@ return created;
     await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, isActive: true },
-      orderBy: { eventStartsAt: 'asc' },
+      orderBy: { eventStartsAt: "asc" },
     });
     if (!event) {
       return { configured: false };
     }
 
-    const [available, held, sold, pendingOrders, paidOrders] = await Promise.all([
-      this.prisma.concertSeat.count({
-        where: { section: { eventId: event.id }, status: ConcertSeatStatus.AVAILABLE },
-      }),
-      this.prisma.concertSeat.count({
-        where: { section: { eventId: event.id }, status: ConcertSeatStatus.HELD },
-      }),
-      this.prisma.concertSeat.count({
-        where: { section: { eventId: event.id }, status: ConcertSeatStatus.SOLD },
-      }),
-      this.prisma.concertOrder.count({
-        where: { eventId: event.id, status: ConcertOrderStatus.PENDING_PAYMENT },
-      }),
-      this.prisma.concertOrder.count({
-        where: { eventId: event.id, status: ConcertOrderStatus.PAID },
-      }),
-    ]);
+    const [available, held, sold, pendingOrders, paidOrders] =
+      await Promise.all([
+        this.prisma.concertSeat.count({
+          where: {
+            section: { eventId: event.id },
+            status: ConcertSeatStatus.AVAILABLE,
+          },
+        }),
+        this.prisma.concertSeat.count({
+          where: {
+            section: { eventId: event.id },
+            status: ConcertSeatStatus.HELD,
+          },
+        }),
+        this.prisma.concertSeat.count({
+          where: {
+            section: { eventId: event.id },
+            status: ConcertSeatStatus.SOLD,
+          },
+        }),
+        this.prisma.concertOrder.count({
+          where: {
+            eventId: event.id,
+            status: ConcertOrderStatus.PENDING_PAYMENT,
+          },
+        }),
+        this.prisma.concertOrder.count({
+          where: { eventId: event.id, status: ConcertOrderStatus.PAID },
+        }),
+      ]);
 
     return {
       configured: true,
@@ -536,7 +601,14 @@ return created;
         eventStartsAt: event.eventStartsAt,
         publicUrl: `/evento/${event.slug}`,
       },
-      stats: { available, held, sold, pendingOrders, paidOrders, totalSeats: available + held + sold },
+      stats: {
+        available,
+        held,
+        sold,
+        pendingOrders,
+        paidOrders,
+        totalSeats: available + held + sold,
+      },
     };
   }
 
@@ -553,9 +625,16 @@ return created;
         eventId: event.id,
         ...(status ? { status } : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       include: {
-        tickets: { select: { id: true, seatLabel: true, sectionCode: true, checkedInAt: true } },
+        tickets: {
+          select: {
+            id: true,
+            seatLabel: true,
+            sectionCode: true,
+            checkedInAt: true,
+          },
+        },
       },
     });
   }
@@ -565,7 +644,7 @@ return created;
       where: { publicToken: orderToken, organizationId },
       include: { tickets: true, event: true },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
     return order;
   }
 
@@ -574,7 +653,7 @@ return created;
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
     return this.markOrderPaid(order.id, userId);
   }
 
@@ -583,23 +662,34 @@ return created;
       where: { id: orderId, organizationId, status: ConcertOrderStatus.PAID },
       include: { event: true, tickets: true },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada o no pagada');
-    if (!order.buyerEmail) throw new BadRequestException('Email del comprador no registrado');
+    if (!order) throw new NotFoundException("Orden no encontrada o no pagada");
+    if (!order.buyerEmail)
+      throw new BadRequestException("Email del comprador no registrado");
 
     try {
-      await this.emailService.sendConcertTicketsToBuyer(order, order.event, order.tickets);
+      await this.emailService.sendConcertTicketsToBuyer(
+        order,
+        order.event,
+        order.tickets,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Resend tickets email failed for order ${orderId}: ${message}`);
-      throw new BadRequestException('No se pudo reenviar el email. Intente nuevamente.');
+      this.logger.error(
+        `Resend tickets email failed for order ${orderId}: ${message}`,
+      );
+      throw new BadRequestException(
+        "No se pudo reenviar el email. Intente nuevamente.",
+      );
     }
 
     await this.prisma.concertOrder.update({
       where: { id: orderId },
       data: { emailSentAt: new Date(), emailSentTo: order.buyerEmail },
     });
-    this.logger.log(`Tickets email re-sent for order ${orderId} to ${order.buyerEmail}`);
-    return { ok: true, message: 'Email reenviado' };
+    this.logger.log(
+      `Tickets email re-sent for order ${orderId} to ${order.buyerEmail}`,
+    );
+    return { ok: true, message: "Email reenviado" };
   }
 
   async getOrderForProof(organizationId: number, orderId: number) {
@@ -616,7 +706,7 @@ return created;
       where: { organizationId, isActive: true },
       include: { organization: true },
     });
-    if (!event) throw new NotFoundException('Evento no configurado');
+    if (!event) throw new NotFoundException("Evento no configurado");
 
     const hold = await this.holdSeats(event.slug, dto.seatIds);
     const checkout = await this.checkoutPublic(event.slug, {
@@ -632,7 +722,7 @@ return created;
     const order = await this.prisma.concertOrder.findUnique({
       where: { publicToken: checkout.orderPublicToken },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
 
     return this.markOrderPaid(order.id, userId);
   }
@@ -646,10 +736,10 @@ return created;
       },
     });
     if (!ticket || ticket.order.organizationId !== organizationId) {
-      throw new NotFoundException('Entrada no válida');
+      throw new NotFoundException("Entrada no válida");
     }
     if (ticket.order.status !== ConcertOrderStatus.PAID) {
-      throw new BadRequestException('Entrada sin pago confirmado');
+      throw new BadRequestException("Entrada sin pago confirmado");
     }
     if (ticket.checkedInAt) {
       return {
@@ -659,7 +749,7 @@ return created;
         buyerName: ticket.order.buyerName,
         seatLabel: ticket.seatLabel,
         sectionCode: ticket.sectionCode,
-        message: 'Esta entrada ya fue utilizada',
+        message: "Esta entrada ya fue utilizada",
       };
     }
 
@@ -676,7 +766,7 @@ return created;
       seatLabel: ticket.seatLabel,
       sectionCode: ticket.sectionCode,
       eventTitle: ticket.order.event.title,
-      message: 'Acceso autorizado',
+      message: "Acceso autorizado",
     };
   }
 
@@ -686,16 +776,23 @@ return created;
       where: { id: orderId, organizationId },
       include: { tickets: true },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
     if (order.status !== ConcertOrderStatus.PENDING_PAYMENT) {
-      throw new BadRequestException('Solo se pueden cancelar órdenes pendientes');
+      throw new BadRequestException(
+        "Solo se pueden cancelar órdenes pendientes",
+      );
     }
 
     const seatIds = order.tickets.map((t) => t.seatId).filter(Boolean);
     if (seatIds.length > 0) {
       await this.prisma.concertSeat.updateMany({
         where: { id: { in: seatIds } },
-        data: { status: ConcertSeatStatus.AVAILABLE, heldUntil: null, holdToken: null, orderId: null },
+        data: {
+          status: ConcertSeatStatus.AVAILABLE,
+          heldUntil: null,
+          holdToken: null,
+          orderId: null,
+        },
       });
     }
 
@@ -704,7 +801,7 @@ return created;
       data: { status: ConcertOrderStatus.CANCELLED },
     });
 
-    return { ok: true, message: 'Orden cancelada' };
+    return { ok: true, message: "Orden cancelada" };
   }
 
   private catalogEntryToSeat(
@@ -727,9 +824,11 @@ return created;
 
   private buildSeatRowsFromCatalog(
     sectionId: number,
-    sectionCode: 'SALON' | 'VIP',
+    sectionCode: "SALON" | "VIP",
   ): Prisma.ConcertSeatCreateManyInput[] {
-    const entries = HEMENEGILDA_SEAT_CATALOG.filter((e) => e.sectionCode === sectionCode);
+    const entries = HEMENEGILDA_SEAT_CATALOG.filter(
+      (e) => e.sectionCode === sectionCode,
+    );
     const byMesa = new Map<number, SeatCatalogEntry[]>();
     for (const e of entries) {
       const list = byMesa.get(e.mesaNumber) ?? [];
@@ -761,17 +860,19 @@ return created;
     });
     if (sold > 0) {
       throw new BadRequestException(
-        'El evento usa un layout anterior y ya hay asientos vendidos. Contacte soporte MARFYL.',
+        "El evento usa un layout anterior y ya hay asientos vendidos. Contacte soporte MARFYL.",
       );
     }
-    await this.prisma.concertSeat.deleteMany({ where: { section: { eventId } } });
+    await this.prisma.concertSeat.deleteMany({
+      where: { section: { eventId } },
+    });
     await this.prisma.concertSection.deleteMany({ where: { eventId } });
 
     const salon = await this.prisma.concertSection.create({
       data: {
         eventId,
-        code: 'SALON',
-        label: 'Salón de eventos',
+        code: "SALON",
+        label: "Salón de eventos",
         rows: 0,
         cols: 0,
         sortOrder: 1,
@@ -780,8 +881,8 @@ return created;
     const vip = await this.prisma.concertSection.create({
       data: {
         eventId,
-        code: 'VIP',
-        label: 'Salón VIP',
+        code: "VIP",
+        label: "Salón VIP",
         rows: 0,
         cols: 0,
         sortOrder: 2,
@@ -789,8 +890,8 @@ return created;
     });
     await this.prisma.concertSeat.createMany({
       data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, 'SALON'),
-        ...this.buildSeatRowsFromCatalog(vip.id, 'VIP'),
+        ...this.buildSeatRowsFromCatalog(salon.id, "SALON"),
+        ...this.buildSeatRowsFromCatalog(vip.id, "VIP"),
       ],
     });
     await this.syncSeatCatalog(organizationId);
@@ -799,16 +900,19 @@ return created;
   /** Aplica precios y mesas del catálogo a un evento ya creado (sin borrar ventas). */
   async syncSeatCatalog(organizationId: number) {
     await this.assertConcertForOrganizationId(organizationId);
-    const slug = process.env.CONCERT_DEFAULT_SLUG || 'hemenegilda-capacidad';
+    const slug = process.env.CONCERT_DEFAULT_SLUG || "hemenegilda-capacidad";
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, slug },
       include: { sections: { include: { seats: true } } },
     });
-    if (!event) throw new NotFoundException('Evento no configurado. Use setup primero.');
+    if (!event)
+      throw new NotFoundException("Evento no configurado. Use setup primero.");
 
     for (const section of event.sections) {
-      const code = section.code as 'SALON' | 'VIP';
-      for (const entry of HEMENEGILDA_SEAT_CATALOG.filter((e) => e.sectionCode === code)) {
+      const code = section.code as "SALON" | "VIP";
+      for (const entry of HEMENEGILDA_SEAT_CATALOG.filter(
+        (e) => e.sectionCode === code,
+      )) {
         await this.prisma.concertSeat.updateMany({
           where: {
             sectionId: section.id,
@@ -832,12 +936,12 @@ return created;
         priceUsdStandard: 40,
         priceUsdVip: 70,
         priceBsVip: 85,
-        title: 'Horacio Blanco Acústico en Íntimo — Bodegón Monddy',
-        venueName: 'Av. Francisco Solano, Chacaíto, Caracas',
+        title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
+        venueName: "Av. Francisco Solano, Chacaíto, Caracas",
       },
     });
 
-    return { ok: true, message: 'Catálogo de precios y mesas actualizado' };
+    return { ok: true, message: "Catálogo de precios y mesas actualizado" };
   }
 
   /** Seed layout for Hemenegilda — 66 + 32 seats con precios por planilla */
@@ -847,9 +951,9 @@ return created;
       where: { id: organizationId },
       select: { slug: true, concertModuleEnabled: true },
     });
-    if (!orgRow) throw new NotFoundException('Organización no encontrada');
+    if (!orgRow) throw new NotFoundException("Organización no encontrada");
     this.assertConcertForOrganization(orgRow);
-    const slug = process.env.CONCERT_DEFAULT_SLUG || 'hemenegilda-capacidad';
+    const slug = process.env.CONCERT_DEFAULT_SLUG || "hemenegilda-capacidad";
     const existing = await this.prisma.concertEvent.findFirst({
       where: { organizationId, slug },
     });
@@ -860,34 +964,39 @@ return created;
       });
     }
 
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-    if (!org) throw new NotFoundException('Organización no encontrada');
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!org) throw new NotFoundException("Organización no encontrada");
 
     const event = await this.prisma.concertEvent.create({
       data: {
         organizationId,
         slug,
-        title: 'Horacio Blanco Acústico en Íntimo — Bodegón Monddy',
-        subtitle: 'Venta digital de entradas',
-        venueName: 'Av. Francisco Solano, Chacaíto, Caracas',
-        eventStartsAt: new Date('2026-06-15T20:00:00.000Z'),
+        title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
+        subtitle: "Venta digital de entradas",
+        venueName: "Av. Francisco Solano, Chacaíto, Caracas",
+        eventStartsAt: new Date("2026-06-15T20:00:00.000Z"),
         priceUsdStandard: 40,
         priceUsdVip: 70,
         priceBsVip: 85,
-        bankAccountName: 'Inversiones Hemenegilda Capacidad',
-        bankAccountInfo: 'Transferencia a cuenta titular Inversiones Hemenegilda Capacidad (solicite datos al organizador).',
-        pagoMovilInfo: 'Pago móvil a Inversiones Hemenegilda Capacidad — indique referencia al pagar.',
-        cashInstructions: 'Efectivo solo en divisas (USD) en taquilla del local.',
+        bankAccountName: "Inversiones Hemenegilda Capacidad",
+        bankAccountInfo:
+          "Transferencia a cuenta titular Inversiones Hemenegilda Capacidad (solicite datos al organizador).",
+        pagoMovilInfo:
+          "Pago móvil a Inversiones Hemenegilda Capacidad — indique referencia al pagar.",
+        cashInstructions:
+          "Efectivo solo en divisas (USD) en taquilla del local.",
         publicNotes:
-          'Pago completo obligatorio. No se aceptan cuentas ni medios de pago digital extranjeros. Precios en USD y Bs según zona y mesa.',
+          "Pago completo obligatorio. No se aceptan cuentas ni medios de pago digital extranjeros. Precios en USD y Bs según zona y mesa.",
       },
     });
 
     const salon = await this.prisma.concertSection.create({
       data: {
         eventId: event.id,
-        code: 'SALON',
-        label: 'Salón de eventos',
+        code: "SALON",
+        label: "Salón de eventos",
         rows: 0,
         cols: 0,
         sortOrder: 1,
@@ -897,8 +1006,8 @@ return created;
     const vip = await this.prisma.concertSection.create({
       data: {
         eventId: event.id,
-        code: 'VIP',
-        label: 'Salón VIP',
+        code: "VIP",
+        label: "Salón VIP",
         rows: 0,
         cols: 0,
         sortOrder: 2,
@@ -907,8 +1016,8 @@ return created;
 
     await this.prisma.concertSeat.createMany({
       data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, 'SALON'),
-        ...this.buildSeatRowsFromCatalog(vip.id, 'VIP'),
+        ...this.buildSeatRowsFromCatalog(salon.id, "SALON"),
+        ...this.buildSeatRowsFromCatalog(vip.id, "VIP"),
       ],
     });
 

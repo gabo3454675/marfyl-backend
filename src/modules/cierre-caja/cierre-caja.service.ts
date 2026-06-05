@@ -2,14 +2,14 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { PushNotificationService } from '@/modules/notifications/push-notification.service';
-import { CierreCajaEstado } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid';
-import type { AperturaCajaDto } from './dto/apertura-caja.dto';
-import type { CierreCajaZDto } from './dto/cierre-caja-z.dto';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { PushNotificationService } from "@/modules/notifications/push-notification.service";
+import { CierreCajaEstado } from "@prisma/client";
+import { v4 as uuidv4 } from "uuid";
+import type { AperturaCajaDto } from "./dto/apertura-caja.dto";
+import type { CierreCajaZDto } from "./dto/cierre-caja-z.dto";
 
 @Injectable()
 export class CierreCajaService {
@@ -27,12 +27,12 @@ export class CierreCajaService {
       where: {
         tenantId,
         userId,
-        estado: 'OPEN',
+        estado: "OPEN",
       },
     });
     if (existente) {
       throw new BadRequestException(
-        'Ya tienes un turno abierto. Realiza el cierre (Z-Report) antes de abrir otro.',
+        "Ya tienes un turno abierto. Realiza el cierre (Z-Report) antes de abrir otro.",
       );
     }
 
@@ -45,7 +45,7 @@ export class CierreCajaService {
       data: {
         organizationId: tenantId,
         rate: Number(org?.exchangeRate ?? 1),
-        source: 'BCV',
+        source: "BCV",
         effectiveAt: ahora,
       },
     });
@@ -81,7 +81,7 @@ export class CierreCajaService {
       where: {
         tenantId,
         userId,
-        estado: 'OPEN',
+        estado: "OPEN",
       },
       include: {
         user: { select: { id: true, email: true, fullName: true } },
@@ -96,11 +96,15 @@ export class CierreCajaService {
       new Date(),
     );
 
-    const ventasEfectivoUsd = Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
-    const ventasEfectivoBs = Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
-    const ventasPagoMovil = Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
+    const ventasEfectivoUsd =
+      Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
+    const ventasEfectivoBs =
+      Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
+    const ventasPagoMovil =
+      Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
     const ventasPos = Number(cierre.ventasPos ?? 0) + desglose.ventasPos;
-    const autoconsumosTotal = Number(cierre.autoconsumos) + desglose.autoconsumos;
+    const autoconsumosTotal =
+      Number(cierre.autoconsumos) + desglose.autoconsumos;
     const ventasEfectivoTotal = ventasEfectivoUsd;
     const ventasDigitalesTotal = ventasEfectivoBs + ventasPagoMovil + ventasPos;
 
@@ -113,7 +117,8 @@ export class CierreCajaService {
       ventasPagoMovil,
       ventasPos,
       autoconsumos: autoconsumosTotal,
-      notaAutoconsumos: 'Salida no monetaria (mermas, muestras). No suma al efectivo.',
+      notaAutoconsumos:
+        "Salida no monetaria (mermas, muestras). No suma al efectivo.",
     };
   }
 
@@ -125,12 +130,12 @@ export class CierreCajaService {
       where: {
         tenantId,
         userId,
-        estado: 'OPEN',
+        estado: "OPEN",
       },
     });
     if (!cierre) {
       throw new NotFoundException(
-        'No tienes un turno abierto. Realiza una apertura de caja primero.',
+        "No tienes un turno abierto. Realiza una apertura de caja primero.",
       );
     }
 
@@ -143,11 +148,15 @@ export class CierreCajaService {
     );
 
     const montoInicial = Number(cierre.montoInicial);
-    const ventasEfectivoUsd = Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
-    const ventasEfectivoBs = Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
-    const ventasPagoMovil = Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
+    const ventasEfectivoUsd =
+      Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
+    const ventasEfectivoBs =
+      Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
+    const ventasPagoMovil =
+      Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
     const ventasPos = Number(cierre.ventasPos ?? 0) + desglose.ventasPos;
-    const autoconsumosTotal = Number(cierre.autoconsumos) + desglose.autoconsumos;
+    const autoconsumosTotal =
+      Number(cierre.autoconsumos) + desglose.autoconsumos;
     const ventasEfectivoTotal = ventasEfectivoUsd;
     const ventasDigitalesTotal = ventasEfectivoBs + ventasPagoMovil + ventasPos;
     const totalUsd = montoInicial + ventasEfectivoUsd;
@@ -168,7 +177,7 @@ export class CierreCajaService {
       data: {
         organizationId: tenantId,
         rate: Number(org?.exchangeRate ?? 1),
-        source: 'BCV',
+        source: "BCV",
         effectiveAt: ahora,
       },
     });
@@ -207,8 +216,14 @@ export class CierreCajaService {
     if (diferencia < -5) {
       this.pushNotification
         .notifyCierreFaltante({
-          organizationName: (actualizado.tenant as { nombre?: string })?.nombre ?? 'Organización',
-          cajero: (actualizado.user as { fullName?: string; email?: string })?.fullName ?? (actualizado.user as { email?: string })?.email ?? 'Cajero',
+          organizationName:
+            (actualizado.tenant as { nombre?: string })?.nombre ??
+            "Organización",
+          cajero:
+            (actualizado.user as { fullName?: string; email?: string })
+              ?.fullName ??
+            (actualizado.user as { email?: string })?.email ??
+            "Cajero",
           diferencia,
           cierreId: actualizado.id,
         })
@@ -218,7 +233,8 @@ export class CierreCajaService {
     return {
       ...actualizado,
       montoEsperado,
-      notaAutoconsumos: 'Salida no monetaria (mermas, muestras). No suma al efectivo.',
+      notaAutoconsumos:
+        "Salida no monetaria (mermas, muestras). No suma al efectivo.",
     };
   }
 
@@ -231,7 +247,7 @@ export class CierreCajaService {
       where: {
         tenantId,
         userId,
-        estado: 'OPEN',
+        estado: "OPEN",
       },
     });
     if (!cierre) {
@@ -247,9 +263,12 @@ export class CierreCajaService {
     );
 
     const montoInicial = Number(cierre.montoInicial);
-    const ventasEfectivoUsd = Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
-    const ventasEfectivoBs = Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
-    const ventasPagoMovil = Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
+    const ventasEfectivoUsd =
+      Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
+    const ventasEfectivoBs =
+      Number(cierre.ventasEfectivoBs ?? 0) + desglose.ventasEfectivoBs;
+    const ventasPagoMovil =
+      Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
     const totalUsd = montoInicial + ventasEfectivoUsd;
     const totalVes = ventasEfectivoBs + ventasPagoMovil;
 
@@ -257,7 +276,7 @@ export class CierreCajaService {
       montoFisicoUsd: totalUsd,
       montoFisicoVes: totalVes,
       observaciones:
-        'Cierre automático del sistema (23:50, hora Caracas). Monto físico declarado = total esperado según ventas registradas.',
+        "Cierre automático del sistema (23:50, hora Caracas). Monto físico declarado = total esperado según ventas registradas.",
     });
   }
 
@@ -266,7 +285,7 @@ export class CierreCajaService {
    */
   async resumenByToken(token: string) {
     const cierre = await this.prisma.cierreCaja.findFirst({
-      where: { publicToken: token, estado: 'CLOSED' },
+      where: { publicToken: token, estado: "CLOSED" },
       include: {
         user: { select: { fullName: true, email: true } },
         tenant: { select: { nombre: true } },
@@ -284,19 +303,25 @@ export class CierreCajaService {
       montoInicial: Number(cierre.montoInicial),
       ventasEfectivo: Number(cierre.ventasEfectivo),
       ventasDigitales: Number(cierre.ventasDigitales),
-      ventasEfectivoUsd: Number(cierre.ventasEfectivoUsd ?? cierre.ventasEfectivo ?? 0),
+      ventasEfectivoUsd: Number(
+        cierre.ventasEfectivoUsd ?? cierre.ventasEfectivo ?? 0,
+      ),
       ventasEfectivoBs: Number(cierre.ventasEfectivoBs ?? 0),
       ventasPagoMovil: Number(cierre.ventasPagoMovil ?? 0),
       ventasPos: Number(cierre.ventasPos ?? 0),
       autoconsumos: Number(cierre.autoconsumos),
-      notaAutoconsumos: 'Salida no monetaria (mermas, muestras). No suma al efectivo.',
-      montoFisico: cierre.montoFisico != null ? Number(cierre.montoFisico) : null,
+      notaAutoconsumos:
+        "Salida no monetaria (mermas, muestras). No suma al efectivo.",
+      montoFisico:
+        cierre.montoFisico != null ? Number(cierre.montoFisico) : null,
       montoEsperado,
       diferencia: cierre.diferencia != null ? Number(cierre.diferencia) : null,
       totalUsd: cierre.totalUsd != null ? Number(cierre.totalUsd) : null,
       totalVes: cierre.totalVes != null ? Number(cierre.totalVes) : null,
-      diferenciaUsd: cierre.diferenciaUsd != null ? Number(cierre.diferenciaUsd) : null,
-      diferenciaVes: cierre.diferenciaVes != null ? Number(cierre.diferenciaVes) : null,
+      diferenciaUsd:
+        cierre.diferenciaUsd != null ? Number(cierre.diferenciaUsd) : null,
+      diferenciaVes:
+        cierre.diferenciaVes != null ? Number(cierre.diferenciaVes) : null,
       impreso: cierre.impreso ?? false,
       observaciones: cierre.observaciones,
     };
@@ -311,20 +336,25 @@ export class CierreCajaService {
     anchoMm: 58 | 80,
   ): Promise<{ ticketText: string; resumenUrl: string; qrDataUrl: string }> {
     const cierre = await this.prisma.cierreCaja.findFirst({
-      where: { id: cierreId, tenantId, estado: 'CLOSED' },
+      where: { id: cierreId, tenantId, estado: "CLOSED" },
       include: {
         user: { select: { fullName: true } },
         tenant: { select: { nombre: true } },
       },
     });
     if (!cierre || !cierre.publicToken) {
-      throw new NotFoundException('Cierre no encontrado o sin token de resumen.');
+      throw new NotFoundException(
+        "Cierre no encontrado o sin token de resumen.",
+      );
     }
 
-    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3003');
+    const frontendUrl = this.config.get<string>(
+      "FRONTEND_URL",
+      "http://localhost:3003",
+    );
     const resumenUrl = `${frontendUrl}/cierre/resumen/${cierre.publicToken}`;
 
-    const qrcode = await import('qrcode');
+    const qrcode = await import("qrcode");
     const qrDataUrl = await qrcode.toDataURL(resumenUrl, {
       width: 180,
       margin: 1,
@@ -334,45 +364,50 @@ export class CierreCajaService {
     const line = (s: string) => s.slice(0, charsPerLine);
     const center = (s: string) => {
       const pad = Math.max(0, Math.floor((charsPerLine - s.length) / 2));
-      return (' '.repeat(pad) + s).slice(0, charsPerLine);
+      return (" ".repeat(pad) + s).slice(0, charsPerLine);
     };
     const fmt = (n: number) => n.toFixed(2);
-    const montoEsperado = Number(cierre.montoInicial) + Number(cierre.ventasEfectivo);
+    const montoEsperado =
+      Number(cierre.montoInicial) + Number(cierre.ventasEfectivo);
     const dif = cierre.diferencia != null ? Number(cierre.diferencia) : null;
-    const efectivoUsd = Number(cierre.ventasEfectivoUsd ?? cierre.ventasEfectivo ?? 0);
+    const efectivoUsd = Number(
+      cierre.ventasEfectivoUsd ?? cierre.ventasEfectivo ?? 0,
+    );
     const efectivoBs = Number(cierre.ventasEfectivoBs ?? 0);
     const pagoMovil = Number(cierre.ventasPagoMovil ?? 0);
     const pos = Number(cierre.ventasPos ?? 0);
 
     const ticketText = [
-      '',
+      "",
       center(cierre.tenant.nombre),
-      center('CIERRE DE CAJA (Z-Report)'),
-      '',
-      `Cajero: ${line((cierre.user.fullName || 'N/A').slice(0, charsPerLine - 8))}`,
-      `Cierre: ${new Date(cierre.fechaCierre).toLocaleString('es')}`,
-      '',
-      '--- CONCILIACION ---',
+      center("CIERRE DE CAJA (Z-Report)"),
+      "",
+      `Cajero: ${line((cierre.user.fullName || "N/A").slice(0, charsPerLine - 8))}`,
+      `Cierre: ${new Date(cierre.fechaCierre).toLocaleString("es")}`,
+      "",
+      "--- CONCILIACION ---",
       `Monto inicial $    ${fmt(Number(cierre.montoInicial))}`,
-      '',
-      '  Efectivo $       ' + fmt(efectivoUsd),
-      '  Efectivo Bs      ' + fmt(efectivoBs),
-      '  Pago Movil Bs    ' + fmt(pagoMovil),
-      '  POS / Zelle $    ' + fmt(pos),
-      '',
-      '  Salida no monet. ' + fmt(Number(cierre.autoconsumos)),
-      '  (mermas/muestras)',
-      '---',
+      "",
+      "  Efectivo $       " + fmt(efectivoUsd),
+      "  Efectivo Bs      " + fmt(efectivoBs),
+      "  Pago Movil Bs    " + fmt(pagoMovil),
+      "  POS / Zelle $    " + fmt(pos),
+      "",
+      "  Salida no monet. " + fmt(Number(cierre.autoconsumos)),
+      "  (mermas/muestras)",
+      "---",
       `Monto esperado $   ${fmt(montoEsperado)}`,
       `Monto fisico $     ${fmt(Number(cierre.montoFisico ?? 0))}`,
-      `Diferencia         ${dif != null ? fmt(dif) : '-'}`,
-      '',
-      cierre.observaciones ? `Obs: ${line(cierre.observaciones)}` : '',
-      '',
-      center('Escanee el QR para ver'),
-      center('el resumen digital'),
-      '',
-    ].filter(Boolean).join('\n');
+      `Diferencia         ${dif != null ? fmt(dif) : "-"}`,
+      "",
+      cierre.observaciones ? `Obs: ${line(cierre.observaciones)}` : "",
+      "",
+      center("Escanee el QR para ver"),
+      center("el resumen digital"),
+      "",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     return { ticketText, resumenUrl, qrDataUrl };
   }
@@ -382,10 +417,12 @@ export class CierreCajaService {
    */
   async marcarImpreso(tenantId: number, cierreId: number) {
     const cierre = await this.prisma.cierreCaja.findFirst({
-      where: { id: cierreId, tenantId, estado: 'CLOSED' },
+      where: { id: cierreId, tenantId, estado: "CLOSED" },
     });
     if (!cierre) {
-      throw new NotFoundException('Cierre no encontrado o no pertenece a esta organización.');
+      throw new NotFoundException(
+        "Cierre no encontrado o no pertenece a esta organización.",
+      );
     }
     await this.prisma.cierreCaja.update({
       where: { id: cierreId },
@@ -408,7 +445,7 @@ export class CierreCajaService {
         ...(opts?.userId != null && { userId: opts.userId }),
         ...(opts?.estado != null && { estado: opts.estado }),
       },
-      orderBy: { fechaCierre: 'desc' },
+      orderBy: { fechaCierre: "desc" },
       take: limit,
       include: {
         user: { select: { id: true, email: true, fullName: true } },
@@ -436,13 +473,15 @@ export class CierreCajaService {
         where: {
           organizationId: tenantId,
           sellerId: userId,
-          status: { not: 'CANCELLED' },
+          status: { not: "CANCELLED" },
           createdAt: { gte: desde, lte: hasta },
         },
         select: {
           totalAmount: true,
           paymentMethod: true,
-          paymentLines: { select: { method: true, amount: true, currency: true } },
+          paymentLines: {
+            select: { method: true, amount: true, currency: true },
+          },
         },
       }),
       this.prisma.expense.findMany({
@@ -464,18 +503,18 @@ export class CierreCajaService {
         for (const line of inv.paymentLines) {
           const amount = Number(line.amount);
           switch (line.method) {
-            case 'CASH_USD':
+            case "CASH_USD":
               ventasEfectivoUsd += amount;
               break;
-            case 'CASH_BS':
+            case "CASH_BS":
               ventasEfectivoBs += amount;
               break;
-            case 'PAGO_MOVIL':
+            case "PAGO_MOVIL":
               ventasPagoMovil += amount;
               break;
-            case 'ZELLE':
-            case 'CARD':
-            case 'CREDIT':
+            case "ZELLE":
+            case "CARD":
+            case "CREDIT":
             default:
               ventasPos += amount;
               break;
@@ -483,7 +522,7 @@ export class CierreCajaService {
         }
       } else {
         const amount = Number(inv.totalAmount);
-        if (inv.paymentMethod === 'CASH') {
+        if (inv.paymentMethod === "CASH") {
           ventasEfectivoUsd += amount;
         } else {
           ventasPos += amount;
@@ -493,6 +532,12 @@ export class CierreCajaService {
 
     const autoconsumos = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-    return { ventasEfectivoUsd, ventasEfectivoBs, ventasPagoMovil, ventasPos, autoconsumos };
+    return {
+      ventasEfectivoUsd,
+      ventasEfectivoBs,
+      ventasPagoMovil,
+      ventasPos,
+      autoconsumos,
+    };
   }
 }

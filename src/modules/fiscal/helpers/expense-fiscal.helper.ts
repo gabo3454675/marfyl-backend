@@ -1,4 +1,4 @@
-import { computeWithholdingIva, round2 } from './tax-calculator';
+import { computeWithholdingIva, round2 } from "./tax-calculator";
 
 export interface ExpenseFiscalInput {
   amount: number;
@@ -18,10 +18,16 @@ export interface ExpenseFiscalResult {
   withholdingIvaAmount: number;
 }
 
-export function computeExpenseFiscal(input: ExpenseFiscalInput): ExpenseFiscalResult {
+export function computeExpenseFiscal(
+  input: ExpenseFiscalInput,
+): ExpenseFiscalResult {
   const amount = round2(Math.max(0, input.amount));
 
-  if (input.baseGeneral != null || input.ivaAmount != null || input.baseExempt != null) {
+  if (
+    input.baseGeneral != null ||
+    input.ivaAmount != null ||
+    input.baseExempt != null
+  ) {
     const baseExempt = round2(input.baseExempt ?? 0);
     const baseReduced = round2(input.baseReduced ?? 0);
     const baseGeneral = round2(input.baseGeneral ?? 0);
@@ -29,7 +35,13 @@ export function computeExpenseFiscal(input: ExpenseFiscalInput): ExpenseFiscalRe
     const withholdingIvaAmount = input.applyWithholding
       ? computeWithholdingIva(ivaAmount)
       : 0;
-    return { baseExempt, baseReduced, baseGeneral, ivaAmount, withholdingIvaAmount };
+    return {
+      baseExempt,
+      baseReduced,
+      baseGeneral,
+      ivaAmount,
+      withholdingIvaAmount,
+    };
   }
 
   if (input.isExempt) {

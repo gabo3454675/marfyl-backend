@@ -2,7 +2,7 @@
 export const IVA_GENERAL_RATE = 16;
 export const IVA_REDUCED_RATE = 8;
 
-export type TaxBucket = 'exempt' | 'reduced' | 'general';
+export type TaxBucket = "exempt" | "reduced" | "general";
 
 export interface LineTaxInput {
   /** Monto de la línea sin IVA (subtotal). */
@@ -36,7 +36,7 @@ export function round2(n: number): number {
 export function computeLineTax(line: LineTaxInput): LineTaxResult {
   const amount = round2(Math.max(0, line.amount));
   if (line.isExempt || line.taxRate === 0) {
-    return { taxableBase: 0, ivaLine: 0, taxRate: 0, bucket: 'exempt' };
+    return { taxableBase: 0, ivaLine: 0, taxRate: 0, bucket: "exempt" };
   }
 
   const rate = line.taxRate ?? IVA_GENERAL_RATE;
@@ -46,7 +46,7 @@ export function computeLineTax(line: LineTaxInput): LineTaxResult {
       taxableBase: amount,
       ivaLine,
       taxRate: IVA_REDUCED_RATE,
-      bucket: 'reduced',
+      bucket: "reduced",
     };
   }
 
@@ -55,7 +55,7 @@ export function computeLineTax(line: LineTaxInput): LineTaxResult {
     taxableBase: amount,
     ivaLine,
     taxRate: IVA_GENERAL_RATE,
-    bucket: 'general',
+    bucket: "general",
   };
 }
 
@@ -72,9 +72,9 @@ export function computeInvoiceTax(lines: LineTaxInput[]): InvoiceTaxTotals {
     subtotal += lineAmount;
     const r = computed[i];
     ivaAmount += r.ivaLine;
-    if (r.bucket === 'exempt') {
+    if (r.bucket === "exempt") {
       baseExempt += lineAmount;
-    } else if (r.bucket === 'reduced') {
+    } else if (r.bucket === "reduced") {
       baseReduced += r.taxableBase;
     } else {
       baseGeneral += r.taxableBase;

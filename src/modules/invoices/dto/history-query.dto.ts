@@ -1,5 +1,5 @@
-import { IsDateString, IsOptional, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsDateString, IsOptional, IsInt, Min } from "class-validator";
+import { Type } from "class-transformer";
 
 /**
  * Parámetros de consulta para GET /invoices/history.
@@ -8,14 +8,11 @@ import { Type } from 'class-transformer';
 export class InvoiceHistoryQueryDto {
   @IsDateString(
     {},
-    { message: 'startDate debe ser una fecha válida (ISO 8601)' },
+    { message: "startDate debe ser una fecha válida (ISO 8601)" },
   )
   startDate: string;
 
-  @IsDateString(
-    {},
-    { message: 'endDate debe ser una fecha válida (ISO 8601)' },
-  )
+  @IsDateString({}, { message: "endDate debe ser una fecha válida (ISO 8601)" })
   endDate: string;
 
   /** ID de la organización a consultar. Solo superadmin puede indicar una org distinta a la activa. */

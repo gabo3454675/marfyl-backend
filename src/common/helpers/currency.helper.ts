@@ -13,7 +13,10 @@ export function round2(value: number): number {
  * Convierte monto en USD a BS usando la tasa configurada.
  * Usar antes de aplicar IVA o al registrar credit_transactions (amount_bs).
  */
-export function convertUsdToBs(amountUsd: number, exchangeRate: number): number {
+export function convertUsdToBs(
+  amountUsd: number,
+  exchangeRate: number,
+): number {
   return round2(amountUsd * exchangeRate);
 }
 

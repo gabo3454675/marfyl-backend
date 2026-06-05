@@ -2,19 +2,19 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
-import { PushNotificationService } from '@/modules/notifications/push-notification.service';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import type { CreateMovementDto } from './dto/create-movement.dto';
-import { MovementType, ConsumptionReason } from '@prisma/client';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
+import { PushNotificationService } from "@/modules/notifications/push-notification.service";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import type { CreateMovementDto } from "./dto/create-movement.dto";
+import { MovementType, ConsumptionReason } from "@prisma/client";
 
-const AUTOCONSUMO_CATEGORY_NAME = 'Autoconsumo y Mermas';
+const AUTOCONSUMO_CATEGORY_NAME = "Autoconsumo y Mermas";
 
 function defaultConsumptionReason(type: MovementType): ConsumptionReason {
-  if (type === 'MERMA_VENCIDO' || type === 'MERMA_DANADO') return 'MERMA';
-  return 'USO_OPERATIVO';
+  if (type === "MERMA_VENCIDO" || type === "MERMA_DANADO") return "MERMA";
+  return "USO_OPERATIVO";
 }
 
 @Injectable()
@@ -42,7 +42,13 @@ export class InventoryMovementsService {
         id: dto.productId,
         organizationId,
       },
-      select: { id: true, name: true, stock: true, costPrice: true, minStock: true },
+      select: {
+        id: true,
+        name: true,
+        stock: true,
+        costPrice: true,
+        minStock: true,
+      },
     });
 
     if (!product) {
@@ -58,11 +64,16 @@ export class InventoryMovementsService {
     }
 
     const movementType = dto.type as MovementType;
-    const unitCost = dto.unitCostAtTransaction ?? Number(product.costPrice ?? 0);
+    const unitCost =
+      dto.unitCostAtTransaction ?? Number(product.costPrice ?? 0);
     const totalCost = dto.quantity * unitCost;
-    const consumptionReason = dto.consumptionReason ?? defaultConsumptionReason(movementType);
+    const consumptionReason =
+      dto.consumptionReason ?? defaultConsumptionReason(movementType);
 
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     const result = await this.prisma.$transaction(async (tx) => {
       const movement = await tx.inventoryMovement.create({
@@ -83,15 +94,19 @@ export class InventoryMovementsService {
         data: { stock: { decrement: dto.quantity } },
       });
 
-      const category = await this.getOrCreateAutoconsumoCategory(tx, organizationId, companyId);
+      const category = await this.getOrCreateAutoconsumoCategory(
+        tx,
+        organizationId,
+        companyId,
+      );
       await tx.expense.create({
         data: {
           companyId,
           organizationId,
           date: new Date(),
           amount: totalCost,
-          description: `Autoconsumo/Merma: ${product.name} x ${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ''}`,
-          status: 'PAID',
+          description: `Autoconsumo/Merma: ${product.name} x ${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ""}`,
+          status: "PAID",
           categoryId: category.id,
           inventoryMovementId: movement.id,
         },
@@ -107,8 +122,8 @@ export class InventoryMovementsService {
     await this.activityLog.log({
       organizationId,
       userId,
-      action: 'AUTOCONSUMO_REGISTERED',
-      entityType: 'inventory_movement',
+      action: "AUTOCONSUMO_REGISTERED",
+      entityType: "inventory_movement",
       entityId: String(result.movement.id),
       newValue: {
         productId: dto.productId,
@@ -118,7 +133,7 @@ export class InventoryMovementsService {
         consumptionReason,
         totalCost,
       },
-      summary: `Autoconsumo: ${product.name} x${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ''}. Costo: $${totalCost.toFixed(2)}.`,
+      summary: `Autoconsumo: ${product.name} x${dto.quantity} (${dto.type})${dto.reason ? ` - ${dto.reason}` : ""}. Costo: $${totalCost.toFixed(2)}.`,
     });
 
     const minStock = product.minStock ?? 5;
@@ -129,7 +144,7 @@ export class InventoryMovementsService {
       });
       this.pushNotification
         .notifyStockBajo({
-          organizationName: org?.nombre ?? 'Organización',
+          organizationName: org?.nombre ?? "Organización",
           productName: product.name,
           productId: dto.productId,
           stockActual: result.newStock,
@@ -156,7 +171,12 @@ export class InventoryMovementsService {
   }
 
   private async getOrCreateAutoconsumoCategory(
-    tx: { expenseCategory: { findFirst: (args: any) => Promise<any>; create: (args: any) => Promise<any> } },
+    tx: {
+      expenseCategory: {
+        findFirst: (args: any) => Promise<any>;
+        create: (args: any) => Promise<any>;
+      };
+    },
     organizationId: number,
     companyId: number,
   ) {
@@ -172,7 +192,8 @@ export class InventoryMovementsService {
           companyId,
           organizationId,
           name: AUTOCONSUMO_CATEGORY_NAME,
-          description: 'Gastos por autoconsumo, mermas y uso operativo de inventario',
+          description:
+            "Gastos por autoconsumo, mermas y uso operativo de inventario",
         },
       });
     }
@@ -194,7 +215,7 @@ export class InventoryMovementsService {
         ...(productId != null && { productId }),
         ...(type != null && { type }),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: Math.min(limit, 500),
       include: {
         product: { select: { id: true, name: true, sku: true } },
@@ -216,7 +237,9 @@ export class InventoryMovementsService {
     const where: any = {
       tenantId: organizationId,
       quantity: { lt: 0 },
-      type: { in: ['AUTOCONSUMO', 'MERMA_VENCIDO', 'MERMA_DANADO', 'USO_TALLER'] },
+      type: {
+        in: ["AUTOCONSUMO", "MERMA_VENCIDO", "MERMA_DANADO", "USO_TALLER"],
+      },
     };
     if (dateFrom) where.createdAt = { ...where.createdAt, gte: dateFrom };
     if (dateTo) {
@@ -239,10 +262,16 @@ export class InventoryMovementsService {
     });
 
     const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-    const totalCost = (m: { quantity: number; unitCostAtTransaction: unknown }) =>
-      Math.abs(m.quantity) * Number(m.unitCostAtTransaction ?? 0);
+    const totalCost = (m: {
+      quantity: number;
+      unitCostAtTransaction: unknown;
+    }) => Math.abs(m.quantity) * Number(m.unitCostAtTransaction ?? 0);
 
-    const economicImpactByDay: { date: string; totalCost: number; count: number }[] = [];
+    const economicImpactByDay: {
+      date: string;
+      totalCost: number;
+      count: number;
+    }[] = [];
     const dayMap = new Map<string, { totalCost: number; count: number }>();
     for (const m of movements) {
       const date = toDateStr(m.createdAt);
@@ -255,7 +284,10 @@ export class InventoryMovementsService {
     dayMap.forEach((v, date) => economicImpactByDay.push({ date, ...v }));
     economicImpactByDay.sort((a, b) => a.date.localeCompare(b.date));
 
-    const productMap = new Map<number, { productName: string; quantity: number; totalCost: number }>();
+    const productMap = new Map<
+      number,
+      { productName: string; quantity: number; totalCost: number }
+    >();
     for (const m of movements) {
       const prev = productMap.get(m.productId) ?? {
         productName: m.product.name,
@@ -271,18 +303,23 @@ export class InventoryMovementsService {
       .sort((a, b) => b.totalCost - a.totalCost)
       .slice(0, 15);
 
-    const reasonMap = new Map<string | null, { count: number; totalCost: number }>();
+    const reasonMap = new Map<
+      string | null,
+      { count: number; totalCost: number }
+    >();
     for (const m of movements) {
-      const reason = m.consumptionReason ?? 'SIN_CLASIFICAR';
+      const reason = m.consumptionReason ?? "SIN_CLASIFICAR";
       const prev = reasonMap.get(reason) ?? { count: 0, totalCost: 0 };
       prev.count += 1;
       prev.totalCost += totalCost(m);
       reasonMap.set(reason, prev);
     }
-    const reasonDistribution = Array.from(reasonMap.entries()).map(([reason, v]) => ({
-      reason,
-      ...v,
-    }));
+    const reasonDistribution = Array.from(reasonMap.entries()).map(
+      ([reason, v]) => ({
+        reason,
+        ...v,
+      }),
+    );
 
     return {
       economicImpactByDay,

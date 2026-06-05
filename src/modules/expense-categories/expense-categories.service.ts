@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 @Injectable()
 export class ExpenseCategoriesService {
@@ -11,7 +11,7 @@ export class ExpenseCategoriesService {
         organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
       },
       orderBy: {
-        name: 'asc',
+        name: "asc",
       },
     });
   }

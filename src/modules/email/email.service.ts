@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
-import { ConcertOrder, ConcertEvent, ConcertTicket } from '@prisma/client';
-import * as QRCode from 'qrcode';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Resend } from "resend";
+import { ConcertOrder, ConcertEvent, ConcertTicket } from "@prisma/client";
+import * as QRCode from "qrcode";
 
 @Injectable()
 export class EmailService {
@@ -15,17 +15,23 @@ export class EmailService {
   private readonly frontendUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('RESEND_API_KEY');
+    const apiKey = this.config.get<string>("RESEND_API_KEY");
     this.emailEnabled = !!apiKey?.trim();
     this.resend = this.emailEnabled ? new Resend(apiKey) : null;
     if (!this.emailEnabled) {
-      this.logger.warn('RESEND_API_KEY no configurada — emails desactivados (dev local OK).');
+      this.logger.warn(
+        "RESEND_API_KEY no configurada — emails desactivados (dev local OK).",
+      );
     }
-    this.fromEmail = this.config.get<string>('RESEND_FROM_EMAIL') || 'entradas@marfyl.com';
-    this.fromName = this.config.get<string>('RESEND_FROM_NAME') || 'MARFYL Entradas';
+    this.fromEmail =
+      this.config.get<string>("RESEND_FROM_EMAIL") || "entradas@marfyl.com";
+    this.fromName =
+      this.config.get<string>("RESEND_FROM_NAME") || "MARFYL Entradas";
     this.ownerNotifyEmail =
-      this.config.get<string>('CONCERT_OWNER_NOTIFY_EMAIL') || 'owner@example.com';
-    this.frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3003';
+      this.config.get<string>("CONCERT_OWNER_NOTIFY_EMAIL") ||
+      "owner@example.com";
+    this.frontendUrl =
+      this.config.get<string>("FRONTEND_URL") || "http://localhost:3003";
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -52,7 +58,9 @@ export class EmailService {
     tickets: ConcertTicket[],
   ): Promise<void> {
     if (!order.buyerEmail) {
-      this.logger.warn(`Cannot send tickets: buyerEmail is null for order ${order.id}`);
+      this.logger.warn(
+        `Cannot send tickets: buyerEmail is null for order ${order.id}`,
+      );
       return;
     }
 
@@ -63,8 +71,8 @@ export class EmailService {
     const ticketsWithQr = await Promise.all(
       tickets.map(async (ticket) => {
         const qrDataUrl = await QRCode.toDataURL(ticket.qrPayload, {
-          errorCorrectionLevel: 'M',
-          type: 'image/png',
+          errorCorrectionLevel: "M",
+          type: "image/png",
           width: 200,
           margin: 2,
         });
@@ -89,9 +97,15 @@ export class EmailService {
   // ─────────────────────────────────────────────────────────────
   // Internal helpers
   // ─────────────────────────────────────────────────────────────
-  public async sendEmail(params: { to: string; subject: string; html: string }): Promise<void> {
+  public async sendEmail(params: {
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<void> {
     if (!this.resend) {
-      this.logger.warn(`Email omitido (sin RESEND_API_KEY): ${params.subject} → ${params.to}`);
+      this.logger.warn(
+        `Email omitido (sin RESEND_API_KEY): ${params.subject} → ${params.to}`,
+      );
       return;
     }
     try {
@@ -117,14 +131,20 @@ export class EmailService {
     event: ConcertEvent,
   ): string {
     const formatBs = (amount: number) =>
-      new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(amount);
+      new Intl.NumberFormat("es-VE", {
+        style: "currency",
+        currency: "VES",
+      }).format(amount);
     const formatUsd = (amount: number) =>
-      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(amount);
 
     const paymentMethodLabels: Record<string, string> = {
-      CASH_USD: 'Efectivo USD',
-      PAGO_MOVIL: 'Pago Móvil',
-      BANK_TRANSFER: 'Transferencia bancaria',
+      CASH_USD: "Efectivo USD",
+      PAGO_MOVIL: "Pago Móvil",
+      BANK_TRANSFER: "Transferencia bancaria",
     };
 
     return `<!DOCTYPE html>
@@ -166,7 +186,7 @@ export class EmailService {
       <p class="label">Evento</p>
       <p class="value">${event.title}</p>
       <p style="font-size:13px; color:#666; margin-top:4px;">📍 ${event.venueName}</p>
-      <p style="font-size:13px; color:#666; margin-top:4px;">📅 ${new Date(event.eventStartsAt).toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' })}</p>
+      <p style="font-size:13px; color:#666; margin-top:4px;">📅 ${new Date(event.eventStartsAt).toLocaleString("es-VE", { dateStyle: "long", timeStyle: "short" })}</p>
     </div>
 
     <div class="section">
@@ -174,14 +194,14 @@ export class EmailService {
       <p class="value">${order.buyerName}</p>
       <p style="margin:4px 0 0; color:#555;">📞 ${order.buyerPhone}</p>
       <p style="margin:4px 0 0; color:#555;">🪪 ${order.buyerIdDocument}</p>
-      ${order.buyerEmail ? `<p style="margin:4px 0 0; color:#555;">✉️ ${order.buyerEmail}</p>` : ''}
+      ${order.buyerEmail ? `<p style="margin:4px 0 0; color:#555;">✉️ ${order.buyerEmail}</p>` : ""}
     </div>
 
     <div class="section">
       <p class="label">Monto total</p>
       <p class="amount">${formatUsd(Number(order.amountUsd))} <small>(Bs ${formatBs(Number(order.amountBs))})</small></p>
       <p style="margin-top:8px; font-size:13px; color:#666;">💳 Método: ${paymentMethodLabels[order.paymentMethod] || order.paymentMethod}</p>
-      ${order.paymentReference ? `<p style="margin:4px 0 0; font-size:13px; color:#666;">🔖 Referencia: ${order.paymentReference}</p>` : ''}
+      ${order.paymentReference ? `<p style="margin:4px 0 0; font-size:13px; color:#666;">🔖 Referencia: ${order.paymentReference}</p>` : ""}
     </div>
 
     <div class="section" style="text-align:center;">
@@ -218,7 +238,7 @@ export class EmailService {
         </td>
       </tr>`,
       )
-      .join('');
+      .join("");
 
     return `<!DOCTYPE html>
 <html lang="es">
@@ -254,7 +274,7 @@ export class EmailService {
     <div class="event-info">
       <p><strong>${event.title}</strong></p>
       <p class="venue">📍 ${event.venueName}</p>
-      <p class="venue">📅 ${new Date(event.eventStartsAt).toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' })}</p>
+      <p class="venue">📅 ${new Date(event.eventStartsAt).toLocaleString("es-VE", { dateStyle: "long", timeStyle: "short" })}</p>
     </div>
 
     <div class="instruction">

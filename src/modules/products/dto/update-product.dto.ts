@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsNumber, IsPositive, Min, IsIn, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsPositive,
+  Min,
+  IsIn,
+  IsBoolean,
+} from "class-validator";
 
 export class UpdateProductDto {
   @IsString()
@@ -12,8 +20,8 @@ export class UpdateProductDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['USD', 'VES'], { message: 'salePriceCurrency debe ser USD o VES' })
-  salePriceCurrency?: 'USD' | 'VES';
+  @IsIn(["USD", "VES"], { message: "salePriceCurrency debe ser USD o VES" })
+  salePriceCurrency?: "USD" | "VES";
 
   @IsString()
   @IsOptional()

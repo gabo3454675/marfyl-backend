@@ -1,14 +1,19 @@
-import { registerDecorator, ValidationOptions, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
+import {
+  registerDecorator,
+  ValidationOptions,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from "class-validator";
 
 /** Elimina etiquetas HTML sin depender de DOMPurify/jsdom en runtime Node. */
 function stripHtml(text: string): string {
-  return text.replace(/<[^>]*>/g, '');
+  return text.replace(/<[^>]*>/g, "");
 }
 
-@ValidatorConstraint({ name: 'isSafeText', async: false })
+@ValidatorConstraint({ name: "isSafeText", async: false })
 export class IsSafeTextConstraint implements ValidatorConstraintInterface {
   validate(text: string) {
-    if (typeof text !== 'string') return false;
+    if (typeof text !== "string") return false;
 
     const sanitized = stripHtml(text).trim();
     const safeTextRegex = /^[\p{L}\p{N}\s.,;:()\-'"]+$/u;
@@ -16,7 +21,7 @@ export class IsSafeTextConstraint implements ValidatorConstraintInterface {
   }
 
   defaultMessage() {
-    return 'Text contains invalid characters. Only letters, numbers, spaces, and basic punctuation are allowed.';
+    return "Text contains invalid characters. Only letters, numbers, spaces, and basic punctuation are allowed.";
   }
 }
 

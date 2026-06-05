@@ -1,5 +1,14 @@
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
-import { FiscalTaxpayerType } from '@prisma/client';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
+import { FiscalTaxpayerType } from "@prisma/client";
 
 export class UpsertFiscalProfileDto {
   @IsOptional()

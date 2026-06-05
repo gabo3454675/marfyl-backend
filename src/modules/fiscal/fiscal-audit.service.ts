@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 export interface FiscalAuditEntryInput {
   organizationId: number;
@@ -43,7 +43,7 @@ export class FiscalAuditService {
     try {
       return await this.prisma.fiscalAuditLog.findMany({
         where: { organizationId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: limit,
       });
     } catch {

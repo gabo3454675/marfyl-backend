@@ -1,15 +1,8 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Param,
-  Body,
-  Res,
-} from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
-import { Response } from 'express';
-import { InvoicesService } from './invoices.service';
-import { Public } from '@/common/decorators/public.decorator';
+import { Controller, Get, Post, Param, Body, Res } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
+import { Response } from "express";
+import { InvoicesService } from "./invoices.service";
+import { Public } from "@/common/decorators/public.decorator";
 
 interface MarkAsPaidDto {
   markedBy?: string; // Nombre o email de quien marca como pagada
@@ -19,7 +12,7 @@ interface MarkAsPaidDto {
  * Controlador para endpoints públicos de facturas
  * No requiere autenticación ni membresía de organización
  */
-@Controller('invoices/public')
+@Controller("invoices/public")
 export class InvoicesPublicController {
   constructor(private readonly invoicesService: InvoicesService) {}
 
@@ -30,8 +23,8 @@ export class InvoicesPublicController {
    */
   @Public()
   @Throttle({ long: { limit: 30, ttl: 60000 } })
-  @Get(':token')
-  async getPublicInvoice(@Param('token') token: string) {
+  @Get(":token")
+  async getPublicInvoice(@Param("token") token: string) {
     return this.invoicesService.findByPublicToken(token);
   }
 
@@ -42,20 +35,17 @@ export class InvoicesPublicController {
    */
   @Public()
   @Throttle({ long: { limit: 30, ttl: 60000 } })
-  @Get(':token/pdf')
-  async getPublicPDF(
-    @Param('token') token: string,
-    @Res() res: Response,
-  ) {
+  @Get(":token/pdf")
+  async getPublicPDF(@Param("token") token: string, @Res() res: Response) {
     const invoice = await this.invoicesService.findByPublicToken(token);
     const pdfBuffer = await this.invoicesService.generatePDF(
       invoice.id,
       invoice.organizationId,
     );
     res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="factura-${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? invoice.id}.pdf"`,
-      'Content-Length': pdfBuffer.length,
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="factura-${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? invoice.id}.pdf"`,
+      "Content-Length": pdfBuffer.length,
     });
     res.send(pdfBuffer);
   }
@@ -67,11 +57,8 @@ export class InvoicesPublicController {
    */
   @Public()
   @Throttle({ long: { limit: 3, ttl: 60000 } })
-  @Post(':token/mark-paid')
-  async markAsPaid(
-    @Param('token') token: string,
-    @Body() body: MarkAsPaidDto,
-  ) {
+  @Post(":token/mark-paid")
+  async markAsPaid(@Param("token") token: string, @Body() body: MarkAsPaidDto) {
     return this.invoicesService.markAsPaidByClient(token, body.markedBy);
   }
 }

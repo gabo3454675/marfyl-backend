@@ -1,4 +1,13 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsPositive, Min, IsIn, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsPositive,
+  Min,
+  IsIn,
+  IsBoolean,
+} from "class-validator";
 
 export class CreateProductDto {
   @IsString()
@@ -13,8 +22,8 @@ export class CreateProductDto {
   /** Moneda en que se registra el precio: USD o VES (Bolívares). Por defecto USD. */
   @IsString()
   @IsOptional()
-  @IsIn(['USD', 'VES'], { message: 'salePriceCurrency debe ser USD o VES' })
-  salePriceCurrency?: 'USD' | 'VES';
+  @IsIn(["USD", "VES"], { message: "salePriceCurrency debe ser USD o VES" })
+  salePriceCurrency?: "USD" | "VES";
 
   @IsString()
   @IsOptional()

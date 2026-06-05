@@ -5,10 +5,10 @@ import {
   ForbiddenException,
   BadRequestException,
   NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { buildDevPreviewUser, isDevPreviewAuthEnabled } from '../dev-preview';
-import { OrganizationBillingService } from '../billing/organization-billing.service';
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { buildDevPreviewUser, isDevPreviewAuthEnabled } from "../dev-preview";
+import { OrganizationBillingService } from "../billing/organization-billing.service";
 
 @Injectable()
 export class OrganizationGuard implements CanActivate {
@@ -23,24 +23,25 @@ export class OrganizationGuard implements CanActivate {
 
     // Validar que el usuario esté autenticado
     if (!user) {
-      throw new ForbiddenException('Usuario no autenticado');
+      throw new ForbiddenException("Usuario no autenticado");
     }
 
     const previewUser = buildDevPreviewUser();
     if (isDevPreviewAuthEnabled() && user.id === previewUser.id) {
-      const organizationId = user.organizationId ?? user.tenantId ?? previewUser.organizationId;
+      const organizationId =
+        user.organizationId ?? user.tenantId ?? previewUser.organizationId;
       request.activeOrganizationId = organizationId;
       request.activeOrganization = {
         id: organizationId,
-        name: 'Demo MARFYL (vista previa)',
-        nombre: 'Demo MARFYL (vista previa)',
+        name: "Demo MARFYL (vista previa)",
+        nombre: "Demo MARFYL (vista previa)",
       };
       request.activeOrganizationMembership = {
         id: 0,
         userId: user.id,
         organizationId,
-        role: 'ADMIN',
-        status: 'ACTIVE',
+        role: "ADMIN",
+        status: "ACTIVE",
         organization: request.activeOrganization,
       };
       return true;
@@ -51,7 +52,7 @@ export class OrganizationGuard implements CanActivate {
 
     if (organizationId == null) {
       throw new BadRequestException(
-        'No hay organización activa en la sesión. Use POST /auth/switch-organization o inicie sesión de nuevo.',
+        "No hay organización activa en la sesión. Use POST /auth/switch-organization o inicie sesión de nuevo.",
       );
     }
 
@@ -65,15 +66,15 @@ export class OrganizationGuard implements CanActivate {
       request.activeOrganizationId = organizationId;
       request.activeOrganization = {
         id: organizationId,
-        name: 'Demo MARFYL (sin BD)',
-        nombre: 'Demo MARFYL (sin BD)',
+        name: "Demo MARFYL (sin BD)",
+        nombre: "Demo MARFYL (sin BD)",
       };
       request.activeOrganizationMembership = {
         id: 0,
         userId: user.id,
         organizationId,
-        role: 'ADMIN',
-        status: 'ACTIVE',
+        role: "ADMIN",
+        status: "ACTIVE",
         organization: request.activeOrganization,
       };
       return true;
@@ -95,7 +96,7 @@ export class OrganizationGuard implements CanActivate {
       where: {
         userId: user.id,
         organizationId: organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         organization: true,
@@ -113,14 +114,14 @@ export class OrganizationGuard implements CanActivate {
           id: 0,
           userId: user.id,
           organizationId,
-          role: 'SUPER_ADMIN',
-          status: 'ACTIVE',
+          role: "SUPER_ADMIN",
+          status: "ACTIVE",
           joinedAt: new Date(),
           organization,
         } as any;
       } else {
         throw new ForbiddenException(
-          'No tienes acceso a esta organización o tu membresía está inactiva',
+          "No tienes acceso a esta organización o tu membresía está inactiva",
         );
       }
     }

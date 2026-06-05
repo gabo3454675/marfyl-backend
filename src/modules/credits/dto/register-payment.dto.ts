@@ -1,8 +1,8 @@
-import { IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class RegisterPaymentDto {
   @IsNumber()
-  @Min(0.01, { message: 'El monto debe ser mayor a 0' })
+  @Min(0.01, { message: "El monto debe ser mayor a 0" })
   amountUsd: number;
 
   @IsNumber()

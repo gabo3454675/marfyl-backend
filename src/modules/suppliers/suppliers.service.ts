@@ -2,11 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { CreateSupplierDto } from './dto/create-supplier.dto';
-import { UpdateSupplierDto } from './dto/update-supplier.dto';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { CreateSupplierDto } from "./dto/create-supplier.dto";
+import { UpdateSupplierDto } from "./dto/update-supplier.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 
 @Injectable()
 export class SuppliersService {
@@ -14,7 +14,10 @@ export class SuppliersService {
 
   async create(createSupplierDto: CreateSupplierDto, organizationId: number) {
     // Obtener companyId correspondiente a la organización
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     return this.prisma.supplier.create({
       data: {
@@ -31,7 +34,7 @@ export class SuppliersService {
         organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
       },
       orderBy: {
-        name: 'asc',
+        name: "asc",
       },
     });
   }
@@ -51,7 +54,11 @@ export class SuppliersService {
     return supplier;
   }
 
-  async update(id: number, updateSupplierDto: UpdateSupplierDto, organizationId: number) {
+  async update(
+    id: number,
+    updateSupplierDto: UpdateSupplierDto,
+    organizationId: number,
+  ) {
     await this.findOne(id, organizationId);
 
     return this.prisma.supplier.update({

@@ -8,17 +8,17 @@ import {
   ParseIntPipe,
   UseGuards,
   Res,
-} from '@nestjs/common';
-import { Response } from 'express';
-import { CreditsService } from './credits.service';
-import { UpdateCreditLimitDto } from './dto/update-credit-limit.dto';
-import { RegisterPaymentDto } from './dto/register-payment.dto';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { OrganizationGuard } from '@/common/guards/organization.guard';
-import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
-import { ActiveUser } from '@/common/decorators/active-user.decorator';
+} from "@nestjs/common";
+import { Response } from "express";
+import { CreditsService } from "./credits.service";
+import { UpdateCreditLimitDto } from "./dto/update-credit-limit.dto";
+import { RegisterPaymentDto } from "./dto/register-payment.dto";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
+import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
-@Controller('credits')
+@Controller("credits")
 @UseGuards(JwtAuthGuard, OrganizationGuard)
 export class CreditsController {
   constructor(private readonly creditsService: CreditsService) {}
@@ -34,18 +34,19 @@ export class CreditsController {
   /**
    * Clientes con deuda vencida (IDs) para indicadores en UI.
    */
-  @Get('overdue-customer-ids')
+  @Get("overdue-customer-ids")
   async getOverdueCustomerIds(@ActiveOrganization() organizationId: number) {
-    const ids = await this.creditsService.getCustomerIdsWithOverdueDebt(organizationId);
+    const ids =
+      await this.creditsService.getCustomerIdsWithOverdueDebt(organizationId);
     return { customerIds: ids };
   }
 
   /**
    * Obtiene o crea el crédito de un cliente.
    */
-  @Get('customer/:customerId')
+  @Get("customer/:customerId")
   getByCustomer(
-    @Param('customerId', ParseIntPipe) customerId: number,
+    @Param("customerId", ParseIntPipe) customerId: number,
     @ActiveOrganization() organizationId: number,
   ) {
     return this.creditsService.getOrCreateCredit(customerId, organizationId);
@@ -54,22 +55,27 @@ export class CreditsController {
   /**
    * Actualiza el límite de crédito. Solo super_admin o admin.
    */
-  @Patch(':creditId/limit')
+  @Patch(":creditId/limit")
   updateLimit(
-    @Param('creditId', ParseIntPipe) creditId: number,
+    @Param("creditId", ParseIntPipe) creditId: number,
     @Body() dto: UpdateCreditLimitDto,
     @ActiveOrganization() organizationId: number,
     @ActiveUser() user: { id: number },
   ) {
-    return this.creditsService.updateLimit(creditId, dto, organizationId, user.id);
+    return this.creditsService.updateLimit(
+      creditId,
+      dto,
+      organizationId,
+      user.id,
+    );
   }
 
   /**
    * Registra un abono.
    */
-  @Post(':creditId/payment')
+  @Post(":creditId/payment")
   registerPayment(
-    @Param('creditId', ParseIntPipe) creditId: number,
+    @Param("creditId", ParseIntPipe) creditId: number,
     @Body() dto: RegisterPaymentDto,
     @ActiveOrganization() organizationId: number,
   ) {
@@ -79,9 +85,9 @@ export class CreditsController {
   /**
    * Historial de movimientos de un crédito.
    */
-  @Get(':creditId/transactions')
+  @Get(":creditId/transactions")
   getTransactions(
-    @Param('creditId', ParseIntPipe) creditId: number,
+    @Param("creditId", ParseIntPipe) creditId: number,
     @ActiveOrganization() organizationId: number,
   ) {
     return this.creditsService.getTransactions(creditId, organizationId);
@@ -90,9 +96,9 @@ export class CreditsController {
   /**
    * Descarga PDF recibo de un abono.
    */
-  @Get('transactions/:transactionId/receipt-pdf')
+  @Get("transactions/:transactionId/receipt-pdf")
   async getReceiptPdf(
-    @Param('transactionId', ParseIntPipe) transactionId: number,
+    @Param("transactionId", ParseIntPipe) transactionId: number,
     @ActiveOrganization() organizationId: number,
     @Res() res: Response,
   ) {
@@ -101,9 +107,9 @@ export class CreditsController {
       organizationId,
     );
     res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="recibo-abono-${transactionId}.pdf"`,
-      'Content-Length': buffer.length,
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="recibo-abono-${transactionId}.pdf"`,
+      "Content-Length": buffer.length,
     });
     res.send(buffer);
   }

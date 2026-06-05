@@ -3,7 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
 /**
  * Control de acceso SAC: rol **ADMIN** o **FISCAL** en la organización activa.
@@ -16,7 +16,7 @@ import {
  * @UseGuards(JwtAuthGuard, OrganizationGuard, VerificarRolFiscalGuard)
  * o con el alias exportado `verificarRolFiscal`.
  */
-const ROLES_FISCAL_ACCESO = new Set(['ADMIN', 'FISCAL']);
+const ROLES_FISCAL_ACCESO = new Set(["ADMIN", "FISCAL"]);
 
 @Injectable()
 export class VerificarRolFiscalGuard implements CanActivate {
@@ -32,14 +32,16 @@ export class VerificarRolFiscalGuard implements CanActivate {
 
     if (!membership) {
       throw new ForbiddenException(
-        'No se pudo verificar el rol. Asegúrate de enviar el header x-tenant-id y tener sesión con organización activa.',
+        "No se pudo verificar el rol. Asegúrate de enviar el header x-tenant-id y tener sesión con organización activa.",
       );
     }
 
-    const userRole = String(membership.role ?? '').toUpperCase().trim();
+    const userRole = String(membership.role ?? "")
+      .toUpperCase()
+      .trim();
     if (!ROLES_FISCAL_ACCESO.has(userRole)) {
       throw new ForbiddenException(
-        'Acceso denegado: se requiere rol fiscal o administrador.',
+        "Acceso denegado: se requiere rol fiscal o administrador.",
       );
     }
 

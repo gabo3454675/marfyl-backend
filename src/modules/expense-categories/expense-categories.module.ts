@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { PrismaModule } from '@/common/prisma/prisma.module';
-import { ExpenseCategoriesController } from './expense-categories.controller';
-import { ExpenseCategoriesService } from './expense-categories.service';
+import { Module } from "@nestjs/common";
+import { PrismaModule } from "@/common/prisma/prisma.module";
+import { ExpenseCategoriesController } from "./expense-categories.controller";
+import { ExpenseCategoriesService } from "./expense-categories.service";
 
 @Module({
   imports: [PrismaModule],

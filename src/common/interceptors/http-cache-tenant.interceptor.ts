@@ -1,7 +1,7 @@
-import { ExecutionContext, Injectable, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Reflector } from '@nestjs/core';
-import { CacheInterceptor } from '@nestjs/cache-manager';
+import { ExecutionContext, Injectable, Inject } from "@nestjs/common";
+import { CACHE_MANAGER } from "@nestjs/cache-manager";
+import { Reflector } from "@nestjs/core";
+import { CacheInterceptor } from "@nestjs/cache-manager";
 
 /**
  * Interceptor de caché que incluye x-tenant-id en la clave.
@@ -10,10 +10,7 @@ import { CacheInterceptor } from '@nestjs/cache-manager';
  */
 @Injectable()
 export class HttpCacheTenantInterceptor extends CacheInterceptor {
-  constructor(
-    @Inject(CACHE_MANAGER) cacheManager: any,
-    reflector: Reflector,
-  ) {
+  constructor(@Inject(CACHE_MANAGER) cacheManager: any, reflector: Reflector) {
     super(cacheManager, reflector);
   }
 
@@ -23,16 +20,24 @@ export class HttpCacheTenantInterceptor extends CacheInterceptor {
       return undefined;
     }
     const httpAdapter = this.httpAdapterHost?.httpAdapter;
-    if (!httpAdapter || typeof httpAdapter.getRequestUrl !== 'function') {
+    if (!httpAdapter || typeof httpAdapter.getRequestUrl !== "function") {
       return undefined;
     }
-    let baseUrl = httpAdapter.getRequestUrl(request);
-    if (typeof baseUrl === 'string' && baseUrl.includes('/tenants/organization') && !baseUrl.includes('organizations-all')) {
+    const baseUrl = httpAdapter.getRequestUrl(request);
+    if (
+      typeof baseUrl === "string" &&
+      baseUrl.includes("/tenants/organization") &&
+      !baseUrl.includes("organizations-all")
+    ) {
       return undefined;
     }
     const tenantId =
-      request.headers['x-tenant-id'] ?? request.activeOrganizationId;
-    if (tenantId !== undefined && tenantId !== null && String(tenantId).trim() !== '') {
+      request.headers["x-tenant-id"] ?? request.activeOrganizationId;
+    if (
+      tenantId !== undefined &&
+      tenantId !== null &&
+      String(tenantId).trim() !== ""
+    ) {
       return `${baseUrl}:tenant:${tenantId}`;
     }
     return baseUrl;

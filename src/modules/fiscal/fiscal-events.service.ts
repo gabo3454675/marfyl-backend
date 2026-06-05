@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { FiscalDomainEventType } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { FiscalAuditService } from './fiscal-audit.service';
+import { Injectable } from "@nestjs/common";
+import { FiscalDomainEventType } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { FiscalAuditService } from "./fiscal-audit.service";
 
 export interface EmitFiscalEventInput {
   organizationId: number;
@@ -42,7 +42,7 @@ export class FiscalEventsService {
         organizationId: input.organizationId,
         userId: input.userId,
         action: input.auditAction,
-        entityType: input.entityType ?? 'fiscal_event',
+        entityType: input.entityType ?? "fiscal_event",
         entityId: input.entityId,
         afterValue: { eventType: input.eventType, payload: input.payload },
         systemResponse: event ? { eventId: event.id } : { persisted: false },
@@ -56,7 +56,7 @@ export class FiscalEventsService {
     try {
       return await this.prisma.fiscalDomainEvent.findMany({
         where: { organizationId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: limit,
       });
     } catch {

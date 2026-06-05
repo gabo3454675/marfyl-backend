@@ -1,39 +1,49 @@
-import { Prisma } from '@prisma/client';
-import { TenantContext } from '@/common/context/tenant.context';
+import { Prisma } from "@prisma/client";
+import { TenantContext } from "@/common/context/tenant.context";
 
 /**
  * Modelos que tienen tenantId (campo literal "tenantId" en el schema).
  */
-const MODELS_WITH_TENANT_ID = new Set<string>(['InventoryMovement', 'CierreCaja', 'Pago']);
+const MODELS_WITH_TENANT_ID = new Set<string>([
+  "InventoryMovement",
+  "CierreCaja",
+  "Pago",
+]);
 
 /**
  * Modelos que tienen organizationId (campo literal "organizationId" en el schema).
  */
 const MODELS_WITH_ORGANIZATION_ID = new Set<string>([
-  'Product',
-  'Customer',
-  'Invoice',
-  'Supplier',
-  'ExpenseCategory',
-  'Expense',
-  'Document',
-  'Task',
-  'CustomerCredit',
-  'Invitation',
-  'Member',
-  'AuditLog',
-  'TasaHistorica',
-  'ActivityLog',
-  'ExpensePayment',
+  "Product",
+  "Customer",
+  "Invoice",
+  "Supplier",
+  "ExpenseCategory",
+  "Expense",
+  "Document",
+  "Task",
+  "CustomerCredit",
+  "Invitation",
+  "Member",
+  "AuditLog",
+  "TasaHistorica",
+  "ActivityLog",
+  "ExpensePayment",
 ]);
 
-function getTenantFieldForModel(model: string): 'tenantId' | 'organizationId' | null {
-  if (MODELS_WITH_TENANT_ID.has(model)) return 'tenantId';
-  if (MODELS_WITH_ORGANIZATION_ID.has(model)) return 'organizationId';
+function getTenantFieldForModel(
+  model: string,
+): "tenantId" | "organizationId" | null {
+  if (MODELS_WITH_TENANT_ID.has(model)) return "tenantId";
+  if (MODELS_WITH_ORGANIZATION_ID.has(model)) return "organizationId";
   return null;
 }
 
-function mergeWhere(where: Record<string, unknown> | undefined, field: string, value: number): Record<string, unknown> {
+function mergeWhere(
+  where: Record<string, unknown> | undefined,
+  field: string,
+  value: number,
+): Record<string, unknown> {
   const base = (where ?? {}) as Record<string, unknown>;
   return { ...base, [field]: value };
 }
@@ -45,7 +55,7 @@ function mergeWhere(where: Record<string, unknown> | undefined, field: string, v
  */
 export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
   prisma.$extends({
-    name: 'tenantIsolation',
+    name: "tenantIsolation",
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
@@ -58,50 +68,66 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
           const argsCopy = { ...args } as Record<string, unknown>;
 
           switch (operation) {
-            case 'findUnique':
-            case 'findFirst':
-            case 'findMany':
-            case 'count':
-            case 'aggregate':
-            case 'groupBy':
-              if (argsCopy.where && typeof argsCopy.where === 'object') {
-                argsCopy.where = mergeWhere(argsCopy.where as Record<string, unknown>, field, tenantId);
+            case "findUnique":
+            case "findFirst":
+            case "findMany":
+            case "count":
+            case "aggregate":
+            case "groupBy":
+              if (argsCopy.where && typeof argsCopy.where === "object") {
+                argsCopy.where = mergeWhere(
+                  argsCopy.where as Record<string, unknown>,
+                  field,
+                  tenantId,
+                );
               } else {
                 argsCopy.where = { [field]: tenantId };
               }
               break;
-            case 'create':
-              if (argsCopy.data && typeof argsCopy.data === 'object') {
+            case "create":
+              if (argsCopy.data && typeof argsCopy.data === "object") {
                 (argsCopy.data as Record<string, unknown>)[field] = tenantId;
               }
               break;
-            case 'createMany':
+            case "createMany":
               if (argsCopy.data !== undefined) {
-                const data = Array.isArray(argsCopy.data) ? argsCopy.data : [argsCopy.data];
-                (argsCopy as any).data = data.map((row: Record<string, unknown>) => ({
-                  ...row,
-                  [field]: tenantId,
-                }));
+                const data = Array.isArray(argsCopy.data)
+                  ? argsCopy.data
+                  : [argsCopy.data];
+                (argsCopy as any).data = data.map(
+                  (row: Record<string, unknown>) => ({
+                    ...row,
+                    [field]: tenantId,
+                  }),
+                );
               }
               break;
-            case 'update':
-            case 'updateMany':
-            case 'delete':
-            case 'deleteMany':
-              if (argsCopy.where && typeof argsCopy.where === 'object') {
-                argsCopy.where = mergeWhere(argsCopy.where as Record<string, unknown>, field, tenantId);
+            case "update":
+            case "updateMany":
+            case "delete":
+            case "deleteMany":
+              if (argsCopy.where && typeof argsCopy.where === "object") {
+                argsCopy.where = mergeWhere(
+                  argsCopy.where as Record<string, unknown>,
+                  field,
+                  tenantId,
+                );
               } else {
                 argsCopy.where = { [field]: tenantId };
               }
               break;
-            case 'upsert':
-              if (argsCopy.where && typeof argsCopy.where === 'object') {
-                argsCopy.where = mergeWhere(argsCopy.where as Record<string, unknown>, field, tenantId);
+            case "upsert":
+              if (argsCopy.where && typeof argsCopy.where === "object") {
+                argsCopy.where = mergeWhere(
+                  argsCopy.where as Record<string, unknown>,
+                  field,
+                  tenantId,
+                );
               }
-              if (argsCopy.create && typeof argsCopy.create === 'object') {
+              if (argsCopy.create && typeof argsCopy.create === "object") {
                 (argsCopy.create as Record<string, unknown>)[field] = tenantId;
               }
-              if (argsCopy.update && typeof argsCopy.update === 'object') {
+              if (argsCopy.update && typeof argsCopy.update === "object") {
                 (argsCopy.update as Record<string, unknown>)[field] = tenantId;
               }
               break;
@@ -115,4 +141,3 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
     },
   }),
 );
-

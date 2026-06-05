@@ -1,49 +1,64 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { NestExpressApplication } from '@nestjs/platform-express';
-import * as compression from 'compression';
-import { AppModule } from './app.module';
-import { assertMarfylDatabaseUrl } from './common/database-guard';
-import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe, BadRequestException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import * as compression from "compression";
+import { AppModule } from "./app.module";
+import { assertMarfylDatabaseUrl } from "./common/database-guard";
+import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter";
+import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 
 async function bootstrap() {
   // SECURITY: Prevent DEV_PREVIEW_AUTH in production
   const envNodeEnv = process.env.NODE_ENV;
-  const devPreviewAuth = process.env.DEV_PREVIEW_AUTH === 'true';
-  const fiscalPreview = process.env.NEXT_PUBLIC_FISCAL_PREVIEW === 'true';
+  const devPreviewAuth = process.env.DEV_PREVIEW_AUTH === "true";
+  const fiscalPreview = process.env.NEXT_PUBLIC_FISCAL_PREVIEW === "true";
   const jwtSecret = process.env.JWT_SECRET;
 
   // Bloquear JWT_SECRET por defecto en producción
   const INSECURE_JWT_SECRETS = [
-    'cambiar-clave-segura-en-produccion',
-    'cambiar-jwt-secret-en-produccion',
-    'dev-secret-key',
-    'secret',
-    'password',
+    "cambiar-clave-segura-en-produccion",
+    "cambiar-jwt-secret-en-produccion",
+    "dev-secret-key",
+    "secret",
+    "password",
   ];
 
-  if (envNodeEnv === 'production') {
+  if (envNodeEnv === "production") {
     if (devPreviewAuth) {
-      console.error('❌ FATAL: DEV_PREVIEW_AUTH must NOT be enabled in production (NODE_ENV=production)');
+      console.error(
+        "❌ FATAL: DEV_PREVIEW_AUTH must NOT be enabled in production (NODE_ENV=production)",
+      );
       process.exit(1);
     }
     if (fiscalPreview) {
-      console.error('❌ FATAL: NEXT_PUBLIC_FISCAL_PREVIEW must NOT be enabled in production (NODE_ENV=production)');
+      console.error(
+        "❌ FATAL: NEXT_PUBLIC_FISCAL_PREVIEW must NOT be enabled in production (NODE_ENV=production)",
+      );
       process.exit(1);
     }
     if (!jwtSecret || INSECURE_JWT_SECRETS.includes(jwtSecret)) {
-      console.error('❌ FATAL: JWT_SECRET is not set or uses an insecure default value in production');
-      console.error('   Generate a secure secret with: openssl rand -base64 64');
+      console.error(
+        "❌ FATAL: JWT_SECRET is not set or uses an insecure default value in production",
+      );
+      console.error(
+        "   Generate a secure secret with: openssl rand -base64 64",
+      );
       process.exit(1);
     }
-    console.log('✅ Production security checks passed: DEV_PREVIEW flags are disabled and JWT_SECRET is configured');
+    console.log(
+      "✅ Production security checks passed: DEV_PREVIEW flags are disabled and JWT_SECRET is configured",
+    );
   } else {
     if (devPreviewAuth) {
-      console.warn('⚠️  WARNING: DEV_PREVIEW_AUTH is enabled (development mode)');
+      console.warn(
+        "⚠️  WARNING: DEV_PREVIEW_AUTH is enabled (development mode)",
+      );
     }
     if (!jwtSecret || INSECURE_JWT_SECRETS.includes(jwtSecret)) {
-      console.warn('⚠️  WARNING: JWT_SECRET uses an insecure default value. Change it for production!');
+      console.warn(
+        "⚠️  WARNING: JWT_SECRET uses an insecure default value. Change it for production!",
+      );
     }
   }
 
@@ -52,9 +67,12 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3001);
-  const frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:3002');
-  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
+  const port = configService.get<number>("PORT", 3001);
+  const frontendUrl = configService.get<string>(
+    "FRONTEND_URL",
+    "http://localhost:3002",
+  );
+  const nodeEnv = configService.get<string>("NODE_ENV", "development");
 
   // Compression Gzip - Reduce el tamaño de las respuestas JSON hasta 70%
   app.use(compression());
@@ -66,13 +84,13 @@ async function bootstrap() {
 
   // Dominios de producción siempre permitidos (incl. variantes Render)
   const productionDomains: string[] = [];
-  const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
-    .split(',')
+  const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
   productionDomains.push(...extraOrigins);
 
-  if (nodeEnv === 'production') {
+  if (nodeEnv === "production") {
     // Agregar dominios de producción
     allowedOrigins.push(...productionDomains);
 
@@ -82,9 +100,9 @@ async function bootstrap() {
       allowedOrigins.push(frontendUrl);
 
       // Agregar variante con www si no la tiene
-      if (frontendUrl.startsWith('https://')) {
-        const domain = frontendUrl.replace('https://', '');
-        if (!domain.startsWith('www.')) {
+      if (frontendUrl.startsWith("https://")) {
+        const domain = frontendUrl.replace("https://", "");
+        if (!domain.startsWith("www.")) {
           allowedOrigins.push(`https://www.${domain}`);
         }
       }
@@ -92,16 +110,22 @@ async function bootstrap() {
   } else {
     // En desarrollo, permitir localhost
     allowedOrigins.push(
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "http://localhost:3003",
     );
     // También permitir dominios de producción en desarrollo para testing
     allowedOrigins.push(...productionDomains);
   }
 
-  console.log('[CORS] NODE_ENV=', nodeEnv, 'allowedOrigins=', allowedOrigins.length, '(hostname check for marfyl-*-frontend*.onrender.com enabled)');
+  console.log(
+    "[CORS] NODE_ENV=",
+    nodeEnv,
+    "allowedOrigins=",
+    allowedOrigins.length,
+    "(hostname check for marfyl-*-frontend*.onrender.com enabled)",
+  );
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -112,9 +136,9 @@ async function bootstrap() {
       }
 
       // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
-      const normalizedOrigin = origin.replace(/\/$/, '');
+      const normalizedOrigin = origin.replace(/\/$/, "");
       const isInList = allowedOrigins.some(
-        (allowed) => allowed.replace(/\/$/, '') === normalizedOrigin
+        (allowed) => allowed.replace(/\/$/, "") === normalizedOrigin,
       );
       // Permitir también por hostname (origen con puerto, preview deploys de Render, etc.)
       let isAllowedByHost = false;
@@ -122,8 +146,9 @@ async function bootstrap() {
         const url = new URL(origin);
         const h = url.hostname;
         isAllowedByHost =
-          h.endsWith('.onrender.com') &&
-          (h.startsWith('marfyl-') && h.includes('-frontend'));
+          h.endsWith(".onrender.com") &&
+          h.startsWith("marfyl-") &&
+          h.includes("-frontend");
       } catch {
         // ignore invalid URL
       }
@@ -131,25 +156,34 @@ async function bootstrap() {
       if (isAllowed) {
         callback(null, true);
       } else {
-        console.error('[CORS] Rejected origin:', JSON.stringify(origin), 'Allowed:', allowedOrigins);
-        callback(new Error('Not allowed by CORS'));
+        console.error(
+          "[CORS] Rejected origin:",
+          JSON.stringify(origin),
+          "Allowed:",
+          allowedOrigins,
+        );
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'x-tenant-id',
-      'x-organization-id',
-      'x-company-id',
+      "Content-Type",
+      "Authorization",
+      "x-tenant-id",
+      "x-organization-id",
+      "x-company-id",
     ],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
   });
 
   // CSRF Protection: Validate Origin header for state-changing requests
   app.use((req: any, res: any, next: any) => {
-    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    if (
+      req.method === "GET" ||
+      req.method === "HEAD" ||
+      req.method === "OPTIONS"
+    ) {
       return next();
     }
 
@@ -158,35 +192,50 @@ async function bootstrap() {
     const nodeEnv = process.env.NODE_ENV;
 
     if (!origin && !referer) {
-      if (nodeEnv === 'production') {
-        console.error('[CSRF] Blocked request without Origin/Referer:', req.method, req.path);
-        return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: missing origin' });
+      if (nodeEnv === "production") {
+        console.error(
+          "[CSRF] Blocked request without Origin/Referer:",
+          req.method,
+          req.path,
+        );
+        return res.status(400).json({
+          statusCode: 400,
+          message: "CSRF validation failed: missing origin",
+        });
       }
       return next();
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
-    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
-      .split(',')
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3002";
+    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+      .split(",")
       .map((o: string) => o.trim())
       .filter(Boolean);
     const allowedOrigins = [
       frontendUrl,
       ...extraOrigins,
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "http://localhost:3003",
     ];
 
     const isOriginAllowed = (origin: string) => {
-      const normalized = origin.replace(/\/$/, '');
-      return allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
+      const normalized = origin.replace(/\/$/, "");
+      return allowedOrigins.some((o) => o.replace(/\/$/, "") === normalized);
     };
 
     if (origin && !isOriginAllowed(origin)) {
-      console.error('[CSRF] Blocked request with disallowed origin:', origin, req.method, req.path);
-      return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: origin not allowed' });
+      console.error(
+        "[CSRF] Blocked request with disallowed origin:",
+        origin,
+        req.method,
+        req.path,
+      );
+      return res.status(400).json({
+        statusCode: 400,
+        message: "CSRF validation failed: origin not allowed",
+      });
     }
 
     if (referer) {
@@ -194,12 +243,23 @@ async function bootstrap() {
         const refererUrl = new URL(referer);
         const refererOrigin = refererUrl.origin;
         if (!isOriginAllowed(refererOrigin)) {
-          console.error('[CSRF] Blocked request with disallowed referer:', refererOrigin, req.method, req.path);
-          return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: referer not allowed' });
+          console.error(
+            "[CSRF] Blocked request with disallowed referer:",
+            refererOrigin,
+            req.method,
+            req.path,
+          );
+          return res.status(400).json({
+            statusCode: 400,
+            message: "CSRF validation failed: referer not allowed",
+          });
         }
       } catch {
-        if (nodeEnv === 'production') {
-          return res.status(400).json({ statusCode: 400, message: 'CSRF validation failed: invalid referer' });
+        if (nodeEnv === "production") {
+          return res.status(400).json({
+            statusCode: 400,
+            message: "CSRF validation failed: invalid referer",
+          });
         }
       }
     }
@@ -207,7 +267,16 @@ async function bootstrap() {
     next();
   });
 
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  // AllExceptionsFilter is registered FIRST so its @Catch() (no args) wins
+  // and acts as the outer catch for every unhandled exception, including
+  // Prisma errors that PrismaExceptionFilter would otherwise handle.
+  // In NestJS, filters are evaluated in registration order with first-match
+  // semantics (see packages/core/exceptions/exceptions-handler.ts), so a
+  // catch-all registered first always handles the response.
+  app.useGlobalFilters(
+    new AllExceptionsFilter(),
+    new PrismaExceptionFilter(),
+  );
 
   // Global Validation Pipe
   app.useGlobalPipes(
@@ -218,11 +287,11 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
-    })
+    }),
   );
 
   // Global Prefix
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix("api");
 
   await app.listen(port);
 }

@@ -8,19 +8,19 @@ import {
   UseInterceptors,
   BadRequestException,
   Body,
-} from '@nestjs/common';
-import { Res } from '@nestjs/common';
-import { Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
-import { InventoryService } from './inventory.service';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { OrganizationGuard } from '@/common/guards/organization.guard';
-import { SuperAdminGuard } from '@/common/guards/super-admin.guard';
-import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
-import { ClearInventoryDto } from './dto/clear-inventory.dto';
+} from "@nestjs/common";
+import { Res } from "@nestjs/common";
+import { Response } from "express";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
+import { InventoryService } from "./inventory.service";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { SuperAdminGuard } from "@/common/guards/super-admin.guard";
+import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
+import { ClearInventoryDto } from "./dto/clear-inventory.dto";
 
-@Controller('inventory')
+@Controller("inventory")
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
@@ -34,7 +34,7 @@ export class InventoryController {
    * Devuelve el formato exacto que el sistema espera para el Excel.
    * Objetivo: que puedas pedirle el archivo a tus clientes sin ambigüedad.
    */
-  @Get('template-format')
+  @Get("template-format")
   @UseGuards(JwtAuthGuard, OrganizationGuard)
   async templateFormat() {
     return this.inventoryService.getTemplateFormat();
@@ -44,16 +44,16 @@ export class InventoryController {
    * Descarga una plantilla Excel real (.xlsx) lista para enviar a clientes.
    * Incluye notas en los headers para mejorar UX.
    */
-  @Get('template')
+  @Get("template")
   @UseGuards(JwtAuthGuard, OrganizationGuard)
   async downloadTemplate(@Res() res: Response) {
     const buffer = await this.inventoryService.generateTemplateXlsxBuffer();
     res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
-      'Content-Disposition',
+      "Content-Disposition",
       'attachment; filename="inventory-template.xlsx"',
     );
     res.send(Buffer.from(buffer as any));
@@ -67,10 +67,10 @@ export class InventoryController {
    * - confirm=false (default): valida y devuelve preview sin guardar
    * - confirm=true: ejecuta escritura si no hay errores
    */
-  @Post('import')
+  @Post("import")
   @UseGuards(JwtAuthGuard, OrganizationGuard)
   @UseInterceptors(
-    FileInterceptor('file', {
+    FileInterceptor("file", {
       storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     }),
@@ -78,35 +78,38 @@ export class InventoryController {
   async importExcel(
     @UploadedFile() file: Express.Multer.File,
     @ActiveOrganization() organizationId: number,
-    @Body('confirm') confirm?: string | boolean,
+    @Body("confirm") confirm?: string | boolean,
   ) {
     if (!file) {
-      throw new BadRequestException('Archivo no proporcionado');
+      throw new BadRequestException("Archivo no proporcionado");
     }
 
     // Validar tipo de archivo
     const allowedMimeTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-      'application/vnd.ms-excel', // .xls
-      'application/octet-stream', // algunos navegadores envían esto para .xlsx
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+      "application/vnd.ms-excel", // .xls
+      "application/octet-stream", // algunos navegadores envían esto para .xlsx
     ];
-    const allowedExtensions = ['.xlsx', '.xls'];
+    const allowedExtensions = [".xlsx", ".xls"];
     const fileExtension = file.originalname
       .toLowerCase()
-      .substring(file.originalname.lastIndexOf('.'));
+      .substring(file.originalname.lastIndexOf("."));
 
     if (
       !allowedMimeTypes.includes(file.mimetype) &&
       !allowedExtensions.includes(fileExtension)
     ) {
       throw new BadRequestException(
-        'El archivo debe ser un Excel (.xlsx o .xls). Tipo recibido: ' +
+        "El archivo debe ser un Excel (.xlsx o .xls). Tipo recibido: " +
           file.mimetype,
       );
     }
 
     const confirmBool =
-      confirm === true || String(confirm || '').toLowerCase().trim() === 'true';
+      confirm === true ||
+      String(confirm || "")
+        .toLowerCase()
+        .trim() === "true";
 
     return this.inventoryService.importFromExcelWithDryRun({
       file,
@@ -120,7 +123,7 @@ export class InventoryController {
    * Solo Super Admin global (User.isSuperAdmin). No requiere x-tenant-id.
    * Body: { tenantId: number }
    */
-  @Delete('clear')
+  @Delete("clear")
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   async clear(@Body() dto: ClearInventoryDto) {
     return this.inventoryService.clearByTenantId(dto.tenantId);

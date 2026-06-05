@@ -1,14 +1,14 @@
 /** Negocios del grupo fundador: suscripción siempre gratuita. */
 export const FOUNDING_ORG_SLUGS = [
-  'el-rancho-de-german',
-  'monddy',
-  'davean',
+  "el-rancho-de-german",
+  "monddy",
+  "davean",
 ] as const;
 
 export type FoundingOrgSlug = (typeof FOUNDING_ORG_SLUGS)[number];
 
 /** Única org con módulo de concierto / boletería temporal. */
-export const CONCERT_ORG_SLUG = 'monddy';
+export const CONCERT_ORG_SLUG = "monddy";
 
 export function isFoundingOrgSlug(slug: string): boolean {
   return (FOUNDING_ORG_SLUGS as readonly string[]).includes(slug);

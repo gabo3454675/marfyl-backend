@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 export interface LogActionParams {
   organizationId: number;
@@ -39,8 +39,14 @@ export class ActivityLogService {
         action,
         entityType,
         entityId,
-        oldValue: oldValue !== undefined && oldValue !== null ? (oldValue as Prisma.InputJsonValue) : undefined,
-        newValue: newValue !== undefined && newValue !== null ? (newValue as Prisma.InputJsonValue) : undefined,
+        oldValue:
+          oldValue !== undefined && oldValue !== null
+            ? (oldValue as Prisma.InputJsonValue)
+            : undefined,
+        newValue:
+          newValue !== undefined && newValue !== null
+            ? (newValue as Prisma.InputJsonValue)
+            : undefined,
         summary: summary ?? undefined,
       },
     });

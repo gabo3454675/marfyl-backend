@@ -3,15 +3,15 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { ActivityLogService } from '@/modules/activity-log/activity-log.service';
-import { PushNotificationService } from '@/modules/notifications/push-notification.service';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import { UploadService } from '@/common/services/upload.service';
-import * as ExcelJS from 'exceljs';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
+import { PushNotificationService } from "@/modules/notifications/push-notification.service";
+import { CreateProductDto } from "./dto/create-product.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { UploadService } from "@/common/services/upload.service";
+import * as ExcelJS from "exceljs";
 
 @Injectable()
 export class ProductsService {
@@ -26,10 +26,14 @@ export class ProductsService {
    * Sube una imagen usando el servicio de upload (S3 o local)
    */
   async uploadImage(file: Express.Multer.File): Promise<string> {
-    return this.uploadService.uploadFile(file, 'products');
+    return this.uploadService.uploadFile(file, "products");
   }
 
-  async create(createProductDto: CreateProductDto, organizationId: number, imageUrl?: string) {
+  async create(
+    createProductDto: CreateProductDto,
+    organizationId: number,
+    imageUrl?: string,
+  ) {
     // Verificar si el SKU ya existe en esta organización
     if (createProductDto.sku) {
       const existingProduct = await this.prisma.product.findFirst({
@@ -40,7 +44,7 @@ export class ProductsService {
       });
 
       if (existingProduct) {
-        throw new ConflictException('El SKU ya existe para esta organización');
+        throw new ConflictException("El SKU ya existe para esta organización");
       }
     }
 
@@ -54,14 +58,20 @@ export class ProductsService {
       });
 
       if (existingProduct) {
-        throw new ConflictException('El código de barras ya existe para esta organización');
+        throw new ConflictException(
+          "El código de barras ya existe para esta organización",
+        );
       }
     }
 
     // Obtener companyId correspondiente a la organización
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
-    const { isBundle, bundleComponents, isService, ...productRest } = createProductDto;
+    const { isBundle, bundleComponents, isService, ...productRest } =
+      createProductDto;
     const bundle = isBundle ?? false;
     const srv = bundle ? false : (isService ?? false);
     const compsRaw = bundleComponents as unknown;
@@ -84,7 +94,7 @@ export class ProductsService {
         costPrice: createProductDto.costPrice ?? 0,
         stock: createProductDto.stock ?? 0,
         minStock: createProductDto.minStock ?? 5,
-        salePriceCurrency: createProductDto.salePriceCurrency ?? 'USD',
+        salePriceCurrency: createProductDto.salePriceCurrency ?? "USD",
         isBundle: bundle,
         isService: srv,
         bundleComponents: storedComponents,
@@ -98,7 +108,7 @@ export class ProductsService {
         organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }
@@ -128,9 +138,9 @@ export class ProductsService {
 
     if (options.search) {
       where.OR = [
-        { name: { contains: options.search, mode: 'insensitive' } },
-        { sku: { contains: options.search, mode: 'insensitive' } },
-        { barcode: { contains: options.search, mode: 'insensitive' } },
+        { name: { contains: options.search, mode: "insensitive" } },
+        { sku: { contains: options.search, mode: "insensitive" } },
+        { barcode: { contains: options.search, mode: "insensitive" } },
       ];
     }
 
@@ -138,7 +148,7 @@ export class ProductsService {
       this.prisma.product.count({ where }),
       this.prisma.product.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -187,12 +197,15 @@ export class ProductsService {
       });
 
       if (duplicateProduct) {
-        throw new ConflictException('El SKU ya existe para esta organización');
+        throw new ConflictException("El SKU ya existe para esta organización");
       }
     }
 
     // Verificar código de barras único si se está actualizando
-    if (updateProductDto.barcode && updateProductDto.barcode !== existingProduct.barcode) {
+    if (
+      updateProductDto.barcode &&
+      updateProductDto.barcode !== existingProduct.barcode
+    ) {
       const duplicateProduct = await this.prisma.product.findFirst({
         where: {
           organizationId,
@@ -201,17 +214,23 @@ export class ProductsService {
       });
 
       if (duplicateProduct) {
-        throw new ConflictException('El código de barras ya existe para esta organización');
+        throw new ConflictException(
+          "El código de barras ya existe para esta organización",
+        );
       }
     }
 
     const nextBundle =
-      updateProductDto.isBundle !== undefined ? updateProductDto.isBundle : existingProduct.isBundle;
+      updateProductDto.isBundle !== undefined
+        ? updateProductDto.isBundle
+        : existingProduct.isBundle;
     const nextService =
       updateProductDto.isService !== undefined
         ? !!updateProductDto.isService
         : !!(existingProduct as { isService?: boolean }).isService;
-    const data: Record<string, unknown> = { ...(updateProductDto as object) } as Record<string, unknown>;
+    const data: Record<string, unknown> = {
+      ...(updateProductDto as object),
+    } as Record<string, unknown>;
     if (nextBundle) {
       data.isService = false;
     }
@@ -237,13 +256,15 @@ export class ProductsService {
     const newStock = updated.stock;
     const minStock = updated.minStock ?? 5;
     if (newStock < minStock) {
-      const org = await this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { nombre: true },
-      }).catch(() => null);
+      const org = await this.prisma.organization
+        .findUnique({
+          where: { id: organizationId },
+          select: { nombre: true },
+        })
+        .catch(() => null);
       this.pushNotification
         .notifyStockBajo({
-          organizationName: org?.nombre ?? 'Organización',
+          organizationName: org?.nombre ?? "Organización",
           productName: updated.name,
           productId: id,
           stockActual: newStock,
@@ -255,19 +276,25 @@ export class ProductsService {
     // Auditoría: cambio de precio (venta o costo)
     if (userId != null) {
       const oldSale = Number(existingProduct.salePrice);
-      const newSale = updateProductDto.salePrice != null ? Number(updateProductDto.salePrice) : oldSale;
+      const newSale =
+        updateProductDto.salePrice != null
+          ? Number(updateProductDto.salePrice)
+          : oldSale;
       const oldCost = Number(existingProduct.costPrice);
-      const newCost = updateProductDto.costPrice != null ? Number(updateProductDto.costPrice) : oldCost;
+      const newCost =
+        updateProductDto.costPrice != null
+          ? Number(updateProductDto.costPrice)
+          : oldCost;
       if (oldSale !== newSale || oldCost !== newCost) {
         await this.activityLog.log({
           organizationId,
           userId,
-          action: 'PRODUCT_PRICE_UPDATE',
-          entityType: 'product',
+          action: "PRODUCT_PRICE_UPDATE",
+          entityType: "product",
           entityId: String(id),
           oldValue: { salePrice: oldSale, costPrice: oldCost },
           newValue: { salePrice: newSale, costPrice: newCost },
-          summary: `${existingProduct.name}: precio venta ${oldSale} → ${newSale}${oldCost !== newCost ? `, costo ${oldCost} → ${newCost}` : ''}`,
+          summary: `${existingProduct.name}: precio venta ${oldSale} → ${newSale}${oldCost !== newCost ? `, costo ${oldCost} → ${newCost}` : ""}`,
         });
       }
     }
@@ -293,7 +320,9 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException(`Producto con código de barras ${barcode} no encontrado`);
+      throw new NotFoundException(
+        `Producto con código de barras ${barcode} no encontrado`,
+      );
     }
 
     return product;
@@ -339,7 +368,7 @@ export class ProductsService {
     try {
       // Validar que el archivo existe
       if (!file || !file.buffer) {
-        throw new BadRequestException('Archivo no válido');
+        throw new BadRequestException("Archivo no válido");
       }
 
       // Leer el archivo Excel con exceljs
@@ -349,37 +378,56 @@ export class ProductsService {
       // Obtener la primera hoja
       const worksheet = workbook.worksheets[0];
       if (!worksheet) {
-        throw new BadRequestException('El archivo Excel no contiene hojas');
+        throw new BadRequestException("El archivo Excel no contiene hojas");
       }
 
       // Validar que tiene filas
       if (worksheet.rowCount < 2) {
-        throw new BadRequestException('El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)');
+        throw new BadRequestException(
+          "El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)",
+        );
       }
 
       // Obtener encabezados de la primera fila
       const headerRow = worksheet.getRow(1);
       const headers: string[] = [];
       headerRow.eachCell({ includeEmpty: false }, (cell) => {
-        headers.push(String(cell.value || '').trim().toLowerCase());
+        headers.push(
+          String(cell.value || "")
+            .trim()
+            .toLowerCase(),
+        );
       });
 
       // Validar columnas requeridas (case-insensitive)
-      const requiredColumns = ['nombre', 'precio', 'stock'];
+      const requiredColumns = ["nombre", "precio", "stock"];
       const columnMap: Record<string, number> = {};
 
       // Buscar columnas (flexible con variaciones)
       const columnVariations: Record<string, string[]> = {
-        nombre: ['nombre', 'name', 'producto', 'product', 'descripción', 'descripcion'],
-        precio: ['precio', 'price', 'precio de venta', 'sale price', 'venta'],
-        stock: ['stock', 'inventario', 'inventory', 'cantidad', 'quantity'],
-        sku: ['sku', 'código', 'codigo', 'code'],
-        codigoBarras: ['código de barras', 'codigo de barras', 'barcode', 'código barras', 'codigo barras'],
+        nombre: [
+          "nombre",
+          "name",
+          "producto",
+          "product",
+          "descripción",
+          "descripcion",
+        ],
+        precio: ["precio", "price", "precio de venta", "sale price", "venta"],
+        stock: ["stock", "inventario", "inventory", "cantidad", "quantity"],
+        sku: ["sku", "código", "codigo", "code"],
+        codigoBarras: [
+          "código de barras",
+          "codigo de barras",
+          "barcode",
+          "código barras",
+          "codigo barras",
+        ],
       };
 
       for (const [key, variations] of Object.entries(columnVariations)) {
         const foundIndex = headers.findIndex((h) =>
-          variations.some((v) => h.includes(v) || v.includes(h))
+          variations.some((v) => h.includes(v) || v.includes(h)),
         );
         if (foundIndex !== -1) {
           columnMap[key] = foundIndex + 1; // ExcelJS usa índices basados en 1
@@ -389,13 +437,16 @@ export class ProductsService {
       // Validar columnas requeridas
       if (!columnMap.nombre || !columnMap.precio || !columnMap.stock) {
         throw new BadRequestException(
-          'El archivo Excel debe contener las columnas: Nombre, Precio, Stock. ' +
-          'Columnas opcionales: SKU, Código de Barras'
+          "El archivo Excel debe contener las columnas: Nombre, Precio, Stock. " +
+            "Columnas opcionales: SKU, Código de Barras",
         );
       }
 
       // Obtener companyId para la organización
-      const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+      const companyId = await getCompanyIdFromOrganization(
+        this.prisma,
+        organizationId,
+      );
 
       // Contadores para el resumen
       let created = 0;
@@ -411,9 +462,18 @@ export class ProductsService {
 
             try {
               // Extraer valores de las celdas
-              const nombre = row.getCell(columnMap.nombre)?.value?.toString()?.trim();
-              const precioStr = row.getCell(columnMap.precio)?.value?.toString()?.trim();
-              const stockStr = row.getCell(columnMap.stock)?.value?.toString()?.trim();
+              const nombre = row
+                .getCell(columnMap.nombre)
+                ?.value?.toString()
+                ?.trim();
+              const precioStr = row
+                .getCell(columnMap.precio)
+                ?.value?.toString()
+                ?.trim();
+              const stockStr = row
+                .getCell(columnMap.stock)
+                ?.value?.toString()
+                ?.trim();
               const sku = columnMap.sku
                 ? row.getCell(columnMap.sku)?.value?.toString()?.trim()
                 : undefined;
@@ -427,15 +487,19 @@ export class ProductsService {
                 continue;
               }
 
-              const precio = parseFloat(precioStr || '0');
+              const precio = parseFloat(precioStr || "0");
               if (isNaN(precio) || precio < 0) {
-                errors.push(`Fila ${rowNum}: El precio debe ser un número válido mayor o igual a 0`);
+                errors.push(
+                  `Fila ${rowNum}: El precio debe ser un número válido mayor o igual a 0`,
+                );
                 continue;
               }
 
-              const stock = parseInt(stockStr || '0', 10);
+              const stock = parseInt(stockStr || "0", 10);
               if (isNaN(stock) || stock < 0) {
-                errors.push(`Fila ${rowNum}: El stock debe ser un número entero válido mayor o igual a 0`);
+                errors.push(
+                  `Fila ${rowNum}: El stock debe ser un número entero válido mayor o igual a 0`,
+                );
                 continue;
               }
 
@@ -530,13 +594,15 @@ export class ProductsService {
                 created++;
               }
             } catch (error: any) {
-              errors.push(`Fila ${rowNum}: ${error.message || 'Error desconocido'}`);
+              errors.push(
+                `Fila ${rowNum}: ${error.message || "Error desconocido"}`,
+              );
             }
           }
         },
         {
           timeout: 30000, // 30 segundos de timeout para transacciones largas
-        }
+        },
       );
 
       return {
@@ -551,7 +617,7 @@ export class ProductsService {
         throw error;
       }
       throw new BadRequestException(
-        `Error al procesar el archivo Excel: ${error.message || 'Error desconocido'}`
+        `Error al procesar el archivo Excel: ${error.message || "Error desconocido"}`,
       );
     }
   }

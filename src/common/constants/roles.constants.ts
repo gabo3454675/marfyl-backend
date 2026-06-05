@@ -7,12 +7,12 @@
 
 /** Roles almacenados en BD (coinciden con Prisma enum Role) */
 export const ROLES = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  ADMIN: 'ADMIN',
-  FISCAL: 'FISCAL',
-  MANAGER: 'MANAGER',
-  SELLER: 'SELLER',
-  WAREHOUSE: 'WAREHOUSE',
+  SUPER_ADMIN: "SUPER_ADMIN",
+  ADMIN: "ADMIN",
+  FISCAL: "FISCAL",
+  MANAGER: "MANAGER",
+  SELLER: "SELLER",
+  WAREHOUSE: "WAREHOUSE",
 } as const;
 
 export type RoleKey = keyof typeof ROLES;
@@ -53,7 +53,9 @@ export interface RolePermissions {
 }
 
 function normalizeRole(role: string | undefined): string {
-  return String(role ?? '').toUpperCase().trim();
+  return String(role ?? "")
+    .toUpperCase()
+    .trim();
 }
 
 /**
@@ -74,7 +76,8 @@ export function getPermissions(role: string | undefined): RolePermissions {
     isSuperAdmin,
     canManageUsers: isSuperAdmin || isAdmin,
     canEditOrganizationSettings: isSuperAdmin || isAdmin,
-    canManageInventory: isSuperAdmin || isAdmin || isManager || r === ROLES.WAREHOUSE,
+    canManageInventory:
+      isSuperAdmin || isAdmin || isManager || r === ROLES.WAREHOUSE,
     canManageSales: isSuperAdmin || isAdmin || isManager || r === ROLES.SELLER,
     canAssignTasks: isSuperAdmin || isAdmin || isManager,
     canViewMembers: isSuperAdmin || isAdmin || isManager, // MANAGER ve solo SELLER/WAREHOUSE; lógica en getMembers
@@ -105,7 +108,13 @@ export function canViewMembersList(role: string | undefined): boolean {
 }
 
 /** Roles que pueden cambiar roles o desactivar miembros (ADMIN no puede tocar SUPER_ADMIN). */
-export const ROLES_CAN_MANAGE_MEMBERS: RoleValue[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+export const ROLES_CAN_MANAGE_MEMBERS: RoleValue[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+];
 
 /** Roles que pueden editar configuración de organización (tasa BCV, etc.). */
-export const ROLES_CAN_EDIT_ORGANIZATION: RoleValue[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+export const ROLES_CAN_EDIT_ORGANIZATION: RoleValue[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+];

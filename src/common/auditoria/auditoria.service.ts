@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   registrarAuditoria,
   RegistrarAuditoriaParams,
-} from './registrar-auditoria';
+} from "./registrar-auditoria";
 
 /**
  * Servicio inyectable para registrar auditoría SAC (tabla `auditorias`).

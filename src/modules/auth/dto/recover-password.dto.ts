@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength } from "class-validator";
 
 export class RecoverPasswordDto {
   @IsEmail()
@@ -11,7 +11,8 @@ export class RecoverPasswordDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8, { message: 'La nueva contraseña debe tener al menos 8 caracteres' })
+  @MinLength(8, {
+    message: "La nueva contraseña debe tener al menos 8 caracteres",
+  })
   newPassword: string;
 }
-

@@ -3,23 +3,23 @@ import {
   computeLineTax,
   computeWithholdingIva,
   IVA_GENERAL_RATE,
-} from './tax-calculator';
+} from "./tax-calculator";
 
-describe('tax-calculator', () => {
-  it('calcula IVA 16% en linea general', () => {
+describe("tax-calculator", () => {
+  it("calcula IVA 16% en linea general", () => {
     const r = computeLineTax({ amount: 100 });
     expect(r.taxRate).toBe(IVA_GENERAL_RATE);
     expect(r.ivaLine).toBe(16);
     expect(r.taxableBase).toBe(100);
   });
 
-  it('exento no genera IVA', () => {
+  it("exento no genera IVA", () => {
     const r = computeLineTax({ amount: 50, isExempt: true });
     expect(r.ivaLine).toBe(0);
-    expect(r.bucket).toBe('exempt');
+    expect(r.bucket).toBe("exempt");
   });
 
-  it('total factura incluye IVA', () => {
+  it("total factura incluye IVA", () => {
     const t = computeInvoiceTax([
       { amount: 100, isExempt: false },
       { amount: 20, isExempt: true },
@@ -29,7 +29,7 @@ describe('tax-calculator', () => {
     expect(t.totalWithTax).toBe(136);
   });
 
-  it('retencion 75% del IVA', () => {
+  it("retencion 75% del IVA", () => {
     expect(computeWithholdingIva(100)).toBe(75);
   });
 });

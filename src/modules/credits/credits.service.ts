@@ -3,15 +3,19 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { CreditStatus, CreditTransactionType, PaymentStatus } from '@prisma/client';
-import { UpdateCreditLimitDto } from './dto/update-credit-limit.dto';
-import { RegisterPaymentDto } from './dto/register-payment.dto';
-import { TaskStatus } from '@prisma/client';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import {
+  CreditStatus,
+  CreditTransactionType,
+  PaymentStatus,
+} from "@prisma/client";
+import { UpdateCreditLimitDto } from "./dto/update-credit-limit.dto";
+import { RegisterPaymentDto } from "./dto/register-payment.dto";
+import { TaskStatus } from "@prisma/client";
 
 // require() evita "default is not a constructor" en producción (CommonJS)
-const PDFDocument = require('pdfkit');
+const PDFDocument = require("pdfkit");
 
 @Injectable()
 export class CreditsService {
@@ -26,7 +30,7 @@ export class CreditsService {
       where: { id: customerId, organizationId },
     });
     if (!customer) {
-      throw new NotFoundException('Cliente no encontrado');
+      throw new NotFoundException("Cliente no encontrado");
     }
 
     let credit = await this.prisma.customerCredit.findUnique({
@@ -47,7 +51,7 @@ export class CreditsService {
         include: { customer: true },
       });
     } else if (credit.organizationId !== organizationId) {
-      throw new NotFoundException('Crédito no pertenece a esta organización');
+      throw new NotFoundException("Crédito no pertenece a esta organización");
     }
 
     return credit;
@@ -62,7 +66,7 @@ export class CreditsService {
       include: {
         customer: true,
       },
-      orderBy: { customer: { name: 'asc' } },
+      orderBy: { customer: { name: "asc" } },
     });
   }
 
@@ -80,14 +84,15 @@ export class CreditsService {
       select: { isSuperAdmin: true },
     });
     const membership = await this.prisma.member.findFirst({
-      where: { userId, organizationId, status: 'ACTIVE' },
+      where: { userId, organizationId, status: "ACTIVE" },
     });
     const isAdmin =
       user?.isSuperAdmin ||
-      (membership && (membership.role === 'ADMIN' || membership.role === 'SUPER_ADMIN'));
+      (membership &&
+        (membership.role === "ADMIN" || membership.role === "SUPER_ADMIN"));
     if (!isAdmin) {
       throw new ForbiddenException(
-        'Solo el Super Admin o un administrador pueden modificar el límite de crédito',
+        "Solo el Super Admin o un administrador pueden modificar el límite de crédito",
       );
     }
 
@@ -95,12 +100,12 @@ export class CreditsService {
       where: { id: creditId, organizationId },
     });
     if (!credit) {
-      throw new NotFoundException('Crédito no encontrado');
+      throw new NotFoundException("Crédito no encontrado");
     }
 
     if (dto.limitAmount < Number(credit.currentBalance)) {
       throw new BadRequestException(
-        'El límite no puede ser menor al saldo deudor actual',
+        "El límite no puede ser menor al saldo deudor actual",
       );
     }
 
@@ -124,11 +129,12 @@ export class CreditsService {
   ) {
     const credit = await this.getOrCreateCredit(customerId, organizationId);
     if (credit.status !== CreditStatus.ACTIVE) {
-      throw new BadRequestException('El crédito del cliente está suspendido');
+      throw new BadRequestException("El crédito del cliente está suspendido");
     }
-    const available = Number(credit.limitAmount) - Number(credit.currentBalance);
+    const available =
+      Number(credit.limitAmount) - Number(credit.currentBalance);
     if (available < amountUsd) {
-      throw new BadRequestException('Límite de crédito insuficiente');
+      throw new BadRequestException("Límite de crédito insuficiente");
     }
 
     const newBalance = Number(credit.currentBalance) + amountUsd;
@@ -163,19 +169,20 @@ export class CreditsService {
       include: { customer: true },
     });
     if (!credit) {
-      throw new NotFoundException('Crédito no encontrado');
+      throw new NotFoundException("Crédito no encontrado");
     }
 
     const balance = Number(credit.currentBalance);
     if (dto.amountUsd > balance) {
       throw new BadRequestException(
-        'El abono no puede ser mayor al saldo deudor actual',
+        "El abono no puede ser mayor al saldo deudor actual",
       );
     }
 
     const newBalance = balance - dto.amountUsd;
     const description =
-      dto.description ?? (dto.invoiceId ? `Abono (Factura #${dto.invoiceId})` : 'Abono');
+      dto.description ??
+      (dto.invoiceId ? `Abono (Factura #${dto.invoiceId})` : "Abono");
 
     await this.prisma.customerCredit.update({
       where: { id: creditId },
@@ -199,7 +206,10 @@ export class CreditsService {
     });
 
     if (dto.invoiceId) {
-      await this.tryCloseCollectionTaskForInvoice(dto.invoiceId, organizationId);
+      await this.tryCloseCollectionTaskForInvoice(
+        dto.invoiceId,
+        organizationId,
+      );
     }
 
     return created;
@@ -237,7 +247,7 @@ export class CreditsService {
       where: {
         invoiceId,
         organizationId,
-        category: 'COBRANZA',
+        category: "COBRANZA",
         status: { in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] },
       },
       data: { status: TaskStatus.DONE },
@@ -252,13 +262,13 @@ export class CreditsService {
       where: { id: creditId, organizationId },
     });
     if (!credit) {
-      throw new NotFoundException('Crédito no encontrado');
+      throw new NotFoundException("Crédito no encontrado");
     }
 
     return this.prisma.creditTransaction.findMany({
       where: { creditId },
       include: { invoice: { select: { id: true, totalAmount: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 
@@ -266,11 +276,13 @@ export class CreditsService {
    * Clientes con deuda vencida (para indicador en lista de clientes).
    * Una tarea de cobranza con dueDate < hoy y no DONE implica deuda vencida para ese cliente (vía factura).
    */
-  async getCustomerIdsWithOverdueDebt(organizationId: number): Promise<number[]> {
+  async getCustomerIdsWithOverdueDebt(
+    organizationId: number,
+  ): Promise<number[]> {
     const tasks = await this.prisma.task.findMany({
       where: {
         organizationId,
-        category: 'COBRANZA',
+        category: "COBRANZA",
         status: { in: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] },
         dueDate: { lt: new Date() },
         invoiceId: { not: null },
@@ -308,36 +320,58 @@ export class CreditsService {
     });
 
     if (!transaction || transaction.credit.organizationId !== organizationId) {
-      throw new NotFoundException('Transacción no encontrada');
+      throw new NotFoundException("Transacción no encontrada");
     }
     if (transaction.type !== CreditTransactionType.PAYMENT) {
-      throw new BadRequestException('Solo se puede generar recibo de abonos');
+      throw new BadRequestException("Solo se puede generar recibo de abonos");
     }
 
-    const companyName = transaction.credit.organization.nombre || 'Empresa';
+    const companyName = transaction.credit.organization.nombre || "Empresa";
     const customer = transaction.credit.customer;
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50 });
       const buffers: Buffer[] = [];
-      doc.on('data', (chunk: Buffer) => buffers.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
+      doc.on("data", (chunk: Buffer) => buffers.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", reject);
 
-      doc.fontSize(20).text('RECIBO DE ABONO', { align: 'center' });
+      doc.fontSize(20).text("RECIBO DE ABONO", { align: "center" });
       doc.moveDown();
-      doc.fontSize(10).text(`Fecha: ${transaction.createdAt.toLocaleDateString('es-VE', { dateStyle: 'long' })}`, { align: 'center' });
-      doc.text(`Hora: ${transaction.createdAt.toLocaleTimeString('es-VE')}`, { align: 'center' });
+      doc
+        .fontSize(10)
+        .text(
+          `Fecha: ${transaction.createdAt.toLocaleDateString("es-VE", { dateStyle: "long" })}`,
+          { align: "center" },
+        );
+      doc.text(`Hora: ${transaction.createdAt.toLocaleTimeString("es-VE")}`, {
+        align: "center",
+      });
       doc.moveDown();
-      doc.text(`${companyName}`, { align: 'center' });
+      doc.text(`${companyName}`, { align: "center" });
       doc.moveDown(2);
       doc.text(`Cliente: ${customer.name}`);
-      doc.text(`Concepto: ${transaction.description || 'Abono a cuenta por cobrar'}`);
+      doc.text(
+        `Concepto: ${transaction.description || "Abono a cuenta por cobrar"}`,
+      );
       doc.moveDown();
-      doc.fontSize(14).text(`Monto USD: $ ${Number(transaction.amountUsd).toFixed(2)}`, { align: 'left' });
-      doc.text(`Monto BS: Bs. ${Number(transaction.amountBs).toFixed(2)} (Tasa: ${Number(transaction.exchangeRate).toFixed(2)})`, { align: 'left' });
+      doc
+        .fontSize(14)
+        .text(`Monto USD: $ ${Number(transaction.amountUsd).toFixed(2)}`, {
+          align: "left",
+        });
+      doc.text(
+        `Monto BS: Bs. ${Number(transaction.amountBs).toFixed(2)} (Tasa: ${Number(transaction.exchangeRate).toFixed(2)})`,
+        { align: "left" },
+      );
       doc.moveDown(2);
-      doc.fontSize(9).fillColor('#666').text(`Transacción #${transaction.id} · Generado el ${new Date().toLocaleString('es-VE')}`, { align: 'center' });
+      doc
+        .fontSize(9)
+        .fillColor("#666")
+        .text(
+          `Transacción #${transaction.id} · Generado el ${new Date().toLocaleString("es-VE")}`,
+          { align: "center" },
+        );
       doc.end();
     });
   }

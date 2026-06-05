@@ -1,5 +1,5 @@
-import { Global, Module } from '@nestjs/common';
-import { OrganizationBillingService } from './organization-billing.service';
+import { Global, Module } from "@nestjs/common";
+import { OrganizationBillingService } from "./organization-billing.service";
 
 @Global()
 @Module({

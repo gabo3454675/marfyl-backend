@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { NotificationsService } from './notifications.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { NotificationsService } from "./notifications.service";
 
 const UMBRAL_FALTANTE_CIERRE = 5; // Dólares: notificar si diferencia < -5
 
@@ -11,7 +11,7 @@ const UMBRAL_FALTANTE_CIERRE = 5; // Dólares: notificar si diferencia < -5
 @Injectable()
 export class PushNotificationService {
   private readonly logger = new Logger(PushNotificationService.name);
-  private messaging: import('firebase-admin').messaging.Messaging | null = null;
+  private messaging: import("firebase-admin").messaging.Messaging | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -21,23 +21,30 @@ export class PushNotificationService {
   }
 
   private initFirebase(): void {
-    const cred = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+    const cred = this.config.get<string>("FIREBASE_SERVICE_ACCOUNT_JSON");
     if (!cred) {
-      this.logger.warn('FIREBASE_SERVICE_ACCOUNT_JSON no configurado. Notificaciones push desactivadas.');
+      this.logger.warn(
+        "FIREBASE_SERVICE_ACCOUNT_JSON no configurado. Notificaciones push desactivadas.",
+      );
       return;
     }
     try {
-      const admin = require('firebase-admin');
-      let app: import('firebase-admin').app.App;
+      const admin = require("firebase-admin");
+      let app: import("firebase-admin").app.App;
       if (!admin.apps.length) {
         const serviceAccount = JSON.parse(cred) as Record<string, string>;
-        app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+        app = admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
       } else {
         app = admin.app();
       }
       this.messaging = app.messaging();
     } catch (e) {
-      this.logger.warn('No se pudo inicializar Firebase Admin. Notificaciones push desactivadas.', e);
+      this.logger.warn(
+        "No se pudo inicializar Firebase Admin. Notificaciones push desactivadas.",
+        e,
+      );
     }
   }
 
@@ -53,9 +60,12 @@ export class PushNotificationService {
     if (params.diferencia >= -UMBRAL_FALTANTE_CIERRE) return;
     const tokens = await this.notifications.getFcmTokensForSuperAdmins();
     if (tokens.length === 0) return;
-    const title = '⚠️ Cierre con faltante';
+    const title = "⚠️ Cierre con faltante";
     const body = `${params.organizationName}: cierre #${params.cierreId} (${params.cajero}). Faltante: $${Math.abs(params.diferencia).toFixed(2)}.`;
-    await this.sendToTokens(tokens, title, body, { type: 'cierre_faltante', cierreId: String(params.cierreId) });
+    await this.sendToTokens(tokens, title, body, {
+      type: "cierre_faltante",
+      cierreId: String(params.cierreId),
+    });
   }
 
   /**
@@ -71,9 +81,12 @@ export class PushNotificationService {
     if (params.stockActual >= params.minStock) return;
     const tokens = await this.notifications.getFcmTokensForSuperAdmins();
     if (tokens.length === 0) return;
-    const title = '📦 Stock bajo';
+    const title = "📦 Stock bajo";
     const body = `${params.organizationName}: "${params.productName}" tiene ${params.stockActual} unidades (mínimo ${params.minStock}).`;
-    await this.sendToTokens(tokens, title, body, { type: 'stock_bajo', productId: String(params.productId) });
+    await this.sendToTokens(tokens, title, body, {
+      type: "stock_bajo",
+      productId: String(params.productId),
+    });
   }
 
   async notifyFiscalReminder(params: {
@@ -84,7 +97,7 @@ export class PushNotificationService {
   }): Promise<void> {
     if (params.tokens.length === 0) return;
     await this.sendToTokens(params.tokens, params.title, params.body, {
-      type: 'fiscal_deadline',
+      type: "fiscal_deadline",
       organizationId: String(params.organizationId),
     });
   }
@@ -101,15 +114,17 @@ export class PushNotificationService {
         notification: { title, body },
         data: data ?? {},
         tokens,
-        android: { priority: 'high' as const },
-        apns: { payload: { aps: { sound: 'default' } } },
+        android: { priority: "high" as const },
+        apns: { payload: { aps: { sound: "default" } } },
       };
       const res = await this.messaging.sendEachForMulticast(message);
       if (res.failureCount > 0) {
-        this.logger.warn(`Push: ${res.successCount} enviados, ${res.failureCount} fallidos.`);
+        this.logger.warn(
+          `Push: ${res.successCount} enviados, ${res.failureCount} fallidos.`,
+        );
       }
     } catch (e) {
-      this.logger.error('Error enviando notificación push', e);
+      this.logger.error("Error enviando notificación push", e);
     }
   }
 }

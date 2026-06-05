@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { CreateCustomerDto } from './dto/create-customer.dto';
-import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { CreateCustomerDto } from "./dto/create-customer.dto";
+import { UpdateCustomerDto } from "./dto/update-customer.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 
 @Injectable()
 export class CustomersService {
@@ -10,7 +10,10 @@ export class CustomersService {
 
   async create(createCustomerDto: CreateCustomerDto, organizationId: number) {
     // Obtener companyId correspondiente a la organización
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     return this.prisma.customer.create({
       data: {
@@ -27,7 +30,7 @@ export class CustomersService {
         organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }
@@ -47,7 +50,11 @@ export class CustomersService {
     return customer;
   }
 
-  async update(id: number, updateCustomerDto: UpdateCustomerDto, organizationId: number) {
+  async update(
+    id: number,
+    updateCustomerDto: UpdateCustomerDto,
+    organizationId: number,
+  ) {
     // Verificar que el cliente existe y pertenece a la organización
     await this.findOne(id, organizationId);
 

@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { FiscalEngineService } from './fiscal-engine.service';
-import { computeInvoiceTax } from './helpers/tax-calculator';
+import { Injectable, Logger } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { FiscalEngineService } from "./fiscal-engine.service";
+import { computeInvoiceTax } from "./helpers/tax-calculator";
 
 @Injectable()
 export class FiscalBackfillService {
@@ -41,7 +41,7 @@ export class FiscalBackfillService {
       include: {
         items: { include: { product: { select: { isExempt: true } } } },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
       take: limit,
     });
 
@@ -89,7 +89,10 @@ export class FiscalBackfillService {
           recalculated++;
         }
 
-        const line = await this.fiscalEngine.projectSale(organizationId, inv.id);
+        const line = await this.fiscalEngine.projectSale(
+          organizationId,
+          inv.id,
+        );
         if (line) projected++;
         else skipped++;
       } catch (e) {

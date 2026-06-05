@@ -3,7 +3,7 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
 /**
  * Guard que exige que el usuario sea Super Admin global (User.isSuperAdmin === true).
@@ -18,7 +18,7 @@ export class SuperAdminGuard implements CanActivate {
 
     if (!isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo un Super Admin global puede ejecutar esta acción.',
+        "Solo un Super Admin global puede ejecutar esta acción.",
       );
     }
 

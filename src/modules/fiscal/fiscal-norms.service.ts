@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { FiscalNormStatus } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { FiscalCalendarService } from './fiscal-calendar.service';
+import { Injectable, Logger } from "@nestjs/common";
+import { FiscalNormStatus } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { FiscalCalendarService } from "./fiscal-calendar.service";
 @Injectable()
 export class FiscalNormsService {
   private readonly logger = new Logger(FiscalNormsService.name);
@@ -17,7 +17,7 @@ export class FiscalNormsService {
   async syncNormsFromCalendarJson(userId?: number) {
     const data = this.calendar.loadRulesJson();
     if (!data) {
-      return { synced: false, message: 'JSON de reglas no encontrado' };
+      return { synced: false, message: "JSON de reglas no encontrado" };
     }
 
     const validFrom = new Date(`${data.version}-01-01T00:00:00.000Z`);
@@ -32,20 +32,24 @@ export class FiscalNormsService {
             code: ob.code,
             name: ob.name,
             legalReference: `Calendario SENIAT ${data.version}`,
-            officialSource: 'docs/FISCAL-CALENDARIO-REGLAS.json',
-            priority: ob.code.startsWith('IVA') ? 10 : 50,
+            officialSource: "docs/FISCAL-CALENDARIO-REGLAS.json",
+            priority: ob.code.startsWith("IVA") ? 10 : 50,
           },
           update: { name: ob.name, isActive: true },
         });
 
         const existingActive = await this.prisma.fiscalNormVersion.findFirst({
-          where: { normId: norm.id, status: 'ACTIVE', versionCode: data.version },
+          where: {
+            normId: norm.id,
+            status: "ACTIVE",
+            versionCode: data.version,
+          },
         });
 
         if (existingActive) continue;
 
         await this.prisma.fiscalNormVersion.updateMany({
-          where: { normId: norm.id, status: 'ACTIVE' },
+          where: { normId: norm.id, status: "ACTIVE" },
           data: { status: FiscalNormStatus.SUPERSEDED, validTo: new Date() },
         });
         superseded += 1;
@@ -57,7 +61,7 @@ export class FiscalNormsService {
             articleRef: ob.code,
             validFrom,
             status: FiscalNormStatus.ACTIVE,
-            sourceDocument: 'FISCAL-CALENDARIO-REGLAS.json',
+            sourceDocument: "FISCAL-CALENDARIO-REGLAS.json",
             notes: ob.periodicity,
             metadata: { taxpayerTypes: ob.taxpayerTypes },
             createdByUserId: userId,
@@ -78,17 +82,19 @@ export class FiscalNormsService {
 
       await this.prisma.fiscalSyncRun.create({
         data: {
-          syncType: 'NORMS',
-          status: 'SUCCESS',
+          syncType: "NORMS",
+          status: "SUCCESS",
           versionLabel: data.version,
           finishedAt: new Date(),
           metadata: { created, superseded },
         },
       });
-
     } catch (err) {
       this.logger.warn(`Normas: migración pendiente o error — ${String(err)}`);
-      return { synced: false, message: 'Ejecute migración fiscal_compliance_layers' };
+      return {
+        synced: false,
+        message: "Ejecute migración fiscal_compliance_layers",
+      };
     }
 
     return { synced: true, version: data.version, created, superseded };
@@ -100,12 +106,12 @@ export class FiscalNormsService {
         where: { isActive: true },
         include: {
           versions: {
-            where: { status: 'ACTIVE' },
-            orderBy: { validFrom: 'desc' },
+            where: { status: "ACTIVE" },
+            orderBy: { validFrom: "desc" },
             take: 1,
           },
         },
-        orderBy: { priority: 'asc' },
+        orderBy: { priority: "asc" },
       });
     } catch {
       return [];

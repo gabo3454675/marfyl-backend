@@ -9,10 +9,10 @@ import {
   Min,
   IsArray,
   ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-import { ExpenseStatus } from '@prisma/client';
-import { PurchaseLineDto } from './purchase-line.dto';
+} from "class-validator";
+import { Type } from "class-transformer";
+import { ExpenseStatus } from "@prisma/client";
+import { PurchaseLineDto } from "./purchase-line.dto";
 
 export class CreateExpenseDto {
   @IsDateString()

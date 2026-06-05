@@ -1,5 +1,12 @@
-import { IsString, IsEmail, IsEnum, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
-import { Role } from '@prisma/client';
+import {
+  IsString,
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  MinLength,
+} from "class-validator";
+import { Role } from "@prisma/client";
 
 export class ProvisionMemberDto {
   @IsEmail()
@@ -18,6 +25,6 @@ export class ProvisionMemberDto {
   /** Contraseña temporal (opcional). Si no se envía, se genera una automática. */
   @IsOptional()
   @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+  @MinLength(8, { message: "La contraseña debe tener al menos 8 caracteres" })
   tempPassword?: string;
 }

@@ -1,5 +1,5 @@
-import { FiscalDomainEventType } from '@prisma/client';
-import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
+import { FiscalDomainEventType } from "@prisma/client";
+import { IsEnum, IsObject, IsOptional, IsString } from "class-validator";
 
 export class EmitFiscalEventDto {
   @IsEnum(FiscalDomainEventType)

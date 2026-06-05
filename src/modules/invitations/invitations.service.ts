@@ -5,15 +5,15 @@ import {
   ConflictException,
   NotFoundException,
   Logger,
-} from '@nestjs/common';
-import { Invitation } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { getPermissions, ROLES } from '@/common/constants/roles.constants';
-import { EmailService } from '@/modules/email/email.service';
-import { InviteMemberDto } from './dto/invite-member.dto';
-import { ProvisionMemberDto } from './dto/provision-member.dto';
-import { randomBytes } from 'crypto';
-import * as bcrypt from 'bcryptjs';
+} from "@nestjs/common";
+import { Invitation } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { getPermissions, ROLES } from "@/common/constants/roles.constants";
+import { EmailService } from "@/modules/email/email.service";
+import { InviteMemberDto } from "./dto/invite-member.dto";
+import { ProvisionMemberDto } from "./dto/provision-member.dto";
+import { randomBytes } from "crypto";
+import * as bcrypt from "bcryptjs";
 
 type InvitationWithRelations = Invitation & {
   organization: { id: number; nombre: string; slug: string };
@@ -39,11 +39,11 @@ export class InvitationsService {
     invitedBy: number,
   ) {
     // Validar que el invitador tiene permisos (SUPER_ADMIN o ADMIN)
-    let inviterMembership = await this.prisma.member.findFirst({
+    const inviterMembership = await this.prisma.member.findFirst({
       where: {
         userId: invitedBy,
         organizationId: organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
 
@@ -59,27 +59,31 @@ export class InvitationsService {
       if (inviterUser?.isSuperAdmin) {
         inviterRole = ROLES.SUPER_ADMIN;
       } else {
-        throw new ForbiddenException(
-          'No tienes acceso a esta organización',
-        );
+        throw new ForbiddenException("No tienes acceso a esta organización");
       }
     }
     const perms = getPermissions(inviterRole);
     if (!perms.canManageUsers) {
       throw new ForbiddenException(
-        'Solo los SUPER_ADMIN y ADMIN pueden invitar miembros',
+        "Solo los SUPER_ADMIN y ADMIN pueden invitar miembros",
       );
     }
 
     // REGLA: Los ADMIN no pueden crear otros ADMIN ni SUPER_ADMIN
-    if (inviterRole === ROLES.ADMIN && String(inviteDto.role).toUpperCase() === ROLES.ADMIN) {
+    if (
+      inviterRole === ROLES.ADMIN &&
+      String(inviteDto.role).toUpperCase() === ROLES.ADMIN
+    ) {
       throw new ForbiddenException(
-        'Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.',
+        "Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.",
       );
     }
-    if (inviterRole === ROLES.ADMIN && String(inviteDto.role).toUpperCase() === ROLES.SUPER_ADMIN) {
+    if (
+      inviterRole === ROLES.ADMIN &&
+      String(inviteDto.role).toUpperCase() === ROLES.SUPER_ADMIN
+    ) {
       throw new ForbiddenException(
-        'Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN del sistema puede asignar este rol.',
+        "Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN del sistema puede asignar este rol.",
       );
     }
 
@@ -95,14 +99,14 @@ export class InvitationsService {
         where: {
           userId: existingUser.id,
           organizationId: organizationId,
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
       });
     }
 
     if (existingMembership) {
       throw new ConflictException(
-        'Este usuario ya es miembro activo de esta organización',
+        "Este usuario ya es miembro activo de esta organización",
       );
     }
 
@@ -111,7 +115,7 @@ export class InvitationsService {
       where: {
         email: inviteDto.email,
         organizationId: organizationId,
-        status: 'PENDING',
+        status: "PENDING",
         expiresAt: {
           gt: new Date(),
         },
@@ -120,12 +124,12 @@ export class InvitationsService {
 
     if (existingInvitation) {
       throw new ConflictException(
-        'Ya existe una invitación pendiente para este usuario',
+        "Ya existe una invitación pendiente para este usuario",
       );
     }
 
     // Generar token único
-    const token = randomBytes(32).toString('hex');
+    const token = randomBytes(32).toString("hex");
 
     // Fecha de expiración: 7 días desde ahora
     const expiresAt = new Date();
@@ -140,7 +144,7 @@ export class InvitationsService {
         organizationId: organizationId,
         invitedBy: invitedBy,
         expiresAt,
-        status: 'PENDING',
+        status: "PENDING",
       },
       include: {
         organization: {
@@ -184,16 +188,16 @@ export class InvitationsService {
   }
 
   private getFrontendUrl(): string {
-    return process.env.FRONTEND_URL?.trim() || 'http://localhost:3003';
+    return process.env.FRONTEND_URL?.trim() || "http://localhost:3003";
   }
 
   private escapeHtml(s: string): string {
     return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   private buildInvitationEmailHtml(
@@ -205,8 +209,8 @@ export class InvitationsService {
       invitation.inviter.fullName || invitation.inviter.email,
     );
     const role = this.escapeHtml(String(invitation.role));
-    const expiresAt = invitation.expiresAt.toLocaleDateString('es-VE', {
-      dateStyle: 'long',
+    const expiresAt = invitation.expiresAt.toLocaleDateString("es-VE", {
+      dateStyle: "long",
     });
 
     return `<!DOCTYPE html>
@@ -261,11 +265,11 @@ export class InvitationsService {
     organizationId: number,
     invitedBy: number,
   ) {
-    let inviterMembership = await this.prisma.member.findFirst({
+    const inviterMembership = await this.prisma.member.findFirst({
       where: {
         userId: invitedBy,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
 
@@ -280,26 +284,26 @@ export class InvitationsService {
       if (inviterUser?.isSuperAdmin) {
         inviterRole = ROLES.SUPER_ADMIN;
       } else {
-        throw new ForbiddenException('No tienes acceso a esta organización');
+        throw new ForbiddenException("No tienes acceso a esta organización");
       }
     }
 
     const perms = getPermissions(inviterRole);
     if (!perms.canManageUsers) {
       throw new ForbiddenException(
-        'Solo SUPER_ADMIN y ADMIN pueden agregar miembros directamente',
+        "Solo SUPER_ADMIN y ADMIN pueden agregar miembros directamente",
       );
     }
 
     const targetRole = String(dto.role).toUpperCase();
     if (inviterRole === ROLES.ADMIN && targetRole === ROLES.ADMIN) {
       throw new ForbiddenException(
-        'Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.',
+        "Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.",
       );
     }
     if (inviterRole === ROLES.ADMIN && targetRole === ROLES.SUPER_ADMIN) {
       throw new ForbiddenException(
-        'Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN puede asignar este rol.',
+        "Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN puede asignar este rol.",
       );
     }
 
@@ -312,12 +316,12 @@ export class InvitationsService {
         where: {
           userId: existingUser.id,
           organizationId,
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
       });
       if (existingMembership) {
         throw new ConflictException(
-          'Este usuario ya es miembro activo de esta organización',
+          "Este usuario ya es miembro activo de esta organización",
         );
       }
       try {
@@ -326,7 +330,7 @@ export class InvitationsService {
             userId: existingUser.id,
             organizationId,
             role: dto.role,
-            status: 'ACTIVE',
+            status: "ACTIVE",
           },
           include: {
             user: {
@@ -341,14 +345,18 @@ export class InvitationsService {
         });
         return {
           isNewUser: false,
-          message: 'Usuario agregado a la organización',
+          message: "Usuario agregado a la organización",
           member: this.mapMemberToResponse(member),
         };
       } catch (e: any) {
         // Unique constraint: membresía ya existe (race condition), buscar y devolver
-        if (e?.code === 'P2002') {
+        if (e?.code === "P2002") {
           const existing = await this.prisma.member.findFirst({
-            where: { userId: existingUser.id, organizationId, status: 'ACTIVE' },
+            where: {
+              userId: existingUser.id,
+              organizationId,
+              status: "ACTIVE",
+            },
             include: {
               user: {
                 select: {
@@ -363,7 +371,7 @@ export class InvitationsService {
           if (existing) {
             return {
               isNewUser: false,
-              message: 'Usuario agregado a la organización',
+              message: "Usuario agregado a la organización",
               member: this.mapMemberToResponse(existing),
             };
           }
@@ -393,7 +401,7 @@ export class InvitationsService {
           userId: user.id,
           organizationId,
           role: dto.role,
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
         include: {
           user: {
@@ -420,7 +428,7 @@ export class InvitationsService {
     const envPassword = process.env.DEFAULT_MEMBER_PASSWORD?.trim();
     if (!envPassword || envPassword.length < 8) {
       throw new BadRequestException(
-        'DEFAULT_MEMBER_PASSWORD debe estar configurada con al menos 8 caracteres',
+        "DEFAULT_MEMBER_PASSWORD debe estar configurada con al menos 8 caracteres",
       );
     }
     return envPassword;
@@ -432,7 +440,12 @@ export class InvitationsService {
     role: string;
     status: string;
     joinedAt: Date;
-    user: { id: number; email: string; fullName: string | null; avatarUrl: string | null };
+    user: {
+      id: number;
+      email: string;
+      fullName: string | null;
+      avatarUrl: string | null;
+    };
   }) {
     return {
       id: member.id,
@@ -460,15 +473,15 @@ export class InvitationsService {
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invitación no encontrada');
+      throw new NotFoundException("Invitación no encontrada");
     }
 
-    if (invitation.status !== 'PENDING') {
-      throw new BadRequestException('Esta invitación ya fue procesada');
+    if (invitation.status !== "PENDING") {
+      throw new BadRequestException("Esta invitación ya fue procesada");
     }
 
     if (invitation.expiresAt < new Date()) {
-      throw new BadRequestException('Esta invitación ha expirado');
+      throw new BadRequestException("Esta invitación ha expirado");
     }
 
     // Verificar que el email del usuario coincide con el de la invitación
@@ -477,12 +490,12 @@ export class InvitationsService {
     });
 
     if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
+      throw new NotFoundException("Usuario no encontrado");
     }
 
     if (user.email !== invitation.email) {
       throw new ForbiddenException(
-        'El email del usuario no coincide con el de la invitación',
+        "El email del usuario no coincide con el de la invitación",
       );
     }
 
@@ -491,7 +504,7 @@ export class InvitationsService {
       where: {
         userId: userId,
         organizationId: invitation.organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
 
@@ -499,11 +512,9 @@ export class InvitationsService {
       // Marcar invitación como aceptada aunque ya exista membresía
       await this.prisma.invitation.update({
         where: { id: invitation.id },
-        data: { status: 'ACCEPTED' },
+        data: { status: "ACCEPTED" },
       });
-      throw new ConflictException(
-        'Ya eres miembro de esta organización',
-      );
+      throw new ConflictException("Ya eres miembro de esta organización");
     }
 
     // Crear la membresía
@@ -512,7 +523,7 @@ export class InvitationsService {
         userId: userId,
         organizationId: invitation.organizationId,
         role: invitation.role,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         organization: true,
@@ -522,7 +533,7 @@ export class InvitationsService {
     // Marcar invitación como aceptada
     await this.prisma.invitation.update({
       where: { id: invitation.id },
-      data: { status: 'ACCEPTED' },
+      data: { status: "ACCEPTED" },
     });
 
     return membership;
@@ -535,7 +546,7 @@ export class InvitationsService {
     const members = await this.prisma.member.findMany({
       where: {
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         user: {
@@ -548,7 +559,7 @@ export class InvitationsService {
         },
       },
       orderBy: {
-        joinedAt: 'desc',
+        joinedAt: "desc",
       },
     });
 
@@ -572,18 +583,23 @@ export class InvitationsService {
       where: {
         userId: userId,
         organizationId: organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
     });
 
     const role = membership
       ? String(membership.role).toUpperCase()
-      : (await this.prisma.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } }))?.isSuperAdmin
+      : (
+            await this.prisma.user.findUnique({
+              where: { id: userId },
+              select: { isSuperAdmin: true },
+            })
+          )?.isSuperAdmin
         ? ROLES.SUPER_ADMIN
         : null;
     if (!role || !getPermissions(role).canManageUsers) {
       throw new ForbiddenException(
-        'Solo los SUPER_ADMIN y ADMIN pueden ver las invitaciones',
+        "Solo los SUPER_ADMIN y ADMIN pueden ver las invitaciones",
       );
     }
 
@@ -601,7 +617,7 @@ export class InvitationsService {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }

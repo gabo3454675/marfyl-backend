@@ -8,27 +8,27 @@ import {
   Query,
   Res,
   UseGuards,
-} from '@nestjs/common';
-import { Response } from 'express';
-import { FiscalService } from './fiscal.service';
-import { FiscalCalendarService } from './fiscal-calendar.service';
-import { FiscalComplianceHubService } from './fiscal-compliance-hub.service';
-import { FiscalValidationService } from './fiscal-validation.service';
-import { FiscalEventsService } from './fiscal-events.service';
-import { FiscalAuditService } from './fiscal-audit.service';
-import { FiscalNormsService } from './fiscal-norms.service';
-import { UpsertFiscalProfileDto } from './dto/upsert-fiscal-profile.dto';
-import { EmitFiscalEventDto } from './dto/emit-fiscal-event.dto';
-import { PreventiveValidationDto } from './dto/preventive-validation.dto';
-import { QueryLibroDto } from './dto/query-libro.dto';
-import { CargaRapidaCompraDto } from './dto/carga-rapida-compra.dto';
-import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { OrganizationGuard } from '@/common/guards/organization.guard';
-import { VerificarRolFiscalGuard } from '@/common/guards/verificar-rol-fiscal.guard';
-import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
-import { ActiveUser } from '@/common/decorators/active-user.decorator';
+} from "@nestjs/common";
+import { Response } from "express";
+import { FiscalService } from "./fiscal.service";
+import { FiscalCalendarService } from "./fiscal-calendar.service";
+import { FiscalComplianceHubService } from "./fiscal-compliance-hub.service";
+import { FiscalValidationService } from "./fiscal-validation.service";
+import { FiscalEventsService } from "./fiscal-events.service";
+import { FiscalAuditService } from "./fiscal-audit.service";
+import { FiscalNormsService } from "./fiscal-norms.service";
+import { UpsertFiscalProfileDto } from "./dto/upsert-fiscal-profile.dto";
+import { EmitFiscalEventDto } from "./dto/emit-fiscal-event.dto";
+import { PreventiveValidationDto } from "./dto/preventive-validation.dto";
+import { QueryLibroDto } from "./dto/query-libro.dto";
+import { CargaRapidaCompraDto } from "./dto/carga-rapida-compra.dto";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { VerificarRolFiscalGuard } from "@/common/guards/verificar-rol-fiscal.guard";
+import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
+import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
-@Controller('fiscal')
+@Controller("fiscal")
 @UseGuards(JwtAuthGuard, OrganizationGuard, VerificarRolFiscalGuard)
 export class FiscalController {
   constructor(
@@ -41,7 +41,7 @@ export class FiscalController {
     private readonly fiscalNorms: FiscalNormsService,
   ) {}
 
-  @Get('dashboard')
+  @Get("dashboard")
   dashboard(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -49,7 +49,7 @@ export class FiscalController {
     return this.fiscalService.getDashboard(organizationId, query);
   }
 
-  @Get('calendario')
+  @Get("calendario")
   calendario(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -60,17 +60,19 @@ export class FiscalController {
     return this.fiscalCalendar.listCalendar(organizationId, year, month);
   }
 
-  @Post('calendario/sync')
+  @Post("calendario/sync")
   async syncCalendario(
-    @Query('force') force?: string,
+    @Query("force") force?: string,
     @ActiveUser() user?: { sub: number },
   ) {
-    const cal = await this.fiscalCalendar.syncSeniatRulesFromJson(force === 'true');
+    const cal = await this.fiscalCalendar.syncSeniatRulesFromJson(
+      force === "true",
+    );
     const norms = await this.fiscalNorms.syncNormsFromCalendarJson(user?.sub);
     return { ...cal, norms };
   }
 
-  @Get('compliance/hub')
+  @Get("compliance/hub")
   getComplianceHub(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -81,7 +83,7 @@ export class FiscalController {
     return this.complianceHub.getHub(organizationId, year, month);
   }
 
-  @Post('compliance/validate')
+  @Post("compliance/validate")
   validateOperation(
     @ActiveOrganization() organizationId: number,
     @Body() dto: PreventiveValidationDto,
@@ -96,7 +98,7 @@ export class FiscalController {
     });
   }
 
-  @Post('compliance/events')
+  @Post("compliance/events")
   emitEvent(
     @ActiveOrganization() organizationId: number,
     @Body() dto: EmitFiscalEventDto,
@@ -109,14 +111,14 @@ export class FiscalController {
       entityId: dto.entityId,
       payload: dto.payload,
       userId: user.sub,
-      auditAction: 'FISCAL_EVENT_EMIT',
+      auditAction: "FISCAL_EVENT_EMIT",
     });
   }
 
-  @Get('compliance/audit')
+  @Get("compliance/audit")
   listAudit(
     @ActiveOrganization() organizationId: number,
-    @Query('limit') limit?: string,
+    @Query("limit") limit?: string,
   ) {
     return this.fiscalAudit.listRecent(
       organizationId,
@@ -124,21 +126,21 @@ export class FiscalController {
     );
   }
 
-  @Get('compliance/norms')
+  @Get("compliance/norms")
   listNorms() {
     return this.fiscalNorms.listActive();
   }
 
-  @Post('compliance/norms/sync')
+  @Post("compliance/norms/sync")
   syncNorms(@ActiveUser() user: { sub: number }) {
     return this.fiscalNorms.syncNormsFromCalendarJson(user.sub);
   }
 
-  @Post('backfill/libro-ventas')
+  @Post("backfill/libro-ventas")
   backfillVentas(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
-    @Query('limit') limit?: string,
+    @Query("limit") limit?: string,
   ) {
     return this.fiscalService.backfillLibroVentas(organizationId, {
       year: query.year,
@@ -147,12 +149,12 @@ export class FiscalController {
     });
   }
 
-  @Get('profile')
+  @Get("profile")
   getProfile(@ActiveOrganization() organizationId: number) {
     return this.fiscalService.getProfile(organizationId);
   }
 
-  @Post('profile')
+  @Post("profile")
   upsertProfile(
     @ActiveOrganization() organizationId: number,
     @Body() dto: UpsertFiscalProfileDto,
@@ -161,7 +163,7 @@ export class FiscalController {
     return this.fiscalService.upsertProfile(organizationId, dto, user.sub);
   }
 
-  @Get('libro-ventas')
+  @Get("libro-ventas")
   libroVentas(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -169,44 +171,50 @@ export class FiscalController {
     return this.fiscalService.listLibroVentas(organizationId, query);
   }
 
-  @Get('libro-ventas/export.xlsx')
+  @Get("libro-ventas/export.xlsx")
   async exportVentasXlsx(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
     @Res() res: Response,
   ) {
-    const buf = await this.fiscalService.exportLibroVentasXlsx(organizationId, query);
+    const buf = await this.fiscalService.exportLibroVentasXlsx(
+      organizationId,
+      query,
+    );
     const y = query.year ?? new Date().getFullYear();
     const m = query.month ?? new Date().getMonth() + 1;
     res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="libro-ventas-${y}-${String(m).padStart(2, '0')}.xlsx"`,
+      "Content-Disposition",
+      `attachment; filename="libro-ventas-${y}-${String(m).padStart(2, "0")}.xlsx"`,
     );
     res.send(buf);
   }
 
-  @Get('libro-ventas/export.txt')
+  @Get("libro-ventas/export.txt")
   async exportVentasTxt(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
     @Res() res: Response,
   ) {
-    const txt = await this.fiscalService.exportLibroVentasTxt(organizationId, query);
+    const txt = await this.fiscalService.exportLibroVentasTxt(
+      organizationId,
+      query,
+    );
     const y = query.year ?? new Date().getFullYear();
     const m = query.month ?? new Date().getMonth() + 1;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="libro-ventas-${y}-${String(m).padStart(2, '0')}.txt"`,
+      "Content-Disposition",
+      `attachment; filename="libro-ventas-${y}-${String(m).padStart(2, "0")}.txt"`,
     );
     res.send(txt);
   }
 
-  @Get('libro-compras')
+  @Get("libro-compras")
   libroCompras(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -214,7 +222,7 @@ export class FiscalController {
     return this.fiscalService.listLibroCompras(organizationId, query);
   }
 
-  @Get('retenciones')
+  @Get("retenciones")
   retenciones(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -222,44 +230,50 @@ export class FiscalController {
     return this.fiscalService.listRetenciones(organizationId, query);
   }
 
-  @Get('retenciones/export.txt')
+  @Get("retenciones/export.txt")
   async exportRetencionesTxt(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
     @Res() res: Response,
   ) {
-    const txt = await this.fiscalService.exportRetencionesTxt(organizationId, query);
+    const txt = await this.fiscalService.exportRetencionesTxt(
+      organizationId,
+      query,
+    );
     const y = query.year ?? new Date().getFullYear();
     const m = query.month ?? new Date().getMonth() + 1;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="retenciones-${y}-${String(m).padStart(2, '0')}.txt"`,
+      "Content-Disposition",
+      `attachment; filename="retenciones-${y}-${String(m).padStart(2, "0")}.txt"`,
     );
     res.send(txt);
   }
 
-  @Get('retenciones/:id/pdf')
+  @Get("retenciones/:id/pdf")
   async retencionPdf(
     @ActiveOrganization() organizationId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @Param("id", ParseIntPipe) id: number,
     @Res() res: Response,
   ) {
     const buf = await this.fiscalService.getRetencionPdf(organizationId, id);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="retencion-${id}.pdf"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="retencion-${id}.pdf"`,
+    );
     res.send(buf);
   }
 
-  @Get('retenciones/:id')
+  @Get("retenciones/:id")
   retencionDetail(
     @ActiveOrganization() organizationId: number,
-    @Param('id', ParseIntPipe) id: number,
+    @Param("id", ParseIntPipe) id: number,
   ) {
     return this.fiscalService.getRetencion(organizationId, id);
   }
 
-  @Post('compras/carga-rapida')
+  @Post("compras/carga-rapida")
   cargaRapida(
     @ActiveOrganization() organizationId: number,
     @Body() dto: CargaRapidaCompraDto,
@@ -267,7 +281,7 @@ export class FiscalController {
     return this.fiscalService.cargaRapidaCompra(organizationId, dto);
   }
 
-  @Get('predeclaracion')
+  @Get("predeclaracion")
   predeclaracion(
     @ActiveOrganization() organizationId: number,
     @Query() query: QueryLibroDto,
@@ -275,13 +289,18 @@ export class FiscalController {
     return this.fiscalService.getPredeclaracion(organizationId, query);
   }
 
-  @Post('periods/:year/:month/close')
+  @Post("periods/:year/:month/close")
   closePeriod(
     @ActiveOrganization() organizationId: number,
-    @Param('year', ParseIntPipe) year: number,
-    @Param('month', ParseIntPipe) month: number,
+    @Param("year", ParseIntPipe) year: number,
+    @Param("month", ParseIntPipe) month: number,
     @ActiveUser() user: { sub: number },
   ) {
-    return this.fiscalService.closePeriod(organizationId, year, month, user.sub);
+    return this.fiscalService.closePeriod(
+      organizationId,
+      year,
+      month,
+      user.sub,
+    );
   }
 }

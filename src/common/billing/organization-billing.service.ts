@@ -1,6 +1,6 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { isBillingExemptOrg, isFoundingOrgSlug } from '@/common/founding-orgs';
+import { ForbiddenException, Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { isBillingExemptOrg, isFoundingOrgSlug } from "@/common/founding-orgs";
 
 /**
  * Límites de suscripción por organización.
@@ -18,26 +18,31 @@ export class OrganizationBillingService {
     });
     if (!org) return;
     if (isBillingExemptOrg(org)) return;
-    if (org.plan === 'FREE') {
+    if (org.plan === "FREE") {
       throw new ForbiddenException(
-        'Esta organización requiere un plan de suscripción activo. Contacte a MARFYL para activar el servicio.',
+        "Esta organización requiere un plan de suscripción activo. Contacte a MARFYL para activar el servicio.",
       );
     }
   }
 
   async assertCanCreateAdditionalOrganization(userId: number): Promise<void> {
     const memberships = await this.prisma.member.findMany({
-      where: { userId, status: 'ACTIVE' },
-      include: { organization: { select: { slug: true, billingExempt: true } } },
+      where: { userId, status: "ACTIVE" },
+      include: {
+        organization: { select: { slug: true, billingExempt: true } },
+      },
     });
     const foundingCount = memberships.filter((m) =>
       isFoundingOrgSlug(m.organization.slug),
     ).length;
-    if (foundingCount > 0 && memberships.every((m) => isBillingExemptOrg(m.organization))) {
+    if (
+      foundingCount > 0 &&
+      memberships.every((m) => isBillingExemptOrg(m.organization))
+    ) {
       return;
     }
     throw new ForbiddenException(
-      'Para añadir otra empresa debe contratar un negocio adicional en su plan MARFYL.',
+      "Para añadir otra empresa debe contratar un negocio adicional en su plan MARFYL.",
     );
   }
 }

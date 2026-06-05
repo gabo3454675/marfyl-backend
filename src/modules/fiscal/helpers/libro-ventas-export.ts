@@ -1,4 +1,4 @@
-import type { LibroVentaLine } from '@prisma/client';
+import type { LibroVentaLine } from "@prisma/client";
 
 export interface LibroVentaRowView {
   id: number;
@@ -12,13 +12,15 @@ export interface LibroVentaRowView {
   baseGeneral: number;
   ivaAmount: number;
   totalAmount: number;
-  source: 'POS' | 'MANUAL';
+  source: "POS" | "MANUAL";
   validationErrors: string[];
   validationWarnings: string[];
 }
 
 export function enrichLibroVentaLine(
-  line: LibroVentaLine & { invoice?: { id: number; consecutiveNumber: number | null } | null },
+  line: LibroVentaLine & {
+    invoice?: { id: number; consecutiveNumber: number | null } | null;
+  },
   index: number,
 ): LibroVentaRowView {
   const baseExempt = Number(line.baseExempt);
@@ -29,15 +31,15 @@ export function enrichLibroVentaLine(
   const validationWarnings: string[] = [];
 
   if (baseGeneral > 0 && !line.customerTaxId?.trim()) {
-    validationErrors.push('Falta RIF del cliente en operación gravada');
+    validationErrors.push("Falta RIF del cliente en operación gravada");
   }
   if (!line.controlNumber?.trim()) {
-    validationWarnings.push('Sin número de control fiscal');
+    validationWarnings.push("Sin número de control fiscal");
   }
 
   return {
     id: line.id,
-    opNumber: String(index + 1).padStart(3, '0'),
+    opNumber: String(index + 1).padStart(3, "0"),
     issueDate: line.issueDate,
     customerTaxId: line.customerTaxId,
     customerName: line.customerName,
@@ -47,43 +49,52 @@ export function enrichLibroVentaLine(
     baseGeneral,
     ivaAmount,
     totalAmount,
-    source: line.invoiceId ? 'POS' : 'MANUAL',
+    source: line.invoiceId ? "POS" : "MANUAL",
     validationErrors,
     validationWarnings,
   };
 }
 
-export function buildLibroVentasTxt(rows: LibroVentaRowView[], year: number, month: number): string {
-  const header = `LIBRO DE VENTAS MARFYL - PERIODO ${String(month).padStart(2, '0')}/${year}`;
+export function buildLibroVentasTxt(
+  rows: LibroVentaRowView[],
+  year: number,
+  month: number,
+): string {
+  const header = `LIBRO DE VENTAS MARFYL - PERIODO ${String(month).padStart(2, "0")}/${year}`;
   const cols = [
-    'N_OP',
-    'FECHA',
-    'RIF',
-    'RAZON_SOCIAL',
-    'N_FACTURA',
-    'N_CONTROL',
-    'VENTAS_EXENTAS',
-    'BASE_IMPONIBLE_16',
-    'IVA_CAUSADO',
-    'TOTAL_BS',
+    "N_OP",
+    "FECHA",
+    "RIF",
+    "RAZON_SOCIAL",
+    "N_FACTURA",
+    "N_CONTROL",
+    "VENTAS_EXENTAS",
+    "BASE_IMPONIBLE_16",
+    "IVA_CAUSADO",
+    "TOTAL_BS",
   ];
-  const lines = [header, cols.join('\t')];
+  const lines = [header, cols.join("\t")];
 
   for (const r of rows) {
-    const fecha = r.issueDate.toISOString().slice(0, 10).split('-').reverse().join('/');
+    const fecha = r.issueDate
+      .toISOString()
+      .slice(0, 10)
+      .split("-")
+      .reverse()
+      .join("/");
     lines.push(
       [
         r.opNumber,
         fecha,
-        r.customerTaxId ?? '',
-        (r.customerName ?? '').replace(/\t/g, ' '),
-        r.invoiceNumber ?? '',
-        r.controlNumber ?? '',
+        r.customerTaxId ?? "",
+        (r.customerName ?? "").replace(/\t/g, " "),
+        r.invoiceNumber ?? "",
+        r.controlNumber ?? "",
         r.baseExempt.toFixed(2),
         r.baseGeneral.toFixed(2),
         r.ivaAmount.toFixed(2),
         r.totalAmount.toFixed(2),
-      ].join('\t'),
+      ].join("\t"),
     );
   }
 
@@ -92,9 +103,9 @@ export function buildLibroVentasTxt(rows: LibroVentaRowView[], year: number, mon
   const tIva = rows.reduce((s, r) => s + r.ivaAmount, 0);
   const tTot = rows.reduce((s, r) => s + r.totalAmount, 0);
   lines.push(
-    '',
+    "",
     `TOTALES\t\t\t\t\t\t${tEx.toFixed(2)}\t${tBase.toFixed(2)}\t${tIva.toFixed(2)}\t${tTot.toFixed(2)}`,
   );
 
-  return lines.join('\r\n');
+  return lines.join("\r\n");
 }

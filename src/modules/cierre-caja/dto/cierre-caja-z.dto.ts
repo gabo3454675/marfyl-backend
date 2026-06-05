@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class CierreCajaZDto {
   /** Efectivo USD contado (compat: si solo se envía esto, se usa como monto físico USD). */
@@ -16,6 +16,8 @@ export class CierreCajaZDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(1000, { message: 'observaciones no puede superar 1000 caracteres' })
+  @MaxLength(1000, {
+    message: "observaciones no puede superar 1000 caracteres",
+  })
   observaciones?: string;
 }

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, MinLength } from "class-validator";
 
 export class CompletePasswordResetDto {
   @IsEmail()
@@ -8,6 +8,8 @@ export class CompletePasswordResetDto {
   currentPassword: string;
 
   @IsString()
-  @MinLength(8, { message: 'La nueva contraseña debe tener al menos 8 caracteres' })
+  @MinLength(8, {
+    message: "La nueva contraseña debe tener al menos 8 caracteres",
+  })
   newPassword: string;
 }

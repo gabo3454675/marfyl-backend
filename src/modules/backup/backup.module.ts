@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { BackupService } from './backup.service';
-import { BackupController } from './backup.controller';
-import { BackupSchedulerService } from './backup-scheduler.service';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { BackupService } from "./backup.service";
+import { BackupController } from "./backup.controller";
+import { BackupSchedulerService } from "./backup-scheduler.service";
 
 /**
  * Módulo opcional de backup a S3. No es requerido para el arranque de la app.

@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { PushNotificationService } from '@/modules/notifications/push-notification.service';
-import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { PushNotificationService } from "@/modules/notifications/push-notification.service";
+import { NotificationsService } from "@/modules/notifications/notifications.service";
 
 @Injectable()
 export class FiscalAlertsService {
@@ -15,7 +15,7 @@ export class FiscalAlertsService {
     const members = await this.prisma.member.findMany({
       where: {
         organizationId,
-        role: { in: ['ADMIN', 'FISCAL'] },
+        role: { in: ["ADMIN", "FISCAL"] },
         user: { fcmTokens: { some: {} } },
       },
       include: { user: { include: { fcmTokens: true } } },
@@ -40,8 +40,8 @@ export class FiscalAlertsService {
         organizationId: params.organizationId,
         userId: params.userId,
         action: params.action,
-        entityType: 'fiscal',
-        entityId: params.entityId ?? '0',
+        entityType: "fiscal",
+        entityId: params.entityId ?? "0",
         summary: params.summary,
       },
     });
@@ -56,7 +56,7 @@ export class FiscalAlertsService {
     await this.logFiscalAlert({
       organizationId: params.organizationId,
       userId: params.userId,
-      action: 'FISCAL_WARNING_MISSING_RIF',
+      action: "FISCAL_WARNING_MISSING_RIF",
       summary: `Factura #${params.invoiceId}: operación gravada sin RIF del cliente.`,
       entityId: String(params.invoiceId),
     });
@@ -75,7 +75,10 @@ export class FiscalAlertsService {
     const all = [...new Set([...tokens, ...superTokens])];
     if (all.length === 0) return;
 
-    const title = params.daysLeft <= 1 ? 'Vence mañana: obligación fiscal' : 'Recordatorio fiscal';
+    const title =
+      params.daysLeft <= 1
+        ? "Vence mañana: obligación fiscal"
+        : "Recordatorio fiscal";
     const body =
       `${params.organizationName}: ${params.obligationName} vence en ${params.daysLeft} día(s). ` +
       `IVA neto est.: ${params.netIvaBs.toFixed(2)} Bs. Crédito: ${params.creditBs.toFixed(2)} Bs.`;
@@ -96,13 +99,15 @@ export class FiscalAlertsService {
     const deadlines = await this.prisma.fiscalDeadline.findMany({
       where: {
         dueDate: { gte: now, lte: in3days },
-        compliance: { in: ['RED', 'YELLOW'] },
+        compliance: { in: ["RED", "YELLOW"] },
       },
       include: { template: true, organization: true },
     });
 
     for (const d of deadlines) {
-      const daysLeft = Math.ceil((d.dueDate.getTime() - now.getTime()) / 86400000);
+      const daysLeft = Math.ceil(
+        (d.dueDate.getTime() - now.getTime()) / 86400000,
+      );
       const ventas = await this.prisma.libroVentaLine.aggregate({
         where: {
           organizationId: d.organizationId,
@@ -120,7 +125,11 @@ export class FiscalAlertsService {
         _sum: { ivaAmount: true },
       });
       const rate = Number(d.organization.exchangeRate ?? 1);
-      const net = Math.max(0, Number(ventas._sum.ivaAmount ?? 0) - Number(compras._sum.ivaAmount ?? 0));
+      const net = Math.max(
+        0,
+        Number(ventas._sum.ivaAmount ?? 0) -
+          Number(compras._sum.ivaAmount ?? 0),
+      );
       await this.notifyPeriodDeadline({
         organizationId: d.organizationId,
         organizationName: d.organization.nombre,

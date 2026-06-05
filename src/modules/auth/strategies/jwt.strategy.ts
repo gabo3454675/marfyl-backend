@@ -1,8 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { PassportStrategy } from "@nestjs/passport";
+import { ExtractJwt, Strategy } from "passport-jwt";
+import { ConfigService } from "@nestjs/config";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -13,17 +13,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') || 'cambiar-jwt-secret-en-produccion',
+      secretOrKey:
+        configService.get<string>("JWT_SECRET") ||
+        "cambiar-jwt-secret-en-produccion",
     });
   }
 
-  async validate(payload: { sub: number; email?: string; isSuperAdmin?: boolean; organizationId?: number }) {
+  async validate(payload: {
+    sub: number;
+    email?: string;
+    isSuperAdmin?: boolean;
+    organizationId?: number;
+  }) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: { isActive: true, isSuperAdmin: true },
     });
     if (!user || user.isActive === false) {
-      throw new UnauthorizedException('Cuenta desactivada o no válida');
+      throw new UnauthorizedException("Cuenta desactivada o no válida");
     }
     return {
       id: payload.sub,

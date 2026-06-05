@@ -1,10 +1,16 @@
-import { IsArray, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from "class-validator";
+import { Type } from "class-transformer";
 
 export class ChatMessageDto {
   @IsString()
   @MaxLength(8000)
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
 
   @IsString()
   @MaxLength(8000)

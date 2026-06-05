@@ -6,12 +6,12 @@ import {
   IsDateString,
   MinLength,
   MaxLength,
-} from 'class-validator';
-import { TaskStatus, TaskPriority } from '@prisma/client';
+} from "class-validator";
+import { TaskStatus, TaskPriority } from "@prisma/client";
 
 export class CreateTaskDto {
   @IsString()
-  @MinLength(1, { message: 'El título es requerido' })
+  @MinLength(1, { message: "El título es requerido" })
   @MaxLength(255)
   title: string;
 

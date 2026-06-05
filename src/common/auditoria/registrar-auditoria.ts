@@ -1,5 +1,5 @@
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
 /**
  * Parámetros para persistir una fila en la tabla `auditorias` (módulo SAC).

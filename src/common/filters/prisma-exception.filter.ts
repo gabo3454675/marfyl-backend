@@ -4,27 +4,29 @@ import {
   ExceptionFilter,
   HttpStatus,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { Response } from 'express';
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { Request, Response } from "express";
 
 const DB_UNAVAILABLE =
-  'PostgreSQL no está disponible o las credenciales de DATABASE_URL son incorrectas. ' +
-  'En pgAdmin (usuario postgres), ejecute scripts/setup-local-postgres.sql y luego: ' +
-  'pnpm prisma migrate deploy && pnpm seed. Reinicie el backend.';
+  "PostgreSQL no está disponible o las credenciales de DATABASE_URL son incorrectas. " +
+  "En pgAdmin (usuario postgres), ejecute scripts/setup-local-postgres.sql y luego: " +
+  "pnpm prisma migrate deploy && pnpm seed. Reinicie el backend.";
 
 function isDatabaseConnectivityError(exception: unknown): boolean {
   if (exception instanceof Prisma.PrismaClientInitializationError) return true;
   if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-    return ['P1000', 'P1001', 'P1002', 'P1003', 'P1017'].includes(exception.code);
+    return ["P1000", "P1001", "P1002", "P1003", "P1017"].includes(
+      exception.code,
+    );
   }
   if (exception instanceof Error) {
     const m = exception.message;
     return (
       m.includes("Can't reach database server") ||
-      m.includes('ECONNREFUSED') ||
-      m.includes('password authentication failed') ||
-      m.includes('does not exist')
+      m.includes("ECONNREFUSED") ||
+      m.includes("password authentication failed") ||
+      m.includes("does not exist")
     );
   }
   return false;
@@ -36,6 +38,17 @@ function isDatabaseConnectivityError(exception: unknown): boolean {
 )
 export class PrismaExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
+    const ctxForLog = host.switchToHttp();
+    const request = ctxForLog.getRequest<{ method?: string; originalUrl?: string; url?: string }>();
+    console.error("[PRISMA-EXCEPTION-FILTER]", {
+      name: (exception as { name?: string } | null)?.name,
+      code: (exception as { code?: string } | null)?.code,
+      message: (exception as { message?: string } | null)?.message,
+      stack: process.env.NODE_ENV !== "production" ? (exception as { stack?: string } | null)?.stack : undefined,
+      method: request?.method,
+      url: request?.originalUrl ?? request?.url,
+    });
+
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
@@ -43,12 +56,14 @@ export class PrismaExceptionFilter implements ExceptionFilter {
       const status = HttpStatus.INTERNAL_SERVER_ERROR;
       response.status(status).json({
         statusCode: status,
-        message: 'Internal server error',
+        message: "Internal server error",
       });
       return;
     }
 
-    const payload = new ServiceUnavailableException(DB_UNAVAILABLE).getResponse();
+    const payload = new ServiceUnavailableException(
+      DB_UNAVAILABLE,
+    ).getResponse();
     response.status(HttpStatus.SERVICE_UNAVAILABLE).json(payload);
   }
 }

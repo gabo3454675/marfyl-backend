@@ -4,18 +4,18 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
-} from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
+} from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   ROLE_ORDER,
   getPermissions,
   canDeleteSuperAdmin,
   ROLES,
-} from '@/common/constants/roles.constants';
-import { CreateOrganizationDto } from './dto/create-organization.dto';
-import { UpdateOrganizationDto } from './dto/update-organization.dto';
-import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
-import { Role } from '@prisma/client';
+} from "@/common/constants/roles.constants";
+import { CreateOrganizationDto } from "./dto/create-organization.dto";
+import { UpdateOrganizationDto } from "./dto/update-organization.dto";
+import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
+import { Role } from "@prisma/client";
 
 @Injectable()
 export class TenantsService {
@@ -32,11 +32,11 @@ export class TenantsService {
     });
     if (!user?.isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo un Super Admin puede listar todas las organizaciones',
+        "Solo un Super Admin puede listar todas las organizaciones",
       );
     }
     const orgs = await this.prisma.organization.findMany({
-      orderBy: { nombre: 'asc' },
+      orderBy: { nombre: "asc" },
       select: {
         id: true,
         nombre: true,
@@ -55,8 +55,8 @@ export class TenantsService {
       name: o.nombre,
       slug: o.slug,
       plan: o.plan,
-      currencyCode: o.currencyCode ?? 'USD',
-      currencySymbol: o.currencySymbol ?? '$',
+      currencyCode: o.currencyCode ?? "USD",
+      currencySymbol: o.currencySymbol ?? "$",
       exchangeRate: o.exchangeRate ?? 1,
       rateUpdatedAt: o.rateUpdatedAt ?? null,
       billingExempt: o.billingExempt,
@@ -67,9 +67,14 @@ export class TenantsService {
   /**
    * Obtiene los datos de la organización actual (incluye exchangeRate y quién actualizó la tasa).
    * La tasa es única por organización: todos los usuarios ven la misma y se sincroniza desde aquí.
+   *
+   * Devuelve un shape alineado con lo que el frontend espera en
+   * (dashboard)/layout.tsx:55-66 (exchangeRate, rateUpdatedAt, currencyCode, currencySymbol)
+   * + campos legacy vacíos (currency, address, taxId, logoUrl) para compatibilidad
+   * con consumidores que aún los leen.
    */
-  async getOrganization(organizationId: number) {
-    const org = await this.prisma.organization.findUnique({
+  async getCompany(organizationId: number) {
+    const organization = await this.prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
         id: true,
@@ -82,28 +87,33 @@ export class TenantsService {
         rateUpdatedAt: true,
         billingExempt: true,
         concertModuleEnabled: true,
+        deletedAt: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
-    if (!org) {
-      throw new NotFoundException('Organización no encontrada');
+    if (!organization) {
+      throw new NotFoundException("Organización no encontrada");
     }
-    const lastRateUpdate = await this.prisma.auditLog.findFirst({
-      where: { organizationId, action: 'EXCHANGE_RATE_UPDATE' },
-      orderBy: { createdAt: 'desc' },
-      select: { actorEmail: true },
-    });
     return {
-      id: org.id,
-      name: org.nombre,
-      slug: org.slug,
-      plan: org.plan,
-      currencyCode: org.currencyCode ?? 'USD',
-      currencySymbol: org.currencySymbol ?? '$',
-      exchangeRate: org.exchangeRate ?? 1,
-      rateUpdatedAt: org.rateUpdatedAt ?? null,
-      rateUpdatedBy: lastRateUpdate?.actorEmail ?? null,
-      billingExempt: org.billingExempt,
-      concertModuleEnabled: org.concertModuleEnabled,
+      id: organization.id,
+      name: organization.nombre,
+      slug: organization.slug,
+      plan: organization.plan,
+      currencyCode: organization.currencyCode ?? "USD",
+      currencySymbol: organization.currencySymbol ?? "$",
+      exchangeRate: organization.exchangeRate ?? 1,
+      rateUpdatedAt: organization.rateUpdatedAt ?? null,
+      billingExempt: organization.billingExempt,
+      concertModuleEnabled: organization.concertModuleEnabled,
+      // Campos legacy vacíos (compatibilidad hacia atrás con consumidores que aún leen currency, address, taxId, logoUrl):
+      currency: organization.currencyCode ?? "USD",
+      address: null,
+      taxId: null,
+      logoUrl: null,
+      isActive: organization.deletedAt == null,
+      createdAt: organization.createdAt,
+      updatedAt: organization.updatedAt,
     };
   }
 
@@ -116,22 +126,29 @@ export class TenantsService {
     dto: UpdateOrganizationDto,
     actorUserId: number,
   ) {
-    const data: { exchangeRate?: number; rateUpdatedAt?: Date; currencyCode?: string; currencySymbol?: string } = {};
+    const data: {
+      exchangeRate?: number;
+      rateUpdatedAt?: Date;
+      currencyCode?: string;
+      currencySymbol?: string;
+    } = {};
     if (dto.exchangeRate !== undefined) {
       data.exchangeRate = dto.exchangeRate;
       data.rateUpdatedAt = new Date();
     }
     if (dto.currencyCode !== undefined) data.currencyCode = dto.currencyCode;
-    if (dto.currencySymbol !== undefined) data.currencySymbol = dto.currencySymbol;
+    if (dto.currencySymbol !== undefined)
+      data.currencySymbol = dto.currencySymbol;
     if (Object.keys(data).length === 0) {
-      return this.getOrganization(organizationId);
+      return this.getCompany(organizationId);
     }
 
     const orgBefore = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { exchangeRate: true },
+      select: { currencyCode: true, exchangeRate: true },
     });
-    const oldRate = orgBefore?.exchangeRate ?? null;
+    const oldCurrencyCode = orgBefore?.currencyCode ?? null;
+    const oldExchangeRate = orgBefore?.exchangeRate ?? null;
 
     await this.prisma.organization.update({
       where: { id: organizationId },
@@ -145,20 +162,26 @@ export class TenantsService {
       });
       await this.prisma.auditLog.create({
         data: {
-          organizationId,
+          organizationId: organizationId,
           userId: actorUserId,
-          action: 'EXCHANGE_RATE_UPDATE',
-          entityType: 'organization',
+          action: "CURRENCY_UPDATE",
+          entityType: "organization",
           entityId: String(organizationId),
-          oldValue: oldRate != null ? { exchangeRate: oldRate } : undefined,
-          newValue: { exchangeRate: dto.exchangeRate },
+          oldValue:
+            oldExchangeRate != null
+              ? { exchangeRate: oldExchangeRate, currencyCode: oldCurrencyCode }
+              : undefined,
+          newValue: {
+            exchangeRate: dto.exchangeRate,
+            currencyCode: dto.currencyCode ?? "USD",
+          },
           actorEmail: actor?.email ?? undefined,
-          targetSummary: `Tasa BCV: ${oldRate ?? '—'} → ${dto.exchangeRate}`,
+          targetSummary: `Tasa: ${oldExchangeRate ?? "—"} → ${dto.exchangeRate} (${oldCurrencyCode ?? "—"} → ${dto.currencyCode ?? "USD"})`,
         },
       });
     }
 
-    return this.getOrganization(organizationId);
+    return this.getCompany(organizationId);
   }
 
   /**
@@ -170,10 +193,7 @@ export class TenantsService {
    * Paginación estándar: `page` (1-based) y `limit` (1..100, default 20).
    * Devuelve `{ data, pagination }` con metadata para el frontend.
    */
-  async listForUser(
-    userId: number,
-    opts?: { page?: number; limit?: number },
-  ) {
+  async listForUser(userId: number, opts?: { page?: number; limit?: number }) {
     const page = Math.max(Math.floor(opts?.page ?? 1), 1);
     const limit = Math.min(Math.max(Math.floor(opts?.limit ?? 20), 1), 100);
     const skip = (page - 1) * limit;
@@ -183,41 +203,43 @@ export class TenantsService {
       members: {
         some: {
           userId,
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
       },
     };
 
-    const [total, orgs] = await this.prisma.$transaction([
-      this.prisma.organization.count({ where }),
-      this.prisma.organization.findMany({
+    const [total, companies] = await this.prisma.$transaction([
+      this.prisma.company.count({ where }),
+      this.prisma.company.findMany({
         where,
-        orderBy: { nombre: 'asc' },
+        orderBy: { name: "asc" },
         skip,
         take,
         select: {
           id: true,
-          nombre: true,
-          slug: true,
-          plan: true,
-          currencyCode: true,
-          currencySymbol: true,
-          exchangeRate: true,
-          rateUpdatedAt: true,
+          name: true,
+          taxId: true,
+          logoUrl: true,
+          currency: true,
+          address: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
     ]);
 
     return {
-      data: orgs.map((o) => ({
-        id: o.id,
-        name: o.nombre,
-        slug: o.slug,
-        plan: o.plan,
-        currencyCode: o.currencyCode ?? 'USD',
-        currencySymbol: o.currencySymbol ?? '$',
-        exchangeRate: o.exchangeRate ?? 1,
-        rateUpdatedAt: o.rateUpdatedAt ?? null,
+      data: companies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        taxId: c.taxId,
+        logoUrl: c.logoUrl,
+        currency: c.currency,
+        address: c.address,
+        isActive: c.isActive,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
       })),
       pagination: {
         page,
@@ -237,7 +259,7 @@ export class TenantsService {
   async findOne(id: string, userId: number) {
     const orgId = Number.parseInt(id, 10);
     if (!Number.isFinite(orgId) || orgId <= 0) {
-      throw new NotFoundException('Tenant no encontrado');
+      throw new NotFoundException("Tenant no encontrado");
     }
 
     const org = await this.prisma.organization.findFirst({
@@ -246,7 +268,7 @@ export class TenantsService {
         members: {
           some: {
             userId,
-            status: 'ACTIVE',
+            status: "ACTIVE",
           },
         },
       },
@@ -263,7 +285,7 @@ export class TenantsService {
     });
 
     if (!org) {
-      throw new NotFoundException('Tenant no encontrado');
+      throw new NotFoundException("Tenant no encontrado");
     }
 
     return {
@@ -271,8 +293,8 @@ export class TenantsService {
       name: org.nombre,
       slug: org.slug,
       plan: org.plan,
-      currencyCode: org.currencyCode ?? 'USD',
-      currencySymbol: org.currencySymbol ?? '$',
+      currencyCode: org.currencyCode ?? "USD",
+      currencySymbol: org.currencySymbol ?? "$",
       exchangeRate: org.exchangeRate ?? 1,
       rateUpdatedAt: org.rateUpdatedAt ?? null,
     };
@@ -292,15 +314,17 @@ export class TenantsService {
    * - SELLER / WAREHOUSE: no pueden ver la lista (devolver vacío; el guard puede bloquear acceso).
    */
   async getMembers(organizationId: number, requesterRole?: string) {
-    const role = String(requesterRole || '').toUpperCase().trim();
+    const role = String(requesterRole || "")
+      .toUpperCase()
+      .trim();
 
     const members = await this.prisma.member.findMany({
       where: {
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         user: { isActive: true },
         ...(role === ROLES.MANAGER
-          ? { role: { in: ['SELLER', 'WAREHOUSE'] } }
+          ? { role: { in: ["SELLER", "WAREHOUSE"] } }
           : {}),
       },
       include: {
@@ -355,12 +379,12 @@ export class TenantsService {
     requesterRole: string,
   ) {
     const membership = await this.prisma.member.findFirst({
-      where: { id: memberId, organizationId, status: 'ACTIVE' },
+      where: { id: memberId, organizationId, status: "ACTIVE" },
       include: { user: { select: { id: true, email: true, fullName: true } } },
     });
 
     if (!membership) {
-      throw new NotFoundException('Miembro no encontrado en esta organización');
+      throw new NotFoundException("Miembro no encontrado en esta organización");
     }
 
     const role = String(requesterRole).toUpperCase().trim();
@@ -368,15 +392,25 @@ export class TenantsService {
     const perms = getPermissions(role);
 
     if (!perms.canManageUsers) {
-      throw new ForbiddenException('Solo un administrador puede cambiar roles');
+      throw new ForbiddenException("Solo un administrador puede cambiar roles");
     }
 
-    if (String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN && role !== ROLES.SUPER_ADMIN) {
-      throw new ForbiddenException('No puedes cambiar el rol del propietario (SUPER_ADMIN)');
+    if (
+      String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN &&
+      role !== ROLES.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        "No puedes cambiar el rol del propietario (SUPER_ADMIN)",
+      );
     }
 
-    if (membership.userId === requesterUserId && newRole === ROLES.SUPER_ADMIN) {
-      throw new ForbiddenException('No puedes promoverse a ti mismo a propietario');
+    if (
+      membership.userId === requesterUserId &&
+      newRole === ROLES.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        "No puedes promoverse a ti mismo a propietario",
+      );
     }
 
     const oldRole = String(membership.role).toUpperCase();
@@ -384,7 +418,9 @@ export class TenantsService {
       where: { id: memberId },
       data: { role: newRole as Role },
       include: {
-        user: { select: { id: true, email: true, fullName: true, avatarUrl: true } },
+        user: {
+          select: { id: true, email: true, fullName: true, avatarUrl: true },
+        },
       },
     });
 
@@ -396,8 +432,8 @@ export class TenantsService {
       data: {
         organizationId,
         userId: requesterUserId,
-        action: 'MEMBER_ROLE_CHANGE',
-        entityType: 'member',
+        action: "MEMBER_ROLE_CHANGE",
+        entityType: "member",
         entityId: String(memberId),
         oldValue: { role: oldRole },
         newValue: { role: newRole },
@@ -434,31 +470,42 @@ export class TenantsService {
     });
 
     if (!membership) {
-      throw new NotFoundException('Miembro no encontrado en esta organización');
+      throw new NotFoundException("Miembro no encontrado en esta organización");
     }
 
     if (membership.userId === requesterUserId) {
-      throw new BadRequestException('No puedes desactivarte a ti mismo');
+      throw new BadRequestException("No puedes desactivarte a ti mismo");
     }
 
     const role = String(requesterRole).toUpperCase().trim();
     const perms = getPermissions(role);
     if (!perms.canManageUsers) {
-      throw new ForbiddenException('Solo un administrador puede desactivar miembros');
+      throw new ForbiddenException(
+        "Solo un administrador puede desactivar miembros",
+      );
     }
-    if (!canDeleteSuperAdmin(role) && String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN) {
-      throw new ForbiddenException('Un ADMIN no puede desactivar al propietario (SUPER_ADMIN)');
+    if (
+      !canDeleteSuperAdmin(role) &&
+      String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        "Un ADMIN no puede desactivar al propietario (SUPER_ADMIN)",
+      );
     }
 
     await this.prisma.member.update({
       where: { id: memberId },
-      data: { status: 'SUSPENDED' },
+      data: { status: "SUSPENDED" },
     });
 
     const targetUserId = membership.userId;
     const [activeMembers, activeCompanyMembers] = await Promise.all([
-      this.prisma.member.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
-      this.prisma.companyMember.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+      this.prisma.member.count({
+        where: { userId: targetUserId, status: "ACTIVE" },
+      }),
+      this.prisma.companyMember.count({
+        where: { userId: targetUserId, status: "ACTIVE" },
+      }),
     ]);
     if (activeMembers === 0 && activeCompanyMembers === 0) {
       await this.prisma.user.update({
@@ -475,8 +522,8 @@ export class TenantsService {
       data: {
         organizationId,
         userId: requesterUserId,
-        action: 'MEMBER_DEACTIVATED',
-        entityType: 'member',
+        action: "MEMBER_DEACTIVATED",
+        entityType: "member",
         entityId: String(memberId),
         newValue: {
           targetUserId: membership.userId,
@@ -490,7 +537,8 @@ export class TenantsService {
     });
 
     return {
-      message: 'Usuario desactivado de la organización. Sus facturas y actividad se mantienen.',
+      message:
+        "Usuario desactivado de la organización. Sus facturas y actividad se mantienen.",
       userId: membership.userId,
       email: membership.user.email,
       fullName: membership.user.fullName,
@@ -512,23 +560,28 @@ export class TenantsService {
     requesterUserId: number;
     requesterRole: unknown;
   }) {
-    const { organizationId, targetUserId, requesterUserId, requesterRole } = params;
+    const { organizationId, targetUserId, requesterUserId, requesterRole } =
+      params;
 
     if (targetUserId === requesterUserId) {
-      throw new BadRequestException('No puedes eliminarte a ti mismo');
+      throw new BadRequestException("No puedes eliminarte a ti mismo");
     }
 
-    const role = String(requesterRole || '').toUpperCase().trim();
+    const role = String(requesterRole || "")
+      .toUpperCase()
+      .trim();
     const perms = getPermissions(role);
     if (!perms.canManageUsers) {
-      throw new ForbiddenException('Solo un administrador puede eliminar usuarios');
+      throw new ForbiddenException(
+        "Solo un administrador puede eliminar usuarios",
+      );
     }
 
     const membership = await this.prisma.member.findFirst({
       where: {
         userId: targetUserId,
         organizationId,
-        status: 'ACTIVE',
+        status: "ACTIVE",
       },
       include: {
         user: {
@@ -539,23 +592,30 @@ export class TenantsService {
 
     if (!membership) {
       throw new NotFoundException(
-        'El usuario no es un miembro activo de esta organización',
+        "El usuario no es un miembro activo de esta organización",
       );
     }
 
     // Seguridad adicional: un ADMIN no puede eliminar un SUPER_ADMIN
-    if (!canDeleteSuperAdmin(role) && String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN) {
-      throw new ForbiddenException('Un ADMIN no puede eliminar un SUPER_ADMIN');
+    if (
+      !canDeleteSuperAdmin(role) &&
+      String(membership.role).toUpperCase() === ROLES.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException("Un ADMIN no puede eliminar un SUPER_ADMIN");
     }
 
     await this.prisma.member.update({
       where: { id: membership.id },
-      data: { status: 'SUSPENDED' },
+      data: { status: "SUSPENDED" },
     });
 
     const [activeMembers, activeCompanyMembers] = await Promise.all([
-      this.prisma.member.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
-      this.prisma.companyMember.count({ where: { userId: targetUserId, status: 'ACTIVE' } }),
+      this.prisma.member.count({
+        where: { userId: targetUserId, status: "ACTIVE" },
+      }),
+      this.prisma.companyMember.count({
+        where: { userId: targetUserId, status: "ACTIVE" },
+      }),
     ]);
     if (activeMembers === 0 && activeCompanyMembers === 0) {
       await this.prisma.user.update({
@@ -572,8 +632,8 @@ export class TenantsService {
       data: {
         organizationId,
         userId: requesterUserId,
-        action: 'MEMBER_DEACTIVATED',
-        entityType: 'member',
+        action: "MEMBER_DEACTIVATED",
+        entityType: "member",
         entityId: String(membership.id),
         newValue: {
           targetUserId: membership.userId,
@@ -587,7 +647,7 @@ export class TenantsService {
     });
 
     return {
-      message: 'Usuario eliminado de la organización',
+      message: "Usuario eliminado de la organización",
       userId: membership.userId,
       email: membership.user.email,
       fullName: membership.user.fullName,
@@ -601,7 +661,7 @@ export class TenantsService {
   async getAuditLog(organizationId: number, limit = 100) {
     const logs = await this.prisma.auditLog.findMany({
       where: { organizationId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: Math.min(limit, 200),
       select: {
         id: true,
@@ -624,7 +684,7 @@ export class TenantsService {
   async getActivityLog(organizationId: number, limit = 100) {
     const logs = await this.prisma.activityLog.findMany({
       where: { organizationId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: Math.min(limit, 200),
       include: {
         user: { select: { id: true, email: true, fullName: true } },
@@ -645,12 +705,12 @@ export class TenantsService {
     });
 
     if (!user) {
-      throw new BadRequestException('Usuario no encontrado');
+      throw new BadRequestException("Usuario no encontrado");
     }
 
     if (!user.isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo el Super Admin puede crear organizaciones',
+        "Solo el Super Admin puede crear organizaciones",
       );
     }
 
@@ -670,7 +730,7 @@ export class TenantsService {
       data: {
         nombre: createOrganizationDto.nombre,
         slug: createOrganizationDto.slug,
-        plan: createOrganizationDto.plan || 'FREE',
+        plan: createOrganizationDto.plan || "FREE",
       },
     });
 
@@ -685,13 +745,13 @@ export class TenantsService {
           data: {
             userId: userId,
             organizationId: organization.id,
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE',
+            role: "SUPER_ADMIN",
+            status: "ACTIVE",
           },
         });
       } catch (e: any) {
         // Unique constraint: Super Admin ya es miembro, ignorar
-        if (e?.code !== 'P2002') throw e;
+        if (e?.code !== "P2002") throw e;
       }
     }
 
@@ -708,7 +768,9 @@ export class TenantsService {
       select: { isSuperAdmin: true },
     });
     if (!actor?.isSuperAdmin) {
-      throw new ForbiddenException('Solo el Super Admin puede ejecutar la purga');
+      throw new ForbiddenException(
+        "Solo el Super Admin puede ejecutar la purga",
+      );
     }
 
     const sixMonthsAgo = new Date();
@@ -727,7 +789,9 @@ export class TenantsService {
     for (const u of candidates) {
       const [invCount, taskCount] = await Promise.all([
         this.prisma.invoice.count({ where: { sellerId: u.id } }),
-        this.prisma.task.count({ where: { OR: [{ assignedToId: u.id }, { createdById: u.id }] } }),
+        this.prisma.task.count({
+          where: { OR: [{ assignedToId: u.id }, { createdById: u.id }] },
+        }),
       ]);
       if (invCount === 0 && taskCount === 0) {
         await this.prisma.member.deleteMany({ where: { userId: u.id } });
@@ -766,7 +830,7 @@ export class TenantsService {
     }
     const list = await this.prisma.tasaHistorica.findMany({
       where,
-      orderBy: { effectiveAt: 'desc' },
+      orderBy: { effectiveAt: "desc" },
       take: limit,
       select: {
         id: true,
@@ -805,14 +869,14 @@ export class TenantsService {
           organizationId,
           effectiveAt: { gte: desdeDate, lte: hastaDate },
         },
-        orderBy: { effectiveAt: 'asc' },
+        orderBy: { effectiveAt: "asc" },
         select: { rate: true, effectiveAt: true },
       }),
       this.prisma.invoice.findMany({
         where: {
           organizationId,
           createdAt: { gte: desdeDate, lte: hastaDate },
-          status: { not: 'CANCELLED' },
+          status: { not: "CANCELLED" },
         },
         select: {
           id: true,
@@ -840,7 +904,12 @@ export class TenantsService {
       }
     > = {};
 
-    const pushDay = (dateStr: string, tasa: number, totalUsd: number, totalBs: number) => {
+    const pushDay = (
+      dateStr: string,
+      tasa: number,
+      totalUsd: number,
+      totalBs: number,
+    ) => {
       if (!byDay[dateStr]) {
         byDay[dateStr] = {
           date: dateStr,
@@ -874,8 +943,8 @@ export class TenantsService {
       }
     }
 
-    const sorted = Object.values(byDay).sort(
-      (a, b) => a.date.localeCompare(b.date),
+    const sorted = Object.values(byDay).sort((a, b) =>
+      a.date.localeCompare(b.date),
     );
     return {
       desde,

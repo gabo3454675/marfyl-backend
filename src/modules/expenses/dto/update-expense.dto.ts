@@ -6,8 +6,8 @@ import {
   IsEnum,
   IsDateString,
   Min,
-} from 'class-validator';
-import { ExpenseStatus } from '@prisma/client';
+} from "class-validator";
+import { ExpenseStatus } from "@prisma/client";
 
 export class UpdateExpenseDto {
   @IsDateString()

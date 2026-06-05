@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { FiscalTaxpayerType } from '@prisma/client';
+import { Injectable } from "@nestjs/common";
+import { FiscalTaxpayerType } from "@prisma/client";
 
-export type FiscalComplianceMode = 'DIAGNOSTIC' | 'OPERATIONAL';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { rifLastDigitFromTaxId } from './helpers/fiscal-validators';
+export type FiscalComplianceMode = "DIAGNOSTIC" | "OPERATIONAL";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { rifLastDigitFromTaxId } from "./helpers/fiscal-validators";
 
 export interface FiscalIdentitySnapshot {
   taxId: string | null;
@@ -29,27 +29,31 @@ export class FiscalRuleEngineService {
 
   resolveMode(identity: FiscalIdentitySnapshot): ComplianceModeResult {
     const missing: string[] = [];
-    if (!identity.taxId?.trim()) missing.push('rif');
-    if (!identity.legalName?.trim()) missing.push('legalName');
-    if (!identity.taxpayerType) missing.push('taxpayerType');
-    if (!identity.economicActivity?.trim()) missing.push('economicActivity');
+    if (!identity.taxId?.trim()) missing.push("rif");
+    if (!identity.legalName?.trim()) missing.push("legalName");
+    if (!identity.taxpayerType) missing.push("taxpayerType");
+    if (!identity.economicActivity?.trim()) missing.push("economicActivity");
 
     const reasons: string[] = [];
     if (!identity.taxId?.trim()) {
-      reasons.push('Configure el RIF del negocio para aplicar calendario SENIAT.');
+      reasons.push(
+        "Configure el RIF del negocio para aplicar calendario SENIAT.",
+      );
     }
     if (!identity.legalName?.trim()) {
-      reasons.push('Indique la razón social fiscal.');
+      reasons.push("Indique la razón social fiscal.");
     }
     if (!identity.taxpayerType) {
-      reasons.push('Seleccione el tipo de contribuyente (ordinario, especial, etc.).');
+      reasons.push(
+        "Seleccione el tipo de contribuyente (ordinario, especial, etc.).",
+      );
     }
     if (!identity.economicActivity?.trim()) {
-      reasons.push('Registre la actividad económica principal.');
+      reasons.push("Registre la actividad económica principal.");
     }
 
     const mode: FiscalComplianceMode =
-      missing.length > 0 ? 'DIAGNOSTIC' : 'OPERATIONAL';
+      missing.length > 0 ? "DIAGNOSTIC" : "OPERATIONAL";
 
     return { mode, reasons, missingFields: missing };
   }
@@ -58,12 +62,12 @@ export class FiscalRuleEngineService {
     try {
       return await this.prisma.fiscalNormVersion.findMany({
         where: {
-          status: 'ACTIVE',
+          status: "ACTIVE",
           validFrom: { lte: at },
           OR: [{ validTo: null }, { validTo: { gte: at } }],
         },
         include: { norm: true },
-        orderBy: [{ norm: { priority: 'asc' } }, { validFrom: 'desc' }],
+        orderBy: [{ norm: { priority: "asc" } }, { validFrom: "desc" }],
       });
     } catch {
       return [];
@@ -112,7 +116,9 @@ export class FiscalRuleEngineService {
     const taxId = org.taxId ?? null;
     const rifDigit =
       profile?.rifLastDigit ?? (taxId ? rifLastDigitFromTaxId(taxId) : null);
-    const configured = Boolean(taxId?.trim() && org.legalName?.trim() && profile?.taxpayerType);
+    const configured = Boolean(
+      taxId?.trim() && org.legalName?.trim() && profile?.taxpayerType,
+    );
 
     return {
       taxId,

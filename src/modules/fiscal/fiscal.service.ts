@@ -1,27 +1,40 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { UpsertFiscalProfileDto } from './dto/upsert-fiscal-profile.dto';
-import { QueryLibroDto } from './dto/query-libro.dto';
-import { CargaRapidaCompraDto } from './dto/carga-rapida-compra.dto';
-import { FiscalEngineService } from './fiscal-engine.service';
-import { FiscalCalendarService } from './fiscal-calendar.service';
-import { FiscalBackfillService } from './fiscal-backfill.service';
-import { RetencionPdfService } from './retencion-pdf.service';
-import { assertRifOrWarn, rifLastDigitFromTaxId } from './helpers/fiscal-validators';
-import { registrarAuditoria } from '@/common/auditoria/registrar-auditoria';
-import { computeExpenseFiscal } from './helpers/expense-fiscal.helper';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { UpsertFiscalProfileDto } from "./dto/upsert-fiscal-profile.dto";
+import { QueryLibroDto } from "./dto/query-libro.dto";
+import { CargaRapidaCompraDto } from "./dto/carga-rapida-compra.dto";
+import { FiscalEngineService } from "./fiscal-engine.service";
+import { FiscalCalendarService } from "./fiscal-calendar.service";
+import { FiscalBackfillService } from "./fiscal-backfill.service";
+import { RetencionPdfService } from "./retencion-pdf.service";
+import {
+  assertRifOrWarn,
+  rifLastDigitFromTaxId,
+} from "./helpers/fiscal-validators";
+import { registrarAuditoria } from "@/common/auditoria/registrar-auditoria";
+import { computeExpenseFiscal } from "./helpers/expense-fiscal.helper";
 import {
   enrichLibroVentaLine,
   buildLibroVentasTxt,
   type LibroVentaRowView,
-} from './helpers/libro-ventas-export';
-import { getCompanyIdFromOrganization } from '@/common/helpers/organization.helper';
-import * as ExcelJS from 'exceljs';
-import { round2 } from './helpers/tax-calculator';
+} from "./helpers/libro-ventas-export";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import * as ExcelJS from "exceljs";
+import { round2 } from "./helpers/tax-calculator";
 
 const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
 ];
 
 @Injectable()
@@ -71,13 +84,15 @@ export class FiscalService {
     return { organization: org, profile: profile ?? null };
   }
 
-  async upsertProfile(organizationId: number, dto: UpsertFiscalProfileDto, userId?: number) {
-    if (dto.taxId) assertRifOrWarn(dto.taxId, 'RIF');
+  async upsertProfile(
+    organizationId: number,
+    dto: UpsertFiscalProfileDto,
+    userId?: number,
+  ) {
+    if (dto.taxId) assertRifOrWarn(dto.taxId, "RIF");
 
     const digit =
-      dto.rifLastDigit ??
-      rifLastDigitFromTaxId(dto.taxId) ??
-      undefined;
+      dto.rifLastDigit ?? rifLastDigitFromTaxId(dto.taxId) ?? undefined;
 
     const orgUpdate: {
       taxId?: string;
@@ -87,8 +102,10 @@ export class FiscalService {
     } = {};
     if (dto.taxId !== undefined) orgUpdate.taxId = dto.taxId;
     if (dto.legalName !== undefined) orgUpdate.legalName = dto.legalName;
-    if (dto.isSpecialTaxpayer !== undefined) orgUpdate.isSpecialTaxpayer = dto.isSpecialTaxpayer;
-    if (dto.isFormalTaxpayer !== undefined) orgUpdate.isFormalTaxpayer = dto.isFormalTaxpayer;
+    if (dto.isSpecialTaxpayer !== undefined)
+      orgUpdate.isSpecialTaxpayer = dto.isSpecialTaxpayer;
+    if (dto.isFormalTaxpayer !== undefined)
+      orgUpdate.isFormalTaxpayer = dto.isFormalTaxpayer;
 
     if (Object.keys(orgUpdate).length > 0) {
       await this.prisma.organization.update({
@@ -107,7 +124,7 @@ export class FiscalService {
         isWithholdingAgent: dto.isWithholdingAgent ?? false,
         isSubjectToWithholding: dto.isSubjectToWithholding ?? false,
         rifLastDigit: digit,
-        controlSeriesPrefix: dto.controlSeriesPrefix ?? '01',
+        controlSeriesPrefix: dto.controlSeriesPrefix ?? "01",
         nextControlSequence: dto.nextControlSequence ?? 1,
         economicActivity: dto.economicActivity,
         branches: dto.branches as object | undefined,
@@ -136,8 +153,8 @@ export class FiscalService {
     if (userId) {
       await registrarAuditoria(this.prisma, {
         usuarioId: userId,
-        accion: 'ACTUALIZAR_PERFIL_FISCAL',
-        entidad: 'fiscal_profile',
+        accion: "ACTUALIZAR_PERFIL_FISCAL",
+        entidad: "fiscal_profile",
         entidadId: String(organizationId),
         valoresNuevos: dto as object,
       });
@@ -172,20 +189,24 @@ export class FiscalService {
       .filter((r) => r.validationErrors.length > 0)
       .slice(0, 5)
       .map((r) => ({
-        type: 'error' as const,
-        message: `${r.validationErrors[0]} (Op. ${r.opNumber}${r.invoiceNumber ? ` #${r.invoiceNumber}` : ''})`,
+        type: "error" as const,
+        message: `${r.validationErrors[0]} (Op. ${r.opNumber}${r.invoiceNumber ? ` #${r.invoiceNumber}` : ""})`,
       }));
 
-    const cal = await this.fiscalCalendar.listCalendar(organizationId, year, month);
+    const cal = await this.fiscalCalendar.listCalendar(
+      organizationId,
+      year,
+      month,
+    );
     const agenda = cal.deadlines.map((d) => {
-      const daysLeft = Math.ceil(
-        (d.dueDate.getTime() - Date.now()) / 86400000,
-      );
+      const daysLeft = Math.ceil((d.dueDate.getTime() - Date.now()) / 86400000);
       return {
-        dayLabel: d.dueDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short' }).toUpperCase(),
+        dayLabel: d.dueDate
+          .toLocaleDateString("es-VE", { day: "2-digit", month: "short" })
+          .toUpperCase(),
         title: d.template.name,
         urgency:
-          daysLeft <= 1 ? 'high' : daysLeft <= 5 ? 'medium' : ('low' as const),
+          daysLeft <= 1 ? "high" : daysLeft <= 5 ? "medium" : ("low" as const),
         compliance: d.compliance,
       };
     });
@@ -195,8 +216,13 @@ export class FiscalService {
         year,
         month,
         label: `${MONTH_NAMES[month - 1]} ${year}`,
-        status: period?.status ?? 'OPEN',
-        statusLabel: period?.status === 'CLOSING' ? 'En Cierre' : period?.status === 'CLOSED' ? 'Cerrado' : 'Abierto',
+        status: period?.status ?? "OPEN",
+        statusLabel:
+          period?.status === "CLOSING"
+            ? "En Cierre"
+            : period?.status === "CLOSED"
+              ? "Cerrado"
+              : "Abierto",
       },
       exchangeRate: rate,
       metrics: {
@@ -215,7 +241,9 @@ export class FiscalService {
       alerts,
       profile: {
         taxId: profile?.taxId ?? org?.taxId,
-        rifDigit: profile?.rifLastDigit ?? rifLastDigitFromTaxId(profile?.taxId ?? org?.taxId),
+        rifDigit:
+          profile?.rifLastDigit ??
+          rifLastDigitFromTaxId(profile?.taxId ?? org?.taxId),
       },
       calendarioMeta: {
         rifDigit: cal.rifDigit,
@@ -235,33 +263,41 @@ export class FiscalService {
     const { year, month } = this.periodDefaults(query);
     return this.prisma.retencionIVA.findMany({
       where: { organizationId, periodYear: year, periodMonth: month },
-      include: { fiscalDocument: true, expense: { select: { id: true, description: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: {
+        fiscalDocument: true,
+        expense: { select: { id: true, description: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
   }
 
-  async exportRetencionesTxt(organizationId: number, query: QueryLibroDto): Promise<string> {
+  async exportRetencionesTxt(
+    organizationId: number,
+    query: QueryLibroDto,
+  ): Promise<string> {
     const rows = await this.listRetenciones(organizationId, query);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
     const lines = [
-      'RETENCIONES IVA MARFYL',
-      'RIF_AGENTE\tRIF_PROVEEDOR\tPERIODO\tCOMPROBANTE\tBASE\tIVA\tRETENIDO\tFECHA',
+      "RETENCIONES IVA MARFYL",
+      "RIF_AGENTE\tRIF_PROVEEDOR\tPERIODO\tCOMPROBANTE\tBASE\tIVA\tRETENIDO\tFECHA",
     ];
     for (const r of rows) {
       lines.push(
         [
-          org?.taxId ?? '',
-          r.supplierTaxId ?? '',
-          `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}`,
-          r.certificateNumber ?? '',
+          org?.taxId ?? "",
+          r.supplierTaxId ?? "",
+          `${r.periodYear}-${String(r.periodMonth).padStart(2, "0")}`,
+          r.certificateNumber ?? "",
           Number(r.baseAmount).toFixed(2),
           Number(r.ivaAmount).toFixed(2),
           Number(r.withholdingAmount).toFixed(2),
           r.createdAt.toISOString().slice(0, 10),
-        ].join('\t'),
+        ].join("\t"),
       );
     }
-    return lines.join('\r\n');
+    return lines.join("\r\n");
   }
 
   async getPredeclaracion(organizationId: number, query: QueryLibroDto) {
@@ -279,7 +315,10 @@ export class FiscalService {
         })
       : null;
 
-    const retenciones = await this.listRetenciones(organizationId, { year, month });
+    const retenciones = await this.listRetenciones(organizationId, {
+      year,
+      month,
+    });
     const netIva = round2(ventas.totals.ivaAmount - compras.totals.ivaAmount);
 
     return {
@@ -292,11 +331,27 @@ export class FiscalService {
       retencionesCount: retenciones.length,
       netIvaUsd: netIva,
       steps: [
-        { id: 1, title: 'Revisar libro de ventas', done: ventas.lines.length > 0 },
-        { id: 2, title: 'Revisar libro de compras', done: compras.lines.length > 0 },
-        { id: 3, title: 'Cuadrar retenciones', done: retenciones.length > 0 || compras.lines.length === 0 },
-        { id: 4, title: 'Exportar archivos', done: false },
-        { id: 5, title: 'Presentar en portal SENIAT', done: declaracion?.status === 'PRESENTADO' },
+        {
+          id: 1,
+          title: "Revisar libro de ventas",
+          done: ventas.lines.length > 0,
+        },
+        {
+          id: 2,
+          title: "Revisar libro de compras",
+          done: compras.lines.length > 0,
+        },
+        {
+          id: 3,
+          title: "Cuadrar retenciones",
+          done: retenciones.length > 0 || compras.lines.length === 0,
+        },
+        { id: 4, title: "Exportar archivos", done: false },
+        {
+          id: 5,
+          title: "Presentar en portal SENIAT",
+          done: declaracion?.status === "PRESENTADO",
+        },
       ],
     };
   }
@@ -306,17 +361,26 @@ export class FiscalService {
       where: { id, organizationId },
       include: { fiscalDocument: true, expense: true },
     });
-    if (!row) throw new NotFoundException('Retención no encontrada');
+    if (!row) throw new NotFoundException("Retención no encontrada");
     return row;
   }
 
-  async closePeriod(organizationId: number, year: number, month: number, userId?: number) {
-    const result = await this.fiscalEngine.closePeriod(organizationId, year, month);
+  async closePeriod(
+    organizationId: number,
+    year: number,
+    month: number,
+    userId?: number,
+  ) {
+    const result = await this.fiscalEngine.closePeriod(
+      organizationId,
+      year,
+      month,
+    );
     if (userId) {
       await registrarAuditoria(this.prisma, {
         usuarioId: userId,
-        accion: 'CERRAR_PERIODO_FISCAL',
-        entidad: 'fiscal_period',
+        accion: "CERRAR_PERIODO_FISCAL",
+        entidad: "fiscal_period",
         entidadId: String(result.id),
         valoresNuevos: { year, month, integrityHash: result.integrityHash },
       });
@@ -329,8 +393,12 @@ export class FiscalService {
 
     const raw = await this.prisma.libroVentaLine.findMany({
       where: { organizationId, periodYear: year, periodMonth: month },
-      orderBy: [{ issueDate: 'asc' }, { id: 'asc' }],
-      include: { invoice: { select: { id: true, consecutiveNumber: true, status: true } } },
+      orderBy: [{ issueDate: "asc" }, { id: "asc" }],
+      include: {
+        invoice: {
+          select: { id: true, consecutiveNumber: true, status: true },
+        },
+      },
     });
 
     const lines = raw.map((l, i) => enrichLibroVentaLine(l, i));
@@ -344,7 +412,13 @@ export class FiscalService {
         acc.totalAmount += l.totalAmount;
         return acc;
       },
-      { baseExempt: 0, baseReduced: 0, baseGeneral: 0, ivaAmount: 0, totalAmount: 0 },
+      {
+        baseExempt: 0,
+        baseReduced: 0,
+        baseGeneral: 0,
+        ivaAmount: 0,
+        totalAmount: 0,
+      },
     );
 
     return { year, month, lines, totals };
@@ -355,8 +429,10 @@ export class FiscalService {
 
     const lines = await this.prisma.libroCompraLine.findMany({
       where: { organizationId, periodYear: year, periodMonth: month },
-      orderBy: [{ issueDate: 'asc' }, { id: 'asc' }],
-      include: { expense: { select: { id: true, description: true, amount: true } } },
+      orderBy: [{ issueDate: "asc" }, { id: "asc" }],
+      include: {
+        expense: { select: { id: true, description: true, amount: true } },
+      },
     });
 
     const totals = lines.reduce(
@@ -390,7 +466,9 @@ export class FiscalService {
       throw new NotFoundException(`Categoría ${dto.categoryId} no encontrada`);
     }
 
-    const profile = await this.prisma.fiscalProfile.findUnique({ where: { organizationId } });
+    const profile = await this.prisma.fiscalProfile.findUnique({
+      where: { organizationId },
+    });
     const fiscal = computeExpenseFiscal({
       amount: dto.amount,
       baseGeneral: dto.baseGeneral,
@@ -398,7 +476,10 @@ export class FiscalService {
       applyWithholding: profile?.isSubjectToWithholding ?? false,
     });
 
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     const expense = await this.prisma.expense.create({
       data: {
@@ -412,7 +493,7 @@ export class FiscalService {
         supplierControlNumber: dto.supplierControlNumber,
         supplierId: dto.supplierId,
         categoryId: dto.categoryId,
-        status: 'PENDING',
+        status: "PENDING",
         baseExempt: fiscal.baseExempt,
         baseReduced: fiscal.baseReduced,
         baseGeneral: fiscal.baseGeneral,
@@ -426,22 +507,36 @@ export class FiscalService {
     return expense;
   }
 
-  async exportLibroVentasXlsx(organizationId: number, query: QueryLibroDto): Promise<Buffer> {
-    const { lines, year, month } = await this.listLibroVentas(organizationId, query);
+  async exportLibroVentasXlsx(
+    organizationId: number,
+    query: QueryLibroDto,
+  ): Promise<Buffer> {
+    const { lines, year, month } = await this.listLibroVentas(
+      organizationId,
+      query,
+    );
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Libro de Ventas');
+    const ws = wb.addWorksheet("Libro de Ventas");
     ws.addRow([
-      'N° OP', 'FECHA', 'RIF', 'RAZÓN SOCIAL', 'N° FACTURA', 'N° CONTROL',
-      'VENTAS EXENTAS', 'BASE IMPONIBLE (16%)', 'IVA CAUSADO', 'TOTAL',
+      "N° OP",
+      "FECHA",
+      "RIF",
+      "RAZÓN SOCIAL",
+      "N° FACTURA",
+      "N° CONTROL",
+      "VENTAS EXENTAS",
+      "BASE IMPONIBLE (16%)",
+      "IVA CAUSADO",
+      "TOTAL",
     ]);
     for (const r of lines as LibroVentaRowView[]) {
       ws.addRow([
         r.opNumber,
         r.issueDate,
-        r.customerTaxId ?? '',
-        r.customerName ?? '',
-        r.invoiceNumber ?? '',
-        r.controlNumber ?? '',
+        r.customerTaxId ?? "",
+        r.customerName ?? "",
+        r.invoiceNumber ?? "",
+        r.controlNumber ?? "",
         r.baseExempt,
         r.baseGeneral,
         r.ivaAmount,
@@ -450,7 +545,12 @@ export class FiscalService {
     }
     ws.addRow([]);
     ws.addRow([
-      'TOTALES', '', '', '', '', '',
+      "TOTALES",
+      "",
+      "",
+      "",
+      "",
+      "",
       (lines as LibroVentaRowView[]).reduce((s, r) => s + r.baseExempt, 0),
       (lines as LibroVentaRowView[]).reduce((s, r) => s + r.baseGeneral, 0),
       (lines as LibroVentaRowView[]).reduce((s, r) => s + r.ivaAmount, 0),
@@ -461,8 +561,14 @@ export class FiscalService {
     return Buffer.from(buf);
   }
 
-  async exportLibroVentasTxt(organizationId: number, query: QueryLibroDto): Promise<string> {
-    const { lines, year, month } = await this.listLibroVentas(organizationId, query);
+  async exportLibroVentasTxt(
+    organizationId: number,
+    query: QueryLibroDto,
+  ): Promise<string> {
+    const { lines, year, month } = await this.listLibroVentas(
+      organizationId,
+      query,
+    );
     return buildLibroVentasTxt(lines as LibroVentaRowView[], year, month);
   }
 }

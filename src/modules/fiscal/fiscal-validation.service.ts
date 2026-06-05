@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { validateRifFormat } from './helpers/fiscal-validators';
-import { FiscalRuleEngineService } from './fiscal-rule-engine.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "@/common/prisma/prisma.service";
+import { validateRifFormat } from "./helpers/fiscal-validators";
+import { FiscalRuleEngineService } from "./fiscal-rule-engine.service";
 
 export interface PreventiveValidationInput {
   organizationId: number;
-  operation: 'sale' | 'purchase' | 'credit_note' | 'period_close';
+  operation: "sale" | "purchase" | "credit_note" | "period_close";
   taxId?: string;
   documentDate?: Date;
   controlNumber?: string;
@@ -14,7 +14,7 @@ export interface PreventiveValidationInput {
 
 export interface PreventiveValidationResult {
   allowed: boolean;
-  severity: 'info' | 'warning' | 'critical';
+  severity: "info" | "warning" | "critical";
   messages: { code: string; text: string; blocks: boolean }[];
 }
 
@@ -25,8 +25,10 @@ export class FiscalValidationService {
     private readonly ruleEngine: FiscalRuleEngineService,
   ) {}
 
-  async validate(input: PreventiveValidationInput): Promise<PreventiveValidationResult> {
-    const messages: PreventiveValidationResult['messages'] = [];
+  async validate(
+    input: PreventiveValidationInput,
+  ): Promise<PreventiveValidationResult> {
+    const messages: PreventiveValidationResult["messages"] = [];
 
     const org = await this.prisma.organization.findUnique({
       where: { id: input.organizationId },
@@ -35,25 +37,34 @@ export class FiscalValidationService {
     if (!org) {
       return {
         allowed: false,
-        severity: 'critical',
-        messages: [{ code: 'ORG_NOT_FOUND', text: 'Organización no encontrada.', blocks: true }],
+        severity: "critical",
+        messages: [
+          {
+            code: "ORG_NOT_FOUND",
+            text: "Organización no encontrada.",
+            blocks: true,
+          },
+        ],
       };
     }
 
-    const identity = this.ruleEngine.buildIdentityFromOrgProfile(org, org.fiscalProfile);
+    const identity = this.ruleEngine.buildIdentityFromOrgProfile(
+      org,
+      org.fiscalProfile,
+    );
     const mode = this.ruleEngine.resolveMode(identity);
-    if (mode.mode === 'DIAGNOSTIC') {
+    if (mode.mode === "DIAGNOSTIC") {
       messages.push({
-        code: 'PROFILE_INCOMPLETE',
-        text: 'Perfil fiscal incompleto. Complete RIF, razón social y tipo de contribuyente.',
-        blocks: input.operation === 'period_close',
+        code: "PROFILE_INCOMPLETE",
+        text: "Perfil fiscal incompleto. Complete RIF, razón social y tipo de contribuyente.",
+        blocks: input.operation === "period_close",
       });
     }
 
     if (input.taxId && !validateRifFormat(input.taxId)) {
       messages.push({
-        code: 'INVALID_RIF',
-        text: 'El RIF del tercero no cumple el formato esperado (ej. J-12345678-9).',
+        code: "INVALID_RIF",
+        text: "El RIF del tercero no cumple el formato esperado (ej. J-12345678-9).",
         blocks: true,
       });
     }
@@ -64,18 +75,18 @@ export class FiscalValidationService {
       maxFuture.setDate(maxFuture.getDate() + 1);
       if (input.documentDate > maxFuture) {
         messages.push({
-          code: 'DATE_FUTURE',
-          text: 'La fecha del documento no puede estar en el futuro.',
+          code: "DATE_FUTURE",
+          text: "La fecha del documento no puede estar en el futuro.",
           blocks: true,
         });
       }
     }
 
     if (input.controlNumber && org.fiscalProfile) {
-      const prefix = org.fiscalProfile.controlSeriesPrefix ?? '01';
+      const prefix = org.fiscalProfile.controlSeriesPrefix ?? "01";
       if (!input.controlNumber.startsWith(prefix)) {
         messages.push({
-          code: 'CONTROL_SERIES',
+          code: "CONTROL_SERIES",
           text: `El correlativo debe pertenecer a la serie ${prefix}.`,
           blocks: false,
         });
@@ -87,7 +98,7 @@ export class FiscalValidationService {
       : null;
     if (rateAgeDays != null && rateAgeDays > 7 && (input.amountBs ?? 0) > 0) {
       messages.push({
-        code: 'BCV_RATE_STALE',
+        code: "BCV_RATE_STALE",
         text: `La tasa BCV tiene ${rateAgeDays} días sin actualizar. Revise umbrales en Bs.`,
         blocks: false,
       });
@@ -95,10 +106,10 @@ export class FiscalValidationService {
 
     const blocks = messages.some((m) => m.blocks);
     const severity = blocks
-      ? 'critical'
+      ? "critical"
       : messages.some((m) => !m.blocks)
-        ? 'warning'
-        : 'info';
+        ? "warning"
+        : "info";
 
     return {
       allowed: !blocks,
