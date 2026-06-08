@@ -8,6 +8,11 @@ import { assertMarfylDatabaseUrl } from "./common/database-guard";
 import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { WebSocketService } from "./services/websocket";
+import {
+  buildCsrfAllowedOrigins,
+  isMarfylAllowedOrigin,
+  parseExtraOrigins,
+} from "./common/utils/cors-origin.util";
 
 async function bootstrap() {
   // SECURITY: Prevent DEV_PREVIEW_AUTH in production
@@ -86,10 +91,7 @@ async function bootstrap() {
 
   // Dominios de producción siempre permitidos (incl. variantes Render)
   const productionDomains: string[] = [];
-  const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const extraOrigins = parseExtraOrigins(process.env.CORS_ALLOWED_ORIGINS);
   productionDomains.push(...extraOrigins);
 
   if (nodeEnv === "production") {
@@ -139,24 +141,7 @@ async function bootstrap() {
 
       // Verificar si el origin está permitido (normalizar sin barra final por si el navegador la envía)
       const normalizedOrigin = origin.replace(/\/$/, "");
-      const isInList = allowedOrigins.some(
-        (allowed) => allowed.replace(/\/$/, "") === normalizedOrigin,
-      );
-      // Permitir también por hostname (origen con puerto, preview deploys de Render, etc.)
-      let isAllowedByHost = false;
-      try {
-        const url = new URL(origin);
-        const h = url.hostname;
-        isAllowedByHost =
-          h === "marfyl.site" ||
-          h.endsWith(".marfyl.site") ||
-          (h.endsWith(".onrender.com") &&
-            h.startsWith("marfyl-") &&
-            h.includes("-frontend"));
-      } catch {
-        // ignore invalid URL
-      }
-      const isAllowed = isInList || isAllowedByHost;
+      const isAllowed = isMarfylAllowedOrigin(origin, allowedOrigins);
       if (isAllowed) {
         callback(null, true);
       } else {
@@ -210,24 +195,14 @@ async function bootstrap() {
       return next();
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3002";
-    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
-      .split(",")
-      .map((o: string) => o.trim())
-      .filter(Boolean);
-    const allowedOrigins = [
-      frontendUrl,
-      ...extraOrigins,
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://localhost:3003",
-    ];
+    const csrfFrontendUrl = process.env.FRONTEND_URL || "http://localhost:3002";
+    const csrfAllowedOrigins = buildCsrfAllowedOrigins(
+      csrfFrontendUrl,
+      parseExtraOrigins(process.env.CORS_ALLOWED_ORIGINS),
+    );
 
-    const isOriginAllowed = (origin: string) => {
-      const normalized = origin.replace(/\/$/, "");
-      return allowedOrigins.some((o) => o.replace(/\/$/, "") === normalized);
-    };
+    const isOriginAllowed = (origin: string) =>
+      isMarfylAllowedOrigin(origin, csrfAllowedOrigins);
 
     if (origin && !isOriginAllowed(origin)) {
       console.error(

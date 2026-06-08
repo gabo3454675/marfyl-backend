@@ -4,6 +4,11 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Request, Response, NextFunction } from "express";
+import {
+  buildCsrfAllowedOrigins,
+  isMarfylAllowedOrigin,
+  parseExtraOrigins,
+} from "@/common/utils/cors-origin.util";
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -11,19 +16,10 @@ export class CsrfMiddleware implements NestMiddleware {
 
   constructor() {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3002";
-    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
-
-    this.allowedOrigins = [
+    this.allowedOrigins = buildCsrfAllowedOrigins(
       frontendUrl,
-      ...extraOrigins,
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://localhost:3003",
-    ];
+      parseExtraOrigins(process.env.CORS_ALLOWED_ORIGINS),
+    );
   }
 
   use(req: Request, res: Response, next: NextFunction) {
@@ -50,7 +46,7 @@ export class CsrfMiddleware implements NestMiddleware {
       return next();
     }
 
-    if (origin && !this.isOriginAllowed(origin)) {
+    if (origin && !isMarfylAllowedOrigin(origin, this.allowedOrigins)) {
       console.error(
         "[CSRF] Blocked request with disallowed origin:",
         origin,
@@ -64,9 +60,8 @@ export class CsrfMiddleware implements NestMiddleware {
 
     if (referer) {
       try {
-        const refererUrl = new URL(referer);
-        const refererOrigin = refererUrl.origin;
-        if (!this.isOriginAllowed(refererOrigin)) {
+        const refererOrigin = new URL(referer).origin;
+        if (!isMarfylAllowedOrigin(refererOrigin, this.allowedOrigins)) {
           console.error(
             "[CSRF] Blocked request with disallowed referer:",
             refererOrigin,
@@ -78,7 +73,6 @@ export class CsrfMiddleware implements NestMiddleware {
           );
         }
       } catch {
-        // Invalid referer URL, let it pass in dev
         if (process.env.NODE_ENV === "production") {
           throw new BadRequestException(
             "CSRF validation failed: invalid referer",
@@ -88,12 +82,5 @@ export class CsrfMiddleware implements NestMiddleware {
     }
 
     next();
-  }
-
-  private isOriginAllowed(origin: string): boolean {
-    const normalizedOrigin = origin.replace(/\/$/, "");
-    return this.allowedOrigins.some(
-      (allowed) => allowed.replace(/\/$/, "") === normalizedOrigin,
-    );
   }
 }

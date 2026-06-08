@@ -19,7 +19,7 @@ services:
       - key: FRONTEND_URL
         value: https://marfyl.site
       - key: CORS_ALLOWED_ORIGINS
-        value: https://marfyl.site,https://www.marfyl.site
+        value: https://marfyl.site,https://www.marfyl.site,https://marfyl-frontend.onrender.com
       - key: CONCERT_FEATURE_ENABLED
         value: "true"
       - key: CONCERT_AUTO_SETUP_MONDDY
