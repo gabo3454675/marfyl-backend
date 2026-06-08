@@ -1,6 +1,16 @@
 # 🚀 Guía de Despliegue - Marfyl Backend
 
-**Última actualización:** 4 Junio 2026
+**Última actualización:** 8 Junio 2026
+
+### Base de datos de producción (Neon)
+
+- Usar el proyecto Neon con datos reales (`ep-super-art-...`), **no** el entorno seed/demo.
+- En Render: `DATABASE_URL` pooled, `sslmode=require`, **sin** `channel_binding=require`.
+- Start command: `pnpm prisma:deploy && pnpm start:prod` — **nunca** `pnpm seed` en producción.
+- Org IDs fundadoras en prod: Monddy=1, Davean=2, El Rancho=3 (por **slug**, no por ID fijo en código).
+- Clientes nuevos vía `/register`: org separada, `billingExempt=false`, plan BASIC, auto-provision (company, categorías gasto, consumidor final, fiscal shell, email bienvenida).
+- Boletería temporal: solo **Monddy** (`slug=monddy`, `concertModuleEnabled=true`). Arranque con `CONCERT_AUTO_SETUP_MONDDY=true` o `pnpm provision:monddy-concert`.
+- Resend producción: `RESEND_FROM_EMAIL=entradas@marfyl.site` (dominio verificado en Resend).
 # MARFYL Backend
 
 Guía de despliegue del backend de **MARFYL** (SaaS multi-tenant).

@@ -25,12 +25,16 @@ import {
 import { SetupOrganizationDto } from "./dto/setup-organization.dto";
 import { CompletePasswordResetDto } from "./dto/complete-password-reset.dto";
 import { RecoverPasswordDto } from "./dto/recover-password.dto";
+import { OrganizationProvisioningService } from "@/common/provisioning/organization-provisioning.service";
+import { EmailService } from "@/modules/email/email.service";
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private provisioning: OrganizationProvisioningService,
+    private emailService: EmailService,
   ) {}
 
   async validateUser(email: string, password: string) {
@@ -399,7 +403,24 @@ export class AuthService {
         },
       });
 
+      await this.provisioning.provisionInTransaction(tx, {
+        organizationId: organization.id,
+        organizationName: nombre,
+      });
+
       return organization;
+    });
+  }
+
+  private sendWelcomeEmailAsync(
+    email: string,
+    fullName: string,
+    organizationName: string,
+  ): void {
+    setImmediate(() => {
+      this.emailService
+        .sendWelcomeEmail(email, fullName, organizationName)
+        .catch(() => undefined);
     });
   }
 
@@ -428,6 +449,12 @@ export class AuthService {
       user.id,
       registerDto.organizationName,
       registerDto.organizationSlug,
+    );
+
+    this.sendWelcomeEmailAsync(
+      registerDto.email,
+      registerDto.fullName,
+      registerDto.organizationName.trim(),
     );
 
     const validatedUser = await this.validateUser(
@@ -466,7 +493,7 @@ export class AuthService {
   async setupOrganization(userId: number, dto: SetupOrganizationDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, isSuperAdmin: true },
+      select: { id: true, email: true, fullName: true, isSuperAdmin: true },
     });
     if (!user) throw new UnauthorizedException("Usuario no encontrado");
     if (user.isSuperAdmin) {
@@ -479,6 +506,12 @@ export class AuthService {
       userId,
       dto.organizationName,
       dto.organizationSlug,
+    );
+
+    this.sendWelcomeEmailAsync(
+      user.email,
+      user.fullName ?? user.email,
+      dto.organizationName.trim(),
     );
 
     const orgs = await this.getUserOrganizations(userId, false);

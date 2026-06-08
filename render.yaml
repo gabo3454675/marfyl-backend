@@ -20,3 +20,17 @@ services:
         value: https://marfyl.site
       - key: CORS_ALLOWED_ORIGINS
         value: https://marfyl.site,https://www.marfyl.site
+      - key: CONCERT_FEATURE_ENABLED
+        value: "true"
+      - key: CONCERT_AUTO_SETUP_MONDDY
+        value: "true"
+      - key: CONCERT_DEFAULT_SLUG
+        value: hemenegilda-capacidad
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: entradas@marfyl.site
+      - key: RESEND_FROM_NAME
+        value: MARFYL Entradas
+      - key: CONCERT_OWNER_NOTIFY_EMAIL
+        sync: false

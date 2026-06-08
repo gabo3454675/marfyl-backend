@@ -1,0 +1,2 @@
+-- Migración aplicada directamente en producción (feb 2026).
+-- Placeholder para alinear historial local con Neon; no ejecutar cambios adicionales.

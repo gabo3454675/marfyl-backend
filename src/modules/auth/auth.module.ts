@@ -3,6 +3,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { ConfigService } from "@nestjs/config";
 import { PrismaModule } from "@/common/prisma/prisma.module";
+import { ProvisioningModule } from "@/common/provisioning/provisioning.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
@@ -11,6 +12,7 @@ import { LocalStrategy } from "./strategies/local.strategy";
 @Module({
   imports: [
     PrismaModule,
+    ProvisioningModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

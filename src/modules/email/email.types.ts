@@ -23,8 +23,14 @@ export interface EmailAttachmentInline {
   contentType?: string;
 }
 
+export interface OwnerOrderSeatLine {
+  seatLabel: string;
+  sectionCode?: string;
+  priceUsd?: number;
+}
+
 export interface SendEmailParams {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
   attachments?: EmailAttachmentInline[];

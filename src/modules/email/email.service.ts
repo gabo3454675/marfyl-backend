@@ -2,7 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Resend } from "resend";
 import { ConcertOrder, ConcertEvent, ConcertTicket } from "@prisma/client";
-import { SendEmailParams, TicketEmailOptions } from "./email.types";
+import {
+  OwnerOrderSeatLine,
+  SendEmailParams,
+  TicketEmailOptions,
+} from "./email.types";
 import { generateTicketQr } from "./utils/qr-code.util";
 import {
   buildMultiTicketEmailHtml,
@@ -24,7 +28,7 @@ export class EmailService {
   private readonly emailEnabled: boolean;
   private readonly fromEmail: string;
   private readonly fromName: string;
-  private readonly ownerNotifyEmail: string;
+  private readonly ownerNotifyEmails: string[];
   private readonly frontendUrl: string;
 
   constructor(private readonly config: ConfigService) {
@@ -40,11 +44,50 @@ export class EmailService {
       this.config.get<string>("RESEND_FROM_EMAIL") || "entradas@marfyl.site";
     this.fromName =
       this.config.get<string>("RESEND_FROM_NAME") || "MARFYL Entradas";
-    this.ownerNotifyEmail =
-      this.config.get<string>("CONCERT_OWNER_NOTIFY_EMAIL") ||
-      "owner@example.com";
+    this.ownerNotifyEmails = this.parseOwnerNotifyEmails(
+      this.config.get<string>("CONCERT_OWNER_NOTIFY_EMAIL"),
+    );
     this.frontendUrl =
       this.config.get<string>("FRONTEND_URL") || "http://localhost:3003";
+  }
+
+  /** Bienvenida tras alta self-service de cliente SaaS. */
+  async sendWelcomeEmail(
+    to: string,
+    fullName: string,
+    organizationName: string,
+  ): Promise<boolean> {
+    const recipient = to?.trim();
+    if (!recipient) return false;
+
+    const panelUrl = `${this.frontendUrl.replace(/\/$/, "")}/`;
+    const html = `
+      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
+        <h1 style="font-size:22px;margin-bottom:8px">Bienvenido a MARFYL</h1>
+        <p>Hola <strong>${this.escapeHtml(fullName)}</strong>,</p>
+        <p>Tu espacio <strong>${this.escapeHtml(organizationName)}</strong> está listo.</p>
+        <p>Ya podés cargar productos, facturar, gestionar inventario e invitar a tu equipo.</p>
+        <p style="margin:28px 0">
+          <a href="${panelUrl}" style="background:#0d9488;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+            Ir al panel
+          </a>
+        </p>
+        <p style="font-size:13px;color:#64748b">Si no creaste esta cuenta, ignorá este correo.</p>
+      </div>`;
+
+    return this.dispatchEmail({
+      to: recipient,
+      subject: `Tu empresa ${organizationName} ya está activa en MARFYL`,
+      html,
+    });
+  }
+
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   /** Envío genérico (invitaciones, notificaciones, etc.). */
@@ -140,12 +183,19 @@ export class EmailService {
   async sendConcertOrderPendingToOwner(
     order: ConcertOrder & { event?: ConcertEvent },
     event: ConcertEvent,
+    seats: OwnerOrderSeatLine[] = [],
   ): Promise<boolean> {
+    if (this.ownerNotifyEmails.length === 0) {
+      this.logger.warn(
+        "CONCERT_OWNER_NOTIFY_EMAIL vacío — no se notifica al owner.",
+      );
+      return false;
+    }
     try {
-      const html = this.buildOrderPendingHtml(order, event);
+      const html = this.buildOrderPendingHtml(order, event, seats);
       return await this.dispatchEmail({
-        to: this.ownerNotifyEmail,
-        subject: `🔔 Nueva orden pendiente — ${this.resolveEventDisplayName(event)}`,
+        to: this.ownerNotifyEmails,
+        subject: `🔔 Nueva compra en boletería — ${this.resolveEventDisplayName(event)}`,
         html,
       });
     } catch (error: unknown) {
@@ -155,6 +205,14 @@ export class EmailService {
       );
       return false;
     }
+  }
+
+  private parseOwnerNotifyEmails(raw?: string): string[] {
+    if (!raw?.trim()) return [];
+    return raw
+      .split(/[,;]/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.includes("@"));
   }
 
   async sendConcertTicketsToBuyer(
@@ -353,6 +411,7 @@ export class EmailService {
   private buildOrderPendingHtml(
     order: ConcertOrder & { event?: ConcertEvent },
     event: ConcertEvent,
+    seats: OwnerOrderSeatLine[] = [],
   ): string {
     const formatBs = (amount: number) =>
       new Intl.NumberFormat("es-VE", {
@@ -374,6 +433,25 @@ export class EmailService {
     const eventName = this.resolveEventDisplayName(event);
     const artistLine = CONCERT_TICKET_EMAIL.mainArtist;
     const headlineLine = event.subtitle ?? CONCERT_TICKET_EMAIL.eventHeadline;
+    const seatsSummary = buildSeatsSummary(seats);
+    const seatRows =
+      seats.length > 0
+        ? seats
+            .map((s) => {
+              const section = s.sectionCode ? ` · ${s.sectionCode}` : "";
+              const price =
+                s.priceUsd != null
+                  ? ` — ${formatUsd(s.priceUsd)}`
+                  : "";
+              return `<li style="margin:6px 0;font-size:13px;">🪑 ${s.seatLabel}${section}${price}</li>`;
+            })
+            .join("")
+        : `<li style="margin:6px 0;font-size:13px;color:rgba(255,255,255,0.55);">Asientos por confirmar</li>`;
+    const paymentRef = order.paymentReference?.trim();
+    const proofLine = order.paymentProofUrl?.trim()
+      ? `<p style="margin:4px 0;font-size:13px;">📎 <a href="${order.paymentProofUrl}" style="color:#5eead4;">Comprobante de pago</a></p>`
+      : "";
+    const orderRef = order.publicToken?.slice(0, 8).toUpperCase() ?? String(order.id);
 
     return `<!DOCTYPE html>
 <html lang="es">
@@ -392,12 +470,19 @@ export class EmailService {
       <p style="margin:4px 0;font-size:13px;color:rgba(255,255,255,0.6);">📍 ${event.venueName ?? CONCERT_TICKET_EMAIL.venueDefault}</p>
       <p style="margin:4px 0;font-size:13px;color:rgba(255,255,255,0.55);">${eventName}</p>
       <p style="margin:4px 0 16px;font-size:13px;color:rgba(255,255,255,0.6);">📅 ${formatEventDateLabel(event.eventStartsAt)}</p>
+      <p style="margin:0 0 4px;font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.08em;">ORDEN #${orderRef}</p>
       <p style="margin:0 0 4px;font-size:13px;"><strong>Comprador:</strong> ${order.buyerName}</p>
       <p style="margin:4px 0;font-size:13px;">📞 ${order.buyerPhone} · 🪪 ${order.buyerIdDocument}</p>
       ${order.buyerEmail ? `<p style="margin:4px 0;font-size:13px;">✉️ ${order.buyerEmail}</p>` : ""}
+      <p style="margin:16px 0 8px;font-size:12px;font-weight:700;color:#99f6e4;letter-spacing:0.06em;">ASIENTOS (${seats.length || "—"})</p>
+      <ul style="margin:0 0 16px;padding-left:18px;list-style:none;">${seatRows}</ul>
+      <p style="margin:0 0 4px;font-size:12px;color:rgba(255,255,255,0.5);">Resumen: ${seatsSummary}</p>
       <p style="margin:16px 0 4px;font-size:24px;font-weight:800;color:#5eead4;">${formatUsd(Number(order.amountUsd))}</p>
-      <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.55);">Bs ${formatBs(Number(order.amountBs))} · ${paymentMethodLabels[order.paymentMethod] || order.paymentMethod}</p>
-      <p style="margin:20px 0 0;text-align:center;"><a href="${this.frontendUrl}/concierto/ordenes" style="display:inline-block;background:#5eead4;color:#0a0a0f;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;">Verificar órdenes</a></p>
+      <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.55);">Bs ${formatBs(Number(order.amountBs))} · Tasa ${Number(order.exchangeRate).toFixed(2)}</p>
+      <p style="margin:8px 0 0;font-size:13px;">💳 ${paymentMethodLabels[order.paymentMethod] || order.paymentMethod}</p>
+      ${paymentRef ? `<p style="margin:4px 0;font-size:13px;">🔖 Referencia: <strong>${paymentRef}</strong></p>` : ""}
+      ${proofLine}
+      <p style="margin:20px 0 0;text-align:center;"><a href="${this.frontendUrl}/concierto/ordenes" style="display:inline-block;background:#5eead4;color:#0a0a0f;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;">Verificar y confirmar pago</a></p>
     </td></tr>
   </table>
 </body></html>`;

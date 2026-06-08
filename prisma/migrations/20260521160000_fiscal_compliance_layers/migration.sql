@@ -23,8 +23,17 @@ ALTER TABLE "fiscal_profiles"
   ADD COLUMN IF NOT EXISTS "branches" JSONB,
   ADD COLUMN IF NOT EXISTS "lastRulesSyncAt" TIMESTAMP(3);
 
-ALTER TABLE "fiscal_calendar_rules"
-  ADD COLUMN IF NOT EXISTS "normVersionId" INTEGER;
+-- fiscal_calendar_rules se crea en 20260522160000_fiscal_phases_2_3 (migración posterior)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'fiscal_calendar_rules'
+  ) THEN
+    ALTER TABLE "fiscal_calendar_rules"
+      ADD COLUMN IF NOT EXISTS "normVersionId" INTEGER;
+  END IF;
+END $$;
 
 CREATE TABLE "fiscal_norms" (
   "id" SERIAL NOT NULL,
@@ -137,9 +146,19 @@ ALTER TABLE "fiscal_norm_versions"
   ADD CONSTRAINT "fiscal_norm_versions_normId_fkey"
   FOREIGN KEY ("normId") REFERENCES "fiscal_norms"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "fiscal_calendar_rules"
-  ADD CONSTRAINT "fiscal_calendar_rules_normVersionId_fkey"
-  FOREIGN KEY ("normVersionId") REFERENCES "fiscal_norm_versions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'fiscal_calendar_rules'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fiscal_calendar_rules_normVersionId_fkey'
+  ) THEN
+    ALTER TABLE "fiscal_calendar_rules"
+      ADD CONSTRAINT "fiscal_calendar_rules_normVersionId_fkey"
+      FOREIGN KEY ("normVersionId") REFERENCES "fiscal_norm_versions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 ALTER TABLE "fiscal_domain_events"
   ADD CONSTRAINT "fiscal_domain_events_organizationId_fkey"

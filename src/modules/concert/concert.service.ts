@@ -16,6 +16,7 @@ import { PrismaService } from "@/common/prisma/prisma.service";
 import { assertDbAvailable } from "@/common/prisma/assert-db-available";
 import { UploadService } from "@/common/services/upload.service";
 import { EmailService } from "@/modules/email/email.service";
+import type { OwnerOrderSeatLine } from "@/modules/email/email.types";
 import {
   CONCERT_HOLD_MINUTES,
   isConcertEnabledForOrganization,
@@ -111,6 +112,38 @@ export class ConcertService {
         holdToken: null,
         orderId: null,
       },
+    });
+  }
+
+  private buildOwnerSeatLines(
+    seats: Array<{
+      displayNumber: number | null;
+      mesaNumber: number | null;
+      rowLabel: string;
+      seatNumber: number;
+      priceUsd: number | null;
+      section: { code: string };
+    }>,
+    event: {
+      priceUsdVip: number;
+      priceUsdStandard: number;
+    },
+  ): OwnerOrderSeatLine[] {
+    return seats.map((seat) => {
+      const priceUsd =
+        seat.priceUsd ??
+        (seat.section.code === "VIP"
+          ? event.priceUsdVip
+          : event.priceUsdStandard);
+      const seatLabel =
+        seat.displayNumber != null && seat.mesaNumber != null
+          ? `Mesa ${seat.mesaNumber} · Asiento ${seat.displayNumber}`
+          : `${seat.rowLabel}-${seat.seatNumber}`;
+      return {
+        seatLabel,
+        sectionCode: seat.section.code,
+        priceUsd,
+      };
     });
   }
 
@@ -402,10 +435,12 @@ export class ConcertService {
       return created;
     });
 
-    // Fire-and-forget: notify owner of new pending order
+    const ownerSeatLines = this.buildOwnerSeatLines(seats, event);
+
+    // Fire-and-forget: notify owner(s) of new pending order
     setImmediate(() => {
       this.emailService
-        .sendConcertOrderPendingToOwner(order, event)
+        .sendConcertOrderPendingToOwner(order, event, ownerSeatLines)
         .catch((err) =>
           this.logger.error(
             `Failed to send order pending email: ${err.message}`,
