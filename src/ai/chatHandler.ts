@@ -680,7 +680,7 @@ export class ChatHandler {
         return {
           success: true,
           data: {
-            message: `Búsqueda de ayuda: "${query}" - Consulta la documentación en https://docs.marfyl.com o contacta a soporte@marfyl.com`,
+            message: `Búsqueda de ayuda: "${query}" - Consulta la documentación en https://marfyl.site o contacta a hola@marfyl.site`,
           },
         };
       },

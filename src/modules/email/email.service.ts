@@ -37,7 +37,7 @@ export class EmailService {
       );
     }
     this.fromEmail =
-      this.config.get<string>("RESEND_FROM_EMAIL") || "entradas@marfyl.com";
+      this.config.get<string>("RESEND_FROM_EMAIL") || "entradas@marfyl.site";
     this.fromName =
       this.config.get<string>("RESEND_FROM_NAME") || "MARFYL Entradas";
     this.ownerNotifyEmail =

@@ -82,13 +82,15 @@ El backend se despliega en **Render free tier** bajo el dominio `*.onrender.com`
 **Build command**
 
 ```bash
-pnpm install && pnpm prisma:generate && pnpm build
+pnpm install && pnpm build
 ```
+
+(`pnpm build` ya ejecuta `prisma generate` internamente.)
 
 **Start command**
 
 ```bash
-pnpm prisma:migrate deploy && pnpm start:prod
+pnpm prisma:deploy && pnpm start:prod
 ```
 
 **Pasos**

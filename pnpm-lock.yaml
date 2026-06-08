@@ -101,6 +101,9 @@ importers:
       pdfkit:
         specifier: ^0.17.2
         version: 0.17.2
+      prisma:
+        specifier: 5.10.0
+        version: 5.10.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -195,9 +198,6 @@ importers:
       prettier:
         specifier: ^3.1.0
         version: 3.8.3
-      prisma:
-        specifier: 5.10.0
-        version: 5.10.0
       source-map-support:
         specifier: ^0.5.21
         version: 0.5.21

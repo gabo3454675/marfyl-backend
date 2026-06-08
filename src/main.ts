@@ -125,7 +125,7 @@ async function bootstrap() {
     nodeEnv,
     "allowedOrigins=",
     allowedOrigins.length,
-    "(hostname check for marfyl-*-frontend*.onrender.com enabled)",
+    "(hostname check for marfyl.site and marfyl-*-frontend*.onrender.com enabled)",
   );
 
   app.enableCors({
@@ -147,9 +147,11 @@ async function bootstrap() {
         const url = new URL(origin);
         const h = url.hostname;
         isAllowedByHost =
-          h.endsWith(".onrender.com") &&
-          h.startsWith("marfyl-") &&
-          h.includes("-frontend");
+          h === "marfyl.site" ||
+          h.endsWith(".marfyl.site") ||
+          (h.endsWith(".onrender.com") &&
+            h.startsWith("marfyl-") &&
+            h.includes("-frontend"));
       } catch {
         // ignore invalid URL
       }
