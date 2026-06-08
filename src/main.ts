@@ -19,6 +19,7 @@ async function bootstrap() {
   // Bloquear JWT_SECRET por defecto en producción
   const INSECURE_JWT_SECRETS = [
     "cambiar-clave-segura-en-produccion",
+    "cambiar-por-clave-segura-en-produccion",
     "cambiar-jwt-secret-en-produccion",
     "dev-secret-key",
     "secret",
