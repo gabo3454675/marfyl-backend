@@ -87,6 +87,13 @@ pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm bu
 
 (`pnpm build` ya ejecuta `prisma generate` internamente. `NODE_OPTIONS` evita OOM en el build.)
 
+**Base de datos Neon (producción)**
+
+- Usar la URL **pooled** de Neon en `DATABASE_URL` con `?sslmode=require` (omitir `channel_binding=require` si Prisma falla al conectar).
+- `pnpm prisma:deploy` solo aplica migraciones pendientes; **no borra datos**.
+- **Nunca** ejecutar `pnpm seed` ni `prisma db push --accept-data-loss` contra la base de producción: el seed puede resetear contraseñas de usuarios existentes.
+- Las 3 empresas fundadoras (`el-rancho-de-german`, `monddy`, `davean`) tienen `billingExempt: true` y conservan sus datos. Clientes nuevos vía `/register` reciben org vacía con `plan: BASIC`.
+
 **Start command**
 
 ```bash
