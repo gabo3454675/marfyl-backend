@@ -46,6 +46,7 @@ export class ConcertBootstrapService implements OnModuleInit {
 
     try {
       const event = await this.concertService.ensureDefaultEvent(org.id);
+      await this.concertService.syncSeatCatalog(org.id);
       const seatCount = await this.prisma.concertSeat.count({
         where: { section: { eventId: event.id } },
       });

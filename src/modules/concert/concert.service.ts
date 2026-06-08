@@ -18,6 +18,10 @@ import { UploadService } from "@/common/services/upload.service";
 import { EmailService } from "@/modules/email/email.service";
 import type { OwnerOrderSeatLine } from "@/modules/email/email.types";
 import {
+  resolveConcertExchangeRate,
+  usdToBsForConcert,
+} from "./concert-pricing.util";
+import {
   CONCERT_HOLD_MINUTES,
   isConcertEnabledForOrganization,
   isConcertFeatureEnabled,
@@ -150,34 +154,27 @@ export class ConcertService {
   private sumSeatTotals(
     seats: {
       priceUsd: number | null;
-      priceBs: number | null;
       section: { code: string };
     }[],
     event: {
       priceUsdVip: number;
-      priceBsVip: number | null;
       priceUsdStandard: number;
       organization: { exchangeRate: number | null };
     },
   ) {
+    const exchangeRate = resolveConcertExchangeRate(
+      event.organization.exchangeRate,
+    );
     let amountUsd = 0;
     let amountBs = 0;
-    const fallbackBsVip =
-      event.priceBsVip ??
-      event.priceUsdVip * (event.organization.exchangeRate || 1);
     for (const seat of seats) {
       const usd =
         seat.priceUsd ??
         (seat.section.code === "VIP"
           ? event.priceUsdVip
           : event.priceUsdStandard);
-      const bs =
-        seat.priceBs ??
-        (seat.section.code === "VIP"
-          ? fallbackBsVip
-          : usd * (event.organization.exchangeRate || 1));
       amountUsd += usd;
-      amountBs += bs;
+      amountBs += usdToBsForConcert(usd, exchangeRate);
     }
     return {
       amountUsd: Math.round(amountUsd * 100) / 100,
@@ -185,19 +182,21 @@ export class ConcertService {
     };
   }
 
-  private mapSeatForPublic(seat: {
-    id: number;
-    rowLabel: string;
-    seatNumber: number;
-    status: ConcertSeatStatus;
-    heldUntil: Date | null;
-    priceUsd: number | null;
-    priceBs: number | null;
-    mesaNumber: number | null;
-    displayNumber: number | null;
-    tierCode: string | null;
-    tierLabel: string | null;
-  }) {
+  private mapSeatForPublic(
+    seat: {
+      id: number;
+      rowLabel: string;
+      seatNumber: number;
+      status: ConcertSeatStatus;
+      heldUntil: Date | null;
+      priceUsd: number | null;
+      mesaNumber: number | null;
+      displayNumber: number | null;
+      tierCode: string | null;
+      tierLabel: string | null;
+    },
+    exchangeRate: number,
+  ) {
     const now = new Date();
     const effectiveStatus =
       seat.status === ConcertSeatStatus.HELD &&
@@ -212,7 +211,10 @@ export class ConcertService {
       mesaNumber: seat.mesaNumber,
       displayNumber: seat.displayNumber,
       priceUsd: seat.priceUsd,
-      priceBs: seat.priceBs,
+      priceBs:
+        seat.priceUsd != null
+          ? usdToBsForConcert(seat.priceUsd, exchangeRate)
+          : null,
       tierCode: seat.tierCode,
       tierLabel: seat.tierLabel,
       status: effectiveStatus,
@@ -276,6 +278,10 @@ export class ConcertService {
       sold: seats.filter((s) => s.status === ConcertSeatStatus.SOLD).length,
     };
 
+    const exchangeRate = resolveConcertExchangeRate(
+      event.organization.exchangeRate,
+    );
+
     return {
       slug: event.slug,
       title: event.title,
@@ -284,7 +290,7 @@ export class ConcertService {
       eventStartsAt: event.eventStartsAt,
       priceUsdStandard: event.priceUsdStandard,
       priceUsdVip: event.priceUsdVip,
-      exchangeRate: event.organization.exchangeRate,
+      exchangeRate,
       bankAccountName: event.bankAccountName,
       bankAccountInfo: event.bankAccountInfo,
       pagoMovilInfo: event.pagoMovilInfo,
@@ -297,13 +303,13 @@ export class ConcertService {
       ],
       stats,
       pricingNote:
-        "Montos en USD y Bs fijos por asiento según planilla del organizador (no calculados por tasa BCV).",
+        "Precios en USD por asiento; equivalente en Bs según la tasa del día configurada en Monddy.",
       sections: event.sections.map((sec) =>
         this.buildSectionPublicView(
           sec,
           seats
             .filter((s) => s.sectionId === sec.id)
-            .map((s) => this.mapSeatForPublic(s)),
+            .map((s) => this.mapSeatForPublic(s, exchangeRate)),
         ),
       ),
     };
@@ -1010,6 +1016,7 @@ export class ConcertService {
     sectionId: number,
     entry: SeatCatalogEntry,
     positionInMesa: number,
+    exchangeRate: number,
   ): Prisma.ConcertSeatCreateManyInput {
     return {
       sectionId,
@@ -1018,7 +1025,7 @@ export class ConcertService {
       mesaNumber: entry.mesaNumber,
       displayNumber: entry.displayNumber,
       priceUsd: entry.priceUsd,
-      priceBs: entry.priceBs,
+      priceBs: usdToBsForConcert(entry.priceUsd, exchangeRate),
       tierCode: entry.tierCode,
       tierLabel: entry.tierLabel,
     };
@@ -1027,6 +1034,7 @@ export class ConcertService {
   private buildSeatRowsFromCatalog(
     sectionId: number,
     sectionCode: "SALON" | "VIP",
+    exchangeRate: number,
   ): Prisma.ConcertSeatCreateManyInput[] {
     const entries = HEMENEGILDA_SEAT_CATALOG.filter(
       (e) => e.sectionCode === sectionCode,
@@ -1042,7 +1050,9 @@ export class ConcertService {
       mesaEntries
         .sort((a, b) => a.displayNumber - b.displayNumber)
         .forEach((entry, idx) => {
-          rows.push(this.catalogEntryToSeat(sectionId, entry, idx + 1));
+          rows.push(
+            this.catalogEntryToSeat(sectionId, entry, idx + 1, exchangeRate),
+          );
         });
     }
     return rows;
@@ -1090,10 +1100,16 @@ export class ConcertService {
         sortOrder: 2,
       },
     });
+    const orgRate = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const exchangeRate = resolveConcertExchangeRate(orgRate?.exchangeRate);
+
     await this.prisma.concertSeat.createMany({
       data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, "SALON"),
-        ...this.buildSeatRowsFromCatalog(vip.id, "VIP"),
+        ...this.buildSeatRowsFromCatalog(salon.id, "SALON", exchangeRate),
+        ...this.buildSeatRowsFromCatalog(vip.id, "VIP", exchangeRate),
       ],
     });
     await this.syncSeatCatalog(organizationId);
@@ -1102,6 +1118,12 @@ export class ConcertService {
   /** Aplica precios y mesas del catálogo a un evento ya creado (sin borrar ventas). */
   async syncSeatCatalog(organizationId: number) {
     await this.assertConcertForOrganizationId(organizationId);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const exchangeRate = resolveConcertExchangeRate(org?.exchangeRate);
+
     const slug = process.env.CONCERT_DEFAULT_SLUG || "hemenegilda-capacidad";
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, slug },
@@ -1123,7 +1145,7 @@ export class ConcertService {
           data: {
             mesaNumber: entry.mesaNumber,
             priceUsd: entry.priceUsd,
-            priceBs: entry.priceBs,
+            priceBs: usdToBsForConcert(entry.priceUsd, exchangeRate),
             tierCode: entry.tierCode,
             tierLabel: entry.tierLabel,
             rowLabel: `M${entry.mesaNumber}`,
@@ -1137,7 +1159,7 @@ export class ConcertService {
       data: {
         priceUsdStandard: 40,
         priceUsdVip: 70,
-        priceBsVip: 85,
+        priceBsVip: usdToBsForConcert(70, exchangeRate),
         title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
         venueName: "Av. Francisco Solano, Chacaíto, Caracas",
       },
@@ -1171,6 +1193,8 @@ export class ConcertService {
     });
     if (!org) throw new NotFoundException("Organización no encontrada");
 
+    const exchangeRate = resolveConcertExchangeRate(org.exchangeRate);
+
     const event = await this.prisma.concertEvent.create({
       data: {
         organizationId,
@@ -1181,7 +1205,7 @@ export class ConcertService {
         eventStartsAt: new Date("2026-06-15T20:00:00.000Z"),
         priceUsdStandard: 40,
         priceUsdVip: 70,
-        priceBsVip: 85,
+        priceBsVip: usdToBsForConcert(70, exchangeRate),
         bankAccountName: "Inversiones Hemenegilda Capacidad",
         bankAccountInfo:
           "Transferencia a cuenta titular Inversiones Hemenegilda Capacidad (solicite datos al organizador).",
@@ -1218,8 +1242,8 @@ export class ConcertService {
 
     await this.prisma.concertSeat.createMany({
       data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, "SALON"),
-        ...this.buildSeatRowsFromCatalog(vip.id, "VIP"),
+        ...this.buildSeatRowsFromCatalog(salon.id, "SALON", exchangeRate),
+        ...this.buildSeatRowsFromCatalog(vip.id, "VIP", exchangeRate),
       ],
     });
 
