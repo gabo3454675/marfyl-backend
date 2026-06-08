@@ -1,6 +1,7 @@
 /** Datos de cobro Monddy / Inversiones Hemenegilda S.A — Banco del Tesoro. */
 export const MONDY_CONCERT_PAYMENT = {
   bankAccountName: "Inversiones Hemenegilda S.A",
+  /** RIF jurídico (tipo J) — requerido en pago móvil y transferencia. */
   rif: "J-405144823",
   bankName: "Banco del Tesoro",
   accountNumber: "010630707667073012556",
@@ -9,12 +10,12 @@ export const MONDY_CONCERT_PAYMENT = {
 
 export function monddyBankTransferInfo(): string {
   const p = MONDY_CONCERT_PAYMENT;
-  return `${p.bankName} · Cuenta ${p.accountNumber} · RIF ${p.rif} · Tel. ${p.pagoMovilPhone}`;
+  return `${p.bankName} · Cuenta ${p.accountNumber} · RIF ${p.rif} (tipo J) · Tel. ${p.pagoMovilPhone}`;
 }
 
 export function monddyPagoMovilInfo(): string {
   const p = MONDY_CONCERT_PAYMENT;
-  return `Pago móvil — ${p.bankName} · Tel. ${p.pagoMovilPhone} · RIF ${p.rif} · Titular: ${p.bankAccountName}`;
+  return `Pago móvil — ${p.bankName} · Tel. ${p.pagoMovilPhone} · RIF ${p.rif} (tipo J — jurídico) · Titular: ${p.bankAccountName}`;
 }
 
 export function monddyConcertPaymentFields() {
