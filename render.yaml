@@ -1,0 +1,21 @@
+# Render Blueprint — marfyl-backend
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: marfyl-backend
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
+    startCommand: pnpm prisma:deploy && pnpm start:prod
+    healthCheckPath: /api/public/db-ping
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://marfyl.site
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://marfyl.site,https://www.marfyl.site

@@ -8,9 +8,6 @@
       "node_modules",
       "test",
       "dist",
-      "**/*spec.ts",
-      "src/ai/**/*",
-      "src/services/websocket.ts",
-      "src/modules/ai/**/*"
+      "**/*spec.ts"
     ]
   }

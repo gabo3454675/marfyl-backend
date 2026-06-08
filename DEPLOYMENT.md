@@ -82,16 +82,20 @@ El backend se despliega en **Render free tier** bajo el dominio `*.onrender.com`
 **Build command**
 
 ```bash
-pnpm install && pnpm build
+pnpm install --frozen-lockfile && NODE_OPTIONS=--max-old-space-size=4096 pnpm build
 ```
 
-(`pnpm build` ya ejecuta `prisma generate` internamente.)
+(`pnpm build` ya ejecuta `prisma generate` internamente. `NODE_OPTIONS` evita OOM en el build.)
 
 **Start command**
 
 ```bash
 pnpm prisma:deploy && pnpm start:prod
 ```
+
+> **No uses** `pnpm start` en Render: el script `start` apunta a `node dist/main`, pero si el
+> dashboard tiene `pnpm run start` con `nest start` antiguo, recompila en runtime y agota la RAM
+> del plan free (error `JavaScript heap out of memory`).
 
 **Pasos**
 
