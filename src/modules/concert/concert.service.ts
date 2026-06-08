@@ -23,6 +23,7 @@ import {
 } from "./concert-pricing.util";
 import {
   CONCERT_HOLD_MINUTES,
+  CONCERT_PENDING_ORDER_HOURS,
   isConcertEnabledForOrganization,
   isConcertFeatureEnabled,
 } from "./concert.config";
@@ -108,15 +109,54 @@ export class ConcertService {
       where: {
         status: ConcertSeatStatus.HELD,
         heldUntil: { lt: now },
+        orderId: null,
         section: { eventId },
       },
       data: {
         status: ConcertSeatStatus.AVAILABLE,
         heldUntil: null,
         holdToken: null,
-        orderId: null,
       },
     });
+  }
+
+  private async releaseSeatsForOrder(orderId: number) {
+    await this.prisma.concertSeat.updateMany({
+      where: { orderId },
+      data: {
+        status: ConcertSeatStatus.AVAILABLE,
+        orderId: null,
+        holdToken: null,
+        heldUntil: null,
+      },
+    });
+  }
+
+  /** Cancela órdenes PENDING_PAYMENT viejas y libera sus asientos. */
+  private async releaseStalePendingOrders(eventId: number) {
+    const hours =
+      CONCERT_PENDING_ORDER_HOURS > 0 ? CONCERT_PENDING_ORDER_HOURS : 24;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const stale = await this.prisma.concertOrder.findMany({
+      where: {
+        eventId,
+        status: ConcertOrderStatus.PENDING_PAYMENT,
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true },
+    });
+    for (const order of stale) {
+      await this.releaseSeatsForOrder(order.id);
+      await this.prisma.concertOrder.update({
+        where: { id: order.id },
+        data: { status: ConcertOrderStatus.CANCELLED },
+      });
+    }
+  }
+
+  private async refreshSeatAvailability(eventId: number) {
+    await this.releaseExpiredHolds(eventId);
+    await this.releaseStalePendingOrders(eventId);
   }
 
   private buildOwnerSeatLines(
@@ -264,7 +304,7 @@ export class ConcertService {
   async getPublicEvent(slug: string) {
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
-    await this.releaseExpiredHolds(event.id);
+    await this.refreshSeatAvailability(event.id);
 
     const seats = await this.prisma.concertSeat.findMany({
       where: { section: { eventId: event.id } },
@@ -318,7 +358,7 @@ export class ConcertService {
   async holdSeats(slug: string, seatIds: number[]) {
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
-    await this.releaseExpiredHolds(event.id);
+    await this.refreshSeatAvailability(event.id);
 
     const holdToken = randomUUID();
     const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
@@ -374,7 +414,7 @@ export class ConcertService {
   ) {
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
-    await this.releaseExpiredHolds(event.id);
+    await this.refreshSeatAvailability(event.id);
 
     const seats = await this.prisma.concertSeat.findMany({
       where: {
@@ -982,7 +1022,6 @@ export class ConcertService {
     await this.assertConcertForOrganizationId(organizationId);
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
-      include: { tickets: true },
     });
     if (!order) throw new NotFoundException("Orden no encontrada");
     if (order.status !== ConcertOrderStatus.PENDING_PAYMENT) {
@@ -991,18 +1030,7 @@ export class ConcertService {
       );
     }
 
-    const seatIds = order.tickets.map((t) => t.seatId).filter(Boolean);
-    if (seatIds.length > 0) {
-      await this.prisma.concertSeat.updateMany({
-        where: { id: { in: seatIds } },
-        data: {
-          status: ConcertSeatStatus.AVAILABLE,
-          heldUntil: null,
-          holdToken: null,
-          orderId: null,
-        },
-      });
-    }
+    await this.releaseSeatsForOrder(orderId);
 
     await this.prisma.concertOrder.update({
       where: { id: orderId },

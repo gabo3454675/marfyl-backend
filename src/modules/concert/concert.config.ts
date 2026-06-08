@@ -16,4 +16,10 @@ export function isConcertEnabledForOrganization(org: {
   return isConcertModuleEnabledForOrg(org);
 }
 
+/** Reserva temporal mientras el comprador completa el formulario (sin orden creada). */
 export const CONCERT_HOLD_MINUTES = 12;
+
+/** Tras enviar la compra sin confirmar pago, la orden pendiente expira y libera asientos. */
+export const CONCERT_PENDING_ORDER_HOURS = Number(
+  process.env.CONCERT_PENDING_ORDER_HOURS ?? 24,
+);
