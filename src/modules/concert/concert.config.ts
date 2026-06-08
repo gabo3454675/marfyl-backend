@@ -21,5 +21,5 @@ export const CONCERT_HOLD_MINUTES = 12;
 
 /** Tras enviar la compra sin confirmar pago, la orden pendiente expira y libera asientos. */
 export const CONCERT_PENDING_ORDER_HOURS = Number(
-  process.env.CONCERT_PENDING_ORDER_HOURS ?? 24,
+  process.env.CONCERT_PENDING_ORDER_HOURS ?? 2,
 );

@@ -135,7 +135,7 @@ export class ConcertService {
   /** Cancela órdenes PENDING_PAYMENT viejas y libera sus asientos. */
   private async releaseStalePendingOrders(eventId: number) {
     const hours =
-      CONCERT_PENDING_ORDER_HOURS > 0 ? CONCERT_PENDING_ORDER_HOURS : 24;
+      CONCERT_PENDING_ORDER_HOURS > 0 ? CONCERT_PENDING_ORDER_HOURS : 2;
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
     const stale = await this.prisma.concertOrder.findMany({
       where: {

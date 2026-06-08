@@ -26,6 +26,8 @@ services:
         value: "true"
       - key: CONCERT_DEFAULT_SLUG
         value: hemenegilda-capacidad
+      - key: CONCERT_PENDING_ORDER_HOURS
+        value: "2"
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL
