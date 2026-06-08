@@ -39,6 +39,7 @@ import {
   parseTicketScanInput,
   resolveTicketQrPayload,
 } from "@/common/utils/concert-ticket-qr.util";
+import { monddyConcertPaymentFields } from "./concert-payment.constants";
 import { CONCERT_TICKET_EMAIL } from "@/modules/email/concert-ticket-email.constants";
 
 @Injectable()
@@ -623,7 +624,19 @@ export class ConcertService {
         buyerName: order.buyerName,
         amountUsd: order.amountUsd,
         amountBs: order.amountBs,
+        paymentMethod: order.paymentMethod,
+        paymentReference: order.paymentReference,
         message: "Pago pendiente de confirmación",
+        event: {
+          title: event.title,
+          subtitle: event.subtitle,
+          venueName: event.venueName,
+          eventStartsAt: event.eventStartsAt,
+          bankAccountName: event.bankAccountName,
+          bankAccountInfo: event.bankAccountInfo,
+          pagoMovilInfo: event.pagoMovilInfo,
+          cashInstructions: event.cashInstructions,
+        },
       };
     }
 
@@ -1190,6 +1203,7 @@ export class ConcertService {
         priceBsVip: usdToBsForConcert(70, exchangeRate),
         title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
         venueName: "Av. Francisco Solano, Chacaíto, Caracas",
+        ...monddyConcertPaymentFields(),
       },
     });
 
@@ -1234,11 +1248,7 @@ export class ConcertService {
         priceUsdStandard: 40,
         priceUsdVip: 70,
         priceBsVip: usdToBsForConcert(70, exchangeRate),
-        bankAccountName: "Inversiones Hemenegilda Capacidad",
-        bankAccountInfo:
-          "Transferencia a cuenta titular Inversiones Hemenegilda Capacidad (solicite datos al organizador).",
-        pagoMovilInfo:
-          "Pago móvil a Inversiones Hemenegilda Capacidad — indique referencia al pagar.",
+        ...monddyConcertPaymentFields(),
         cashInstructions:
           "Efectivo solo en divisas (USD) en taquilla del local.",
         publicNotes:

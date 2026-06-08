@@ -9,6 +9,7 @@ import {
   HEMENEGILDA_SEAT_CATALOG,
   SeatCatalogEntry,
 } from "../src/modules/concert/hemenegilda-seat-catalog";
+import { monddyConcertPaymentFields } from "../src/modules/concert/concert-payment.constants";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
@@ -69,11 +70,7 @@ async function createFullEvent(organizationId: number) {
       priceUsdStandard: 40,
       priceUsdVip: 70,
       priceBsVip: 85,
-      bankAccountName: "Inversiones Hemenegilda Capacidad",
-      bankAccountInfo:
-        "Transferencia a cuenta titular Inversiones Hemenegilda Capacidad (solicite datos al organizador).",
-      pagoMovilInfo:
-        "Pago móvil a Inversiones Hemenegilda Capacidad — indique referencia al pagar.",
+      ...monddyConcertPaymentFields(),
       cashInstructions:
         "Efectivo solo en divisas (USD) en taquilla del local.",
       publicNotes:
@@ -161,7 +158,11 @@ async function main() {
       event = await createFullEvent(org.id);
       console.log(`✅ Layout reconstruido (${seatCount} → 98 asientos)`);
     } else {
-      console.log(`✅ Evento ya existía con 98 asientos`);
+      await prisma.concertEvent.update({
+        where: { id: event.id },
+        data: monddyConcertPaymentFields(),
+      });
+      console.log(`✅ Evento ya existía con 98 asientos (datos de pago actualizados)`);
     }
   }
 

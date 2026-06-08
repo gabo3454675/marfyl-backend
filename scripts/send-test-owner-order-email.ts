@@ -11,6 +11,7 @@ import { ConfigService } from "@nestjs/config";
 import { EmailService } from "../src/modules/email/email.service";
 import type { OwnerOrderSeatLine } from "../src/modules/email/email.types";
 import { ConcertPaymentMethod } from "@prisma/client";
+import { monddyConcertPaymentFields } from "../src/modules/concert/concert-payment.constants";
 
 function loadEnvFile() {
   try {
@@ -96,9 +97,7 @@ async function main() {
     priceUsdStandard: 35,
     priceUsdVip: 50,
     priceBsVip: null as number | null,
-    bankAccountName: "Inversiones Hemenegilda Capacidad",
-    bankAccountInfo: "Banesco · 0102-0000-00-0000000000",
-    pagoMovilInfo: "0414-0000000 · Banesco",
+    ...monddyConcertPaymentFields(),
     cashInstructions: null as string | null,
     publicNotes: null as string | null,
     createdAt: new Date(),
