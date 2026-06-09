@@ -30,6 +30,7 @@
     "provision:founding": "tsx prisma/provision-founding.ts",
     "provision:platform-admin": "tsx prisma/provision-platform-admin.ts",
     "provision:monddy-concert": "tsx prisma/provision-monddy-concert.ts",
+    "sync:exchange-rates": "tsx scripts/sync-exchange-rates.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

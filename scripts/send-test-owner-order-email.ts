@@ -92,7 +92,7 @@ async function main() {
     title: "Bodegón Monddy en Concierto",
     subtitle: "Horacio Blanco Acústico en Íntimo",
     venueName: "Av. Francisco Solano, Chacaíto, Caracas",
-    eventStartsAt: new Date("2026-06-15T22:00:00.000Z"),
+    eventStartsAt: new Date("2026-07-18T20:00:00.000Z"),
     isActive: true,
     priceUsdStandard: 35,
     priceUsdVip: 50,

@@ -9,8 +9,11 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
   BadRequestException,
 } from "@nestjs/common";
+import { CacheTTL } from "@nestjs/cache-manager";
+import { HttpCacheTenantInterceptor } from "@/common/interceptors/http-cache-tenant.interceptor";
 import { TenantsService } from "./tenants.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
@@ -100,6 +103,8 @@ export class TenantsController {
    */
   @Get("organization")
   @UseGuards(OrganizationGuard)
+  @UseInterceptors(HttpCacheTenantInterceptor)
+  @CacheTTL(60)
   async getCompany(@ActiveOrganization() organizationId: number) {
     return this.tenantsService.getCompany(organizationId);
   }

@@ -18,6 +18,11 @@ const SUPER_ADMIN_2_EMAIL = 'agpereir@gmail.com';
 const SUPER_ADMIN_2_PASSWORD = 'monddy33';
 const SUPER_ADMIN_2_NAME = 'Angel Pereira';
 
+// Tercer Super Admin - Plataforma + 3 empresas fundadoras
+const SUPER_ADMIN_3_EMAIL = 'josealeonr@gmail.com';
+const SUPER_ADMIN_3_PASSWORD = 'JoseMarfyl2026!';
+const SUPER_ADMIN_3_NAME = 'Jose Antonio Leon';
+
 async function main() {
   console.log('🌱 Iniciando seed de base de datos para producción...');
   console.log(`📧 Email Super Admin: ${SUPER_ADMIN_EMAIL}`);
@@ -32,15 +37,17 @@ async function main() {
   const superAdminUser = await prisma.user.upsert({
     where: { email: SUPER_ADMIN_EMAIL },
     update: {
-      isSuperAdmin: false,
+      isSuperAdmin: true,
       passwordHash,
       fullName: SUPER_ADMIN_NAME,
+      isActive: true,
     },
     create: {
       email: SUPER_ADMIN_EMAIL,
       passwordHash,
       fullName: SUPER_ADMIN_NAME,
-      isSuperAdmin: false,
+      isSuperAdmin: true,
+      isActive: true,
     },
   });
 
@@ -56,15 +63,17 @@ async function main() {
   const superAdminUser2 = await prisma.user.upsert({
     where: { email: SUPER_ADMIN_2_EMAIL },
     update: {
-      isSuperAdmin: false,
+      isSuperAdmin: true,
       passwordHash: passwordHash2,
       fullName: SUPER_ADMIN_2_NAME,
+      isActive: true,
     },
     create: {
       email: SUPER_ADMIN_2_EMAIL,
       passwordHash: passwordHash2,
       fullName: SUPER_ADMIN_2_NAME,
-      isSuperAdmin: false,
+      isSuperAdmin: true,
+      isActive: true,
     },
   });
 
@@ -72,6 +81,33 @@ async function main() {
   console.log(`   ID: ${superAdminUser2.id}`);
   console.log(`   Nombre: ${superAdminUser2.fullName}`);
   console.log(`   isSuperAdmin: ${superAdminUser2.isSuperAdmin}`);
+
+  // ============================================
+  // 1.3. CREAR O ACTUALIZAR TERCER SUPER_ADMIN (Jose Antonio Leon)
+  // ============================================
+  const passwordHash3 = await bcrypt.hash(SUPER_ADMIN_3_PASSWORD, 10);
+
+  const superAdminUser3 = await prisma.user.upsert({
+    where: { email: SUPER_ADMIN_3_EMAIL },
+    update: {
+      isSuperAdmin: true,
+      passwordHash: passwordHash3,
+      fullName: SUPER_ADMIN_3_NAME,
+      isActive: true,
+    },
+    create: {
+      email: SUPER_ADMIN_3_EMAIL,
+      passwordHash: passwordHash3,
+      fullName: SUPER_ADMIN_3_NAME,
+      isSuperAdmin: true,
+      isActive: true,
+    },
+  });
+
+  console.log('✅ Usuario Super Admin 3 creado/actualizado:', superAdminUser3.email);
+  console.log(`   ID: ${superAdminUser3.id}`);
+  console.log(`   Nombre: ${superAdminUser3.fullName}`);
+  console.log(`   isSuperAdmin: ${superAdminUser3.isSuperAdmin}`);
 
   // ============================================
   // 2. CREAR LAS 3 ORGANIZACIONES
@@ -138,7 +174,7 @@ async function main() {
   // 3. ASOCIAR SUPER_ADMINS A TODAS LAS ORGANIZACIONES
   // Los SUPER_ADMIN necesitan acceso a todas para gestionarlas
   // ============================================
-  const superAdmins = [superAdminUser, superAdminUser2];
+  const superAdmins = [superAdminUser, superAdminUser2, superAdminUser3];
   
   for (const organization of organizations) {
     for (const admin of superAdmins) {
@@ -150,13 +186,13 @@ async function main() {
           },
         },
         update: {
-          role: 'ADMIN',
+          role: 'SUPER_ADMIN',
           status: 'ACTIVE',
         },
         create: {
           userId: admin.id,
           organizationId: organization.id,
-          role: 'ADMIN',
+          role: 'SUPER_ADMIN',
           status: 'ACTIVE',
         },
       });
@@ -237,6 +273,9 @@ async function main() {
   console.log('\n   2. Angel Pereira:');
   console.log(`      Email: ${SUPER_ADMIN_2_EMAIL}`);
   console.log(`      Password: ${SUPER_ADMIN_2_PASSWORD}`);
+  console.log('\n   3. Jose Antonio Leon:');
+  console.log(`      Email: ${SUPER_ADMIN_3_EMAIL}`);
+  console.log(`      Password: ${SUPER_ADMIN_3_PASSWORD}`);
   console.log('\n🏢 Organizaciones creadas:');
   organizations.forEach((org) => {
     console.log(`   - ${org.nombre} (${org.slug}) - Plan: ${org.plan}`);

@@ -560,6 +560,7 @@ model Invoice {
   @@index([companyId])
   @@index([organizationId])
   @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
   @@index([publicToken])
   @@index([markedAsPaidByClient])
   @@index([paymentStatus])

@@ -498,9 +498,16 @@ export class DashboardService {
       })
       .sort((a, b) => b.volume - a.volume);
 
-    // --- Embudo de fricción: tiempo desde creación hasta pago (PAID)
+    // --- Embudo de fricción: tiempo desde creación hasta pago (PAID, últimos 90 días)
+    const frictionSince = new Date();
+    frictionSince.setDate(frictionSince.getDate() - 90);
     const paidInvoices = await this.prisma.invoice.findMany({
-      where: { organizationId, status: "PAID" },
+      where: {
+        organizationId,
+        status: "PAID",
+        deletedAt: null,
+        createdAt: { gte: frictionSince },
+      },
       select: { createdAt: true, updatedAt: true, markedAsPaidAt: true },
     });
 
@@ -519,10 +526,20 @@ export class DashboardService {
       Math.round((avgMs / (1000 * 60 * 60 * 24)) * 10) / 10;
 
     const totalCreadas = await this.prisma.invoice.count({
-      where: { organizationId, status: { in: ["PENDING", "PAID"] } },
+      where: {
+        organizationId,
+        deletedAt: null,
+        status: { in: ["PENDING", "PAID"] },
+        createdAt: { gte: frictionSince },
+      },
     });
     const totalPagadas = await this.prisma.invoice.count({
-      where: { organizationId, status: "PAID" },
+      where: {
+        organizationId,
+        deletedAt: null,
+        status: "PAID",
+        createdAt: { gte: frictionSince },
+      },
     });
 
     let cuelloDeBotella: FrictionFunnelDto["cuelloDeBotella"] = null;

@@ -126,6 +126,15 @@ export class TenantsService {
     dto: UpdateOrganizationDto,
     actorUserId: number,
   ) {
+    if (
+      dto.exchangeRate !== undefined &&
+      process.env.EXCHANGE_RATE_AUTO_SYNC !== "false"
+    ) {
+      throw new BadRequestException(
+        "La tasa BCV se actualiza automáticamente. No se puede modificar manualmente.",
+      );
+    }
+
     const data: {
       exchangeRate?: number;
       rateUpdatedAt?: Date;

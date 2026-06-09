@@ -24,13 +24,6 @@ export class HttpCacheTenantInterceptor extends CacheInterceptor {
       return undefined;
     }
     const baseUrl = httpAdapter.getRequestUrl(request);
-    if (
-      typeof baseUrl === "string" &&
-      baseUrl.includes("/tenants/organization") &&
-      !baseUrl.includes("organizations-all")
-    ) {
-      return undefined;
-    }
     const tenantId =
       request.headers["x-tenant-id"] ?? request.activeOrganizationId;
     if (

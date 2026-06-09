@@ -11,14 +11,19 @@ import { isBillingExemptOrg, isFoundingOrgSlug } from "@/common/founding-orgs";
 export class OrganizationBillingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async assertOrganizationBillingActive(organizationId: number): Promise<void> {
-    const org = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { slug: true, billingExempt: true, plan: true },
-    });
-    if (!org) return;
-    if (isBillingExemptOrg(org)) return;
-    if (org.plan === "FREE") {
+  async assertOrganizationBillingActive(
+    organizationId: number,
+    org?: { slug: string; billingExempt: boolean; plan: string } | null,
+  ): Promise<void> {
+    const resolved =
+      org ??
+      (await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { slug: true, billingExempt: true, plan: true },
+      }));
+    if (!resolved) return;
+    if (isBillingExemptOrg(resolved)) return;
+    if (resolved.plan === "FREE") {
       throw new ForbiddenException(
         "Esta organización requiere un plan de suscripción activo. Contacte a MARFYL para activar el servicio.",
       );

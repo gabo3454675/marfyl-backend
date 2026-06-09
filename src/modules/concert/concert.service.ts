@@ -40,6 +40,7 @@ import {
   resolveTicketQrPayload,
 } from "@/common/utils/concert-ticket-qr.util";
 import { monddyConcertPaymentFields } from "./concert-payment.constants";
+import { MONDDY_HEMENEGILDA_EVENT_STARTS_AT } from "./concert-event.constants";
 import { CONCERT_TICKET_EMAIL } from "@/modules/email/concert-ticket-email.constants";
 
 @Injectable()
@@ -1203,6 +1204,7 @@ export class ConcertService {
         priceBsVip: usdToBsForConcert(70, exchangeRate),
         title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
         venueName: "Av. Francisco Solano, Chacaíto, Caracas",
+        eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT,
         ...monddyConcertPaymentFields(),
       },
     });
@@ -1225,6 +1227,10 @@ export class ConcertService {
     });
     if (existing) {
       await this.rebuildLayoutIfStale(existing.id, organizationId);
+      await this.prisma.concertEvent.update({
+        where: { id: existing.id },
+        data: { eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT },
+      });
       return this.prisma.concertEvent.findFirstOrThrow({
         where: { id: existing.id },
       });
@@ -1244,7 +1250,7 @@ export class ConcertService {
         title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
         subtitle: "Venta digital de entradas",
         venueName: "Av. Francisco Solano, Chacaíto, Caracas",
-        eventStartsAt: new Date("2026-06-15T20:00:00.000Z"),
+        eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT,
         priceUsdStandard: 40,
         priceUsdVip: 70,
         priceBsVip: usdToBsForConcert(70, exchangeRate),

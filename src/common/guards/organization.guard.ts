@@ -80,18 +80,7 @@ export class OrganizationGuard implements CanActivate {
       return true;
     }
 
-    // Verificar que la organización existe
-    const organization = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-    });
-
-    if (!organization) {
-      throw new NotFoundException(
-        `La organización con ID ${organizationId} no existe`,
-      );
-    }
-
-    // Verificar que el usuario es miembro activo de esta organización
+    // Una sola query: membresía + organización (evita findUnique duplicado)
     let membership = await this.prisma.member.findFirst({
       where: {
         userId: user.id,
@@ -105,11 +94,15 @@ export class OrganizationGuard implements CanActivate {
 
     // Super Admin puede acceder a cualquier organización aunque no sea miembro
     if (!membership) {
-      const dbUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { isSuperAdmin: true },
-      });
-      if (user.isSuperAdmin === true || dbUser?.isSuperAdmin) {
+      if (user.isSuperAdmin === true) {
+        const organization = await this.prisma.organization.findUnique({
+          where: { id: organizationId },
+        });
+        if (!organization) {
+          throw new NotFoundException(
+            `La organización con ID ${organizationId} no existe`,
+          );
+        }
         membership = {
           id: 0,
           userId: user.id,
@@ -118,20 +111,55 @@ export class OrganizationGuard implements CanActivate {
           status: "ACTIVE",
           joinedAt: new Date(),
           organization,
-        } as any;
+        } as typeof membership;
       } else {
-        throw new ForbiddenException(
-          "No tienes acceso a esta organización o tu membresía está inactiva",
-        );
+        const dbUser = await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { isSuperAdmin: true },
+        });
+        if (dbUser?.isSuperAdmin) {
+          const organization = await this.prisma.organization.findUnique({
+            where: { id: organizationId },
+          });
+          if (!organization) {
+            throw new NotFoundException(
+              `La organización con ID ${organizationId} no existe`,
+            );
+          }
+          membership = {
+            id: 0,
+            userId: user.id,
+            organizationId,
+            role: "SUPER_ADMIN",
+            status: "ACTIVE",
+            joinedAt: new Date(),
+            organization,
+          } as typeof membership;
+        } else {
+          throw new ForbiddenException(
+            "No tienes acceso a esta organización o tu membresía está inactiva",
+          );
+        }
       }
+    }
+
+    const organization = membership.organization;
+    if (!organization) {
+      throw new NotFoundException(
+        `La organización con ID ${organizationId} no existe`,
+      );
     }
 
     // Inyectar información en el request para uso en controladores
     request.activeOrganizationId = organizationId;
-    request.activeOrganization = membership.organization;
+    request.activeOrganization = organization;
     request.activeOrganizationMembership = membership;
 
-    await this.billing.assertOrganizationBillingActive(organizationId);
+    await this.billing.assertOrganizationBillingActive(organizationId, {
+      slug: organization.slug,
+      billingExempt: organization.billingExempt,
+      plan: organization.plan,
+    });
 
     return true;
   }

@@ -35,6 +35,7 @@ import { ConcertModule } from "./modules/concert/concert.module";
 import { EmailModule } from "./modules/email/email.module";
 import { HealthModule } from "./modules/health/health.module";
 import { AiModule } from "./modules/ai/ai.module";
+import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
 
 @Module({
   imports: [
@@ -44,8 +45,8 @@ import { AiModule } from "./modules/ai/ai.module";
     }),
     ScheduleModule.forRoot(),
     CacheModule.register({
-      ttl: 60, // TTL por defecto de 60 segundos
-      max: 100, // Máximo 100 items en caché
+      ttl: 60,
+      max: 500,
       isGlobal: true,
     }),
     PrismaModule,
@@ -74,6 +75,7 @@ import { AiModule } from "./modules/ai/ai.module";
     ConcertModule,
     HealthModule,
     AiModule,
+    ExchangeRateModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

@@ -10,6 +10,7 @@ import {
   SeatCatalogEntry,
 } from "../src/modules/concert/hemenegilda-seat-catalog";
 import { monddyConcertPaymentFields } from "../src/modules/concert/concert-payment.constants";
+import { MONDDY_HEMENEGILDA_EVENT_STARTS_AT } from "../src/modules/concert/concert-event.constants";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
@@ -66,7 +67,7 @@ async function createFullEvent(organizationId: number) {
       title: "Horacio Blanco Acústico en Íntimo — Bodegón Monddy",
       subtitle: "Venta digital de entradas",
       venueName: "Av. Francisco Solano, Chacaíto, Caracas",
-      eventStartsAt: new Date("2026-06-15T20:00:00.000Z"),
+      eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT,
       priceUsdStandard: 40,
       priceUsdVip: 70,
       priceBsVip: 85,
@@ -160,9 +161,12 @@ async function main() {
     } else {
       await prisma.concertEvent.update({
         where: { id: event.id },
-        data: monddyConcertPaymentFields(),
+        data: {
+          eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT,
+          ...monddyConcertPaymentFields(),
+        },
       });
-      console.log(`✅ Evento ya existía con 98 asientos (datos de pago actualizados)`);
+      console.log(`✅ Evento ya existía con 98 asientos (fecha y pago actualizados)`);
     }
   }
 
