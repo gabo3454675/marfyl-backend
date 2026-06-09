@@ -18,6 +18,7 @@ import { UploadService } from "@/common/services/upload.service";
 import { EmailService } from "@/modules/email/email.service";
 import type { OwnerOrderSeatLine } from "@/modules/email/email.types";
 import {
+  concertBsPaymentAmount,
   resolveConcertExchangeRate,
   usdToBsForConcert,
 } from "./concert-pricing.util";
@@ -30,7 +31,9 @@ import {
 import { ConcertCheckoutDto } from "./dto/checkout.dto";
 import { AdminSellDto } from "./dto/admin-sell.dto";
 import {
+  HEMENEGILDA_SALON_SEAT_COUNT,
   HEMENEGILDA_SEAT_CATALOG,
+  HEMENEGILDA_VIP_SECTION_CODE,
   type SeatCatalogEntry,
 } from "./hemenegilda-seat-catalog";
 import {
@@ -196,6 +199,7 @@ export class ConcertService {
   private sumSeatTotals(
     seats: {
       priceUsd: number | null;
+      priceBs: number | null;
       section: { code: string };
     }[],
     event: {
@@ -208,6 +212,7 @@ export class ConcertService {
       event.organization.exchangeRate,
     );
     let amountUsd = 0;
+    let amountUsdBolivares = 0;
     let amountBs = 0;
     for (const seat of seats) {
       const usd =
@@ -216,10 +221,15 @@ export class ConcertService {
           ? event.priceUsdVip
           : event.priceUsdStandard);
       amountUsd += usd;
-      amountBs += usdToBsForConcert(usd, exchangeRate);
+      const bsUsd =
+        seat.priceBs ??
+        usd;
+      amountUsdBolivares += bsUsd;
+      amountBs += concertBsPaymentAmount(bsUsd, exchangeRate);
     }
     return {
       amountUsd: Math.round(amountUsd * 100) / 100,
+      amountUsdBolivares: Math.round(amountUsdBolivares * 100) / 100,
       amountBs: Math.round(amountBs * 100) / 100,
     };
   }
@@ -232,6 +242,7 @@ export class ConcertService {
       status: ConcertSeatStatus;
       heldUntil: Date | null;
       priceUsd: number | null;
+      priceBs: number | null;
       mesaNumber: number | null;
       displayNumber: number | null;
       tierCode: string | null;
@@ -253,10 +264,13 @@ export class ConcertService {
       mesaNumber: seat.mesaNumber,
       displayNumber: seat.displayNumber,
       priceUsd: seat.priceUsd,
+      priceUsdBolivares: seat.priceBs,
       priceBs:
-        seat.priceUsd != null
-          ? usdToBsForConcert(seat.priceUsd, exchangeRate)
-          : null,
+        seat.priceBs != null
+          ? concertBsPaymentAmount(seat.priceBs, exchangeRate)
+          : seat.priceUsd != null
+            ? concertBsPaymentAmount(seat.priceUsd, exchangeRate)
+            : null,
       tierCode: seat.tierCode,
       tierLabel: seat.tierLabel,
       status: effectiveStatus,
@@ -284,6 +298,7 @@ export class ConcertService {
         tierCode: mesaSeats[0]?.tierCode,
         tierLabel: mesaSeats[0]?.tierLabel,
         priceUsd: mesaSeats[0]?.priceUsd,
+        priceUsdBolivares: mesaSeats[0]?.priceUsdBolivares,
         priceBs: mesaSeats[0]?.priceBs,
         seats: mesaSeats.sort(
           (a, b) => (a.displayNumber ?? 0) - (b.displayNumber ?? 0),
@@ -309,7 +324,12 @@ export class ConcertService {
     await this.refreshSeatAvailability(event.id);
 
     const seats = await this.prisma.concertSeat.findMany({
-      where: { section: { eventId: event.id } },
+      where: {
+        section: {
+          eventId: event.id,
+          code: { not: HEMENEGILDA_VIP_SECTION_CODE },
+        },
+      },
       include: { section: { select: { code: true, label: true } } },
     });
 
@@ -345,15 +365,17 @@ export class ConcertService {
       ],
       stats,
       pricingNote:
-        "Precios en USD por asiento; equivalente en Bs según la tasa del día configurada en Monddy.",
-      sections: event.sections.map((sec) =>
-        this.buildSectionPublicView(
-          sec,
-          seats
-            .filter((s) => s.sectionId === sec.id)
-            .map((s) => this.mapSeatForPublic(s, exchangeRate)),
+        "Efectivo USD: precio en dólares del flyer. Pago móvil o transferencia: el otro monto del flyer (USD) al cambio BCV del día.",
+      sections: event.sections
+        .filter((sec) => sec.code !== HEMENEGILDA_VIP_SECTION_CODE)
+        .map((sec) =>
+          this.buildSectionPublicView(
+            sec,
+            seats
+              .filter((s) => s.sectionId === sec.id)
+              .map((s) => this.mapSeatForPublic(s, exchangeRate)),
+          ),
         ),
-      ),
     };
   }
 
@@ -374,6 +396,11 @@ export class ConcertService {
     }
 
     for (const seat of seats) {
+      if (seat.section.code === HEMENEGILDA_VIP_SECTION_CODE) {
+        throw new BadRequestException(
+          "El Salón VIP no está disponible para venta en línea",
+        );
+      }
       if (seat.status === ConcertSeatStatus.SOLD) {
         throw new ConflictException(
           `Asiento ${seat.rowLabel}-${seat.seatNumber} ya vendido`,
@@ -404,6 +431,7 @@ export class ConcertService {
       heldUntil,
       seatIds,
       amountUsd: totals.amountUsd,
+      amountUsdBolivares: totals.amountUsdBolivares,
       amountBs: totals.amountBs,
       exchangeRate,
     };
@@ -763,19 +791,28 @@ export class ConcertService {
       await Promise.all([
         this.prisma.concertSeat.count({
           where: {
-            section: { eventId: event.id },
+            section: {
+              eventId: event.id,
+              code: { not: HEMENEGILDA_VIP_SECTION_CODE },
+            },
             status: ConcertSeatStatus.AVAILABLE,
           },
         }),
         this.prisma.concertSeat.count({
           where: {
-            section: { eventId: event.id },
+            section: {
+              eventId: event.id,
+              code: { not: HEMENEGILDA_VIP_SECTION_CODE },
+            },
             status: ConcertSeatStatus.HELD,
           },
         }),
         this.prisma.concertSeat.count({
           where: {
-            section: { eventId: event.id },
+            section: {
+              eventId: event.id,
+              code: { not: HEMENEGILDA_VIP_SECTION_CODE },
+            },
             status: ConcertSeatStatus.SOLD,
           },
         }),
@@ -1067,7 +1104,7 @@ export class ConcertService {
       mesaNumber: entry.mesaNumber,
       displayNumber: entry.displayNumber,
       priceUsd: entry.priceUsd,
-      priceBs: usdToBsForConcert(entry.priceUsd, exchangeRate),
+      priceBs: entry.priceBs,
       tierCode: entry.tierCode,
       tierLabel: entry.tierLabel,
     };
@@ -1075,12 +1112,9 @@ export class ConcertService {
 
   private buildSeatRowsFromCatalog(
     sectionId: number,
-    sectionCode: "SALON" | "VIP",
     exchangeRate: number,
   ): Prisma.ConcertSeatCreateManyInput[] {
-    const entries = HEMENEGILDA_SEAT_CATALOG.filter(
-      (e) => e.sectionCode === sectionCode,
-    );
+    const entries = HEMENEGILDA_SEAT_CATALOG;
     const byMesa = new Map<number, SeatCatalogEntry[]>();
     for (const e of entries) {
       const list = byMesa.get(e.mesaNumber) ?? [];
@@ -1100,12 +1134,49 @@ export class ConcertService {
     return rows;
   }
 
+  /** Elimina la sección Salón VIP (32 asientos) si no hay ventas ni reservas activas. */
+  private async removeVipSalonSection(eventId: number) {
+    const vipSection = await this.prisma.concertSection.findFirst({
+      where: { eventId, code: HEMENEGILDA_VIP_SECTION_CODE },
+      select: { id: true },
+    });
+    if (!vipSection) return { removed: false };
+
+    const blocked = await this.prisma.concertSeat.count({
+      where: {
+        sectionId: vipSection.id,
+        OR: [
+          { status: ConcertSeatStatus.SOLD },
+          {
+            status: ConcertSeatStatus.HELD,
+            heldUntil: { gt: new Date() },
+          },
+        ],
+      },
+    });
+    if (blocked > 0) {
+      this.logger.warn(
+        `Salón VIP del evento ${eventId}: ${blocked} asiento(s) vendido(s) o en reserva — no se elimina`,
+      );
+      return { removed: false, blocked };
+    }
+
+    await this.prisma.concertSeat.deleteMany({
+      where: { sectionId: vipSection.id },
+    });
+    await this.prisma.concertSection.delete({ where: { id: vipSection.id } });
+    this.logger.log(`Salón VIP eliminado del evento ${eventId}`);
+    return { removed: true };
+  }
+
   /** Reemplaza layout grid antiguo por mesas + precios si aún no hay ventas. */
   private async rebuildLayoutIfStale(eventId: number, organizationId: number) {
+    await this.removeVipSalonSection(eventId);
+
     const total = await this.prisma.concertSeat.count({
       where: { section: { eventId } },
     });
-    if (total === 98) {
+    if (total === HEMENEGILDA_SALON_SEAT_COUNT) {
       await this.syncSeatCatalog(organizationId);
       return;
     }
@@ -1132,16 +1203,6 @@ export class ConcertService {
         sortOrder: 1,
       },
     });
-    const vip = await this.prisma.concertSection.create({
-      data: {
-        eventId,
-        code: "VIP",
-        label: "Salón VIP",
-        rows: 0,
-        cols: 0,
-        sortOrder: 2,
-      },
-    });
     const orgRate = await this.prisma.organization.findUnique({
       where: { id: organizationId },
       select: { exchangeRate: true },
@@ -1149,10 +1210,7 @@ export class ConcertService {
     const exchangeRate = resolveConcertExchangeRate(orgRate?.exchangeRate);
 
     await this.prisma.concertSeat.createMany({
-      data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, "SALON", exchangeRate),
-        ...this.buildSeatRowsFromCatalog(vip.id, "VIP", exchangeRate),
-      ],
+      data: this.buildSeatRowsFromCatalog(salon.id, exchangeRate),
     });
     await this.syncSeatCatalog(organizationId);
   }
@@ -1174,11 +1232,11 @@ export class ConcertService {
     if (!event)
       throw new NotFoundException("Evento no configurado. Use setup primero.");
 
+    await this.removeVipSalonSection(event.id);
+
     for (const section of event.sections) {
-      const code = section.code as "SALON" | "VIP";
-      for (const entry of HEMENEGILDA_SEAT_CATALOG.filter(
-        (e) => e.sectionCode === code,
-      )) {
+      if (section.code === HEMENEGILDA_VIP_SECTION_CODE) continue;
+      for (const entry of HEMENEGILDA_SEAT_CATALOG) {
         await this.prisma.concertSeat.updateMany({
           where: {
             sectionId: section.id,
@@ -1187,7 +1245,7 @@ export class ConcertService {
           data: {
             mesaNumber: entry.mesaNumber,
             priceUsd: entry.priceUsd,
-            priceBs: usdToBsForConcert(entry.priceUsd, exchangeRate),
+            priceBs: entry.priceBs,
             tierCode: entry.tierCode,
             tierLabel: entry.tierLabel,
             rowLabel: `M${entry.mesaNumber}`,
@@ -1212,7 +1270,7 @@ export class ConcertService {
     return { ok: true, message: "Catálogo de precios y mesas actualizado" };
   }
 
-  /** Seed layout for Hemenegilda — 66 + 32 seats con precios por planilla */
+  /** Seed layout for Hemenegilda — 66 asientos en salón principal */
   async ensureDefaultEvent(organizationId: number) {
     assertDbAvailable(this.prisma);
     const orgRow = await this.prisma.organization.findUnique({
@@ -1273,22 +1331,8 @@ export class ConcertService {
       },
     });
 
-    const vip = await this.prisma.concertSection.create({
-      data: {
-        eventId: event.id,
-        code: "VIP",
-        label: "Salón VIP",
-        rows: 0,
-        cols: 0,
-        sortOrder: 2,
-      },
-    });
-
     await this.prisma.concertSeat.createMany({
-      data: [
-        ...this.buildSeatRowsFromCatalog(salon.id, "SALON", exchangeRate),
-        ...this.buildSeatRowsFromCatalog(vip.id, "VIP", exchangeRate),
-      ],
+      data: this.buildSeatRowsFromCatalog(salon.id, exchangeRate),
     });
 
     return event;

@@ -6,11 +6,18 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { assertMarfylDatabaseUrl } from "../src/common/database-guard";
 import { CONCERT_ORG_SLUG } from "../src/common/founding-orgs";
 import {
+  HEMENEGILDA_LEGACY_TOTAL_WITH_VIP,
+  HEMENEGILDA_SALON_SEAT_COUNT,
   HEMENEGILDA_SEAT_CATALOG,
+  HEMENEGILDA_VIP_SECTION_CODE,
   SeatCatalogEntry,
 } from "../src/modules/concert/hemenegilda-seat-catalog";
 import { monddyConcertPaymentFields } from "../src/modules/concert/concert-payment.constants";
 import { MONDDY_HEMENEGILDA_EVENT_STARTS_AT } from "../src/modules/concert/concert-event.constants";
+import {
+  resolveConcertExchangeRate,
+  usdToBsForConcert,
+} from "../src/modules/concert/concert-pricing.util";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
@@ -21,6 +28,7 @@ function catalogEntryToSeat(
   sectionId: number,
   entry: SeatCatalogEntry,
   positionInMesa: number,
+  exchangeRate: number,
 ): Prisma.ConcertSeatCreateManyInput {
   return {
     sectionId,
@@ -37,13 +45,10 @@ function catalogEntryToSeat(
 
 function buildSeatRows(
   sectionId: number,
-  sectionCode: "SALON" | "VIP",
+  exchangeRate: number,
 ): Prisma.ConcertSeatCreateManyInput[] {
-  const entries = HEMENEGILDA_SEAT_CATALOG.filter(
-    (e) => e.sectionCode === sectionCode,
-  );
   const byMesa = new Map<number, SeatCatalogEntry[]>();
-  for (const e of entries) {
+  for (const e of HEMENEGILDA_SEAT_CATALOG) {
     const list = byMesa.get(e.mesaNumber) ?? [];
     list.push(e);
     byMesa.set(e.mesaNumber, list);
@@ -53,13 +58,42 @@ function buildSeatRows(
     mesaEntries
       .sort((a, b) => a.displayNumber - b.displayNumber)
       .forEach((entry, idx) => {
-        rows.push(catalogEntryToSeat(sectionId, entry, idx + 1));
+        rows.push(catalogEntryToSeat(sectionId, entry, idx + 1, exchangeRate));
       });
   }
   return rows;
 }
 
-async function createFullEvent(organizationId: number) {
+async function removeVipSectionIfPossible(eventId: number) {
+  const vipSection = await prisma.concertSection.findFirst({
+    where: { eventId, code: HEMENEGILDA_VIP_SECTION_CODE },
+    select: { id: true },
+  });
+  if (!vipSection) return false;
+
+  const blocked = await prisma.concertSeat.count({
+    where: {
+      sectionId: vipSection.id,
+      OR: [
+        { status: "SOLD" },
+        { status: "HELD", heldUntil: { gt: new Date() } },
+      ],
+    },
+  });
+  if (blocked > 0) {
+    console.error(
+      `❌ Salón VIP tiene ${blocked} asiento(s) vendido(s) o en reserva — no se puede eliminar`,
+    );
+    process.exit(1);
+  }
+
+  await prisma.concertSeat.deleteMany({ where: { sectionId: vipSection.id } });
+  await prisma.concertSection.delete({ where: { id: vipSection.id } });
+  console.log(`✅ Sección Salón VIP eliminada (${HEMENEGILDA_SALON_SEAT_COUNT} asientos en venta)`);
+  return true;
+}
+
+async function createFullEvent(organizationId: number, exchangeRate: number) {
   const event = await prisma.concertEvent.create({
     data: {
       organizationId,
@@ -70,7 +104,7 @@ async function createFullEvent(organizationId: number) {
       eventStartsAt: MONDDY_HEMENEGILDA_EVENT_STARTS_AT,
       priceUsdStandard: 40,
       priceUsdVip: 70,
-      priceBsVip: 85,
+      priceBsVip: usdToBsForConcert(70, exchangeRate),
       ...monddyConcertPaymentFields(),
       cashInstructions:
         "Efectivo solo en divisas (USD) en taquilla del local.",
@@ -90,37 +124,56 @@ async function createFullEvent(organizationId: number) {
       sortOrder: 1,
     },
   });
-  const vip = await prisma.concertSection.create({
-    data: {
-      eventId: event.id,
-      code: "VIP",
-      label: "Salón VIP",
-      rows: 0,
-      cols: 0,
-      sortOrder: 2,
-    },
-  });
 
   await prisma.concertSeat.createMany({
-    data: [
-      ...buildSeatRows(salon.id, "SALON"),
-      ...buildSeatRows(vip.id, "VIP"),
-    ],
+    data: buildSeatRows(salon.id, exchangeRate),
   });
 
   return event;
 }
 
+async function syncCatalogPrices(eventId: number, exchangeRate: number) {
+  const salon = await prisma.concertSection.findFirst({
+    where: { eventId, code: "SALON" },
+    select: { id: true },
+  });
+  if (!salon) return;
+
+  for (const entry of HEMENEGILDA_SEAT_CATALOG) {
+    await prisma.concertSeat.updateMany({
+      where: { sectionId: salon.id, displayNumber: entry.displayNumber },
+      data: {
+        mesaNumber: entry.mesaNumber,
+        priceUsd: entry.priceUsd,
+        priceBs: entry.priceBs,
+        tierCode: entry.tierCode,
+        tierLabel: entry.tierLabel,
+        rowLabel: `M${entry.mesaNumber}`,
+      },
+    });
+  }
+  console.log(
+    `✅ Precios flyer sincronizados (efectivo USD + tier Bs USD; BCV ${exchangeRate})`,
+  );
+}
+
 async function main() {
   const org = await prisma.organization.findUnique({
     where: { slug: CONCERT_ORG_SLUG },
-    select: { id: true, nombre: true, concertModuleEnabled: true },
+    select: {
+      id: true,
+      nombre: true,
+      concertModuleEnabled: true,
+      exchangeRate: true,
+    },
   });
 
   if (!org) {
     console.error(`❌ No existe organización slug="${CONCERT_ORG_SLUG}"`);
     process.exit(1);
   }
+
+  const exchangeRate = resolveConcertExchangeRate(org.exchangeRate);
 
   if (!org.concertModuleEnabled) {
     await prisma.organization.update({
@@ -135,13 +188,24 @@ async function main() {
   });
 
   if (!event) {
-    event = await createFullEvent(org.id);
+    event = await createFullEvent(org.id, exchangeRate);
     console.log(`✅ Evento creado: ${event.slug}`);
   } else {
+    await removeVipSectionIfPossible(event.id);
+
     const seatCount = await prisma.concertSeat.count({
       where: { section: { eventId: event.id } },
     });
-    if (seatCount !== 98) {
+
+    if (seatCount === HEMENEGILDA_LEGACY_TOTAL_WITH_VIP) {
+      await removeVipSectionIfPossible(event.id);
+    }
+
+    const currentCount = await prisma.concertSeat.count({
+      where: { section: { eventId: event.id } },
+    });
+
+    if (currentCount !== HEMENEGILDA_SALON_SEAT_COUNT) {
       const sold = await prisma.concertSeat.count({
         where: { section: { eventId: event.id }, status: "SOLD" },
       });
@@ -156,9 +220,12 @@ async function main() {
       });
       await prisma.concertSection.deleteMany({ where: { eventId: event.id } });
       await prisma.concertEvent.delete({ where: { id: event.id } });
-      event = await createFullEvent(org.id);
-      console.log(`✅ Layout reconstruido (${seatCount} → 98 asientos)`);
+      event = await createFullEvent(org.id, exchangeRate);
+      console.log(
+        `✅ Layout reconstruido (${currentCount} → ${HEMENEGILDA_SALON_SEAT_COUNT} asientos)`,
+      );
     } else {
+      await syncCatalogPrices(event.id, exchangeRate);
       await prisma.concertEvent.update({
         where: { id: event.id },
         data: {
@@ -166,7 +233,9 @@ async function main() {
           ...monddyConcertPaymentFields(),
         },
       });
-      console.log(`✅ Evento ya existía con 98 asientos (fecha y pago actualizados)`);
+      console.log(
+        `✅ Evento ya existía con ${HEMENEGILDA_SALON_SEAT_COUNT} asientos (fecha y pago actualizados)`,
+      );
     }
   }
 

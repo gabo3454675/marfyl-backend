@@ -1,22 +1,30 @@
 /**
  * Catálogo oficial — Horacio Blanco / Hemenegilda Capacidad
- * Salón evento: 66 asientos (mesas 1–20), precios fijos USD + Bs por asiento.
- * Salón VIP: 32 asientos (mesas 1–8 × 4) — precios VIP: confirmar con cliente si difieren.
+ * Salón de eventos: 66 asientos (mesas 1–20).
+ * Cada asiento tiene dos precios del flyer:
+ * - priceUsd: efectivo en divisas (ej. $60)
+ * - priceBs: monto USD para pago en bolívares (ej. $70), se multiplica × tasa BCV al cobrar
  */
+
+export const HEMENEGILDA_SALON_SEAT_COUNT = 66;
+/** Layout legacy con sección VIP aparte (ya no se usa). */
+export const HEMENEGILDA_LEGACY_TOTAL_WITH_VIP = 98;
+export const HEMENEGILDA_VIP_SECTION_CODE = "VIP" as const;
 
 export type ConcertTierCode =
   | "VIP"
   | "PREFERENCIAL"
   | "MEDIA"
-  | "GENERAL"
-  | "VIP_SALON";
+  | "GENERAL";
 
 export type SeatCatalogEntry = {
-  sectionCode: "SALON" | "VIP";
+  sectionCode: "SALON";
   mesaNumber: number;
-  /** Número global mostrado al comprador (1–66 salón, 1–32 VIP) */
+  /** Número global mostrado al comprador (1–66 salón) */
   displayNumber: number;
+  /** Efectivo USD */
   priceUsd: number;
+  /** USD al cambio para pago en bolívares (× BCV) */
   priceBs: number;
   tierCode: ConcertTierCode;
   tierLabel: string;
@@ -196,10 +204,6 @@ const SALON_MESAS: {
   },
 ];
 
-/** Salón VIP: 8 mesas × 4 asientos — tarifa única hasta confirmar planilla VIP */
-const VIP_PRICE_USD = 70;
-const VIP_PRICE_BS = 85;
-
 function buildSalonCatalog(): SeatCatalogEntry[] {
   const out: SeatCatalogEntry[] = [];
   for (const m of SALON_MESAS) {
@@ -218,42 +222,16 @@ function buildSalonCatalog(): SeatCatalogEntry[] {
   return out;
 }
 
-function buildVipCatalog(): SeatCatalogEntry[] {
-  const out: SeatCatalogEntry[] = [];
-  let displayNumber = 0;
-  for (let mesa = 1; mesa <= 8; mesa++) {
-    for (let pos = 1; pos <= 4; pos++) {
-      displayNumber += 1;
-      out.push({
-        sectionCode: "VIP",
-        mesaNumber: mesa,
-        displayNumber,
-        priceUsd: VIP_PRICE_USD,
-        priceBs: VIP_PRICE_BS,
-        tierCode: "VIP_SALON",
-        tierLabel: "Salón VIP",
-      });
-    }
-  }
-  return out;
-}
-
-export const HEMENEGILDA_SEAT_CATALOG: SeatCatalogEntry[] = [
-  ...buildSalonCatalog(),
-  ...buildVipCatalog(),
-];
+export const HEMENEGILDA_SEAT_CATALOG: SeatCatalogEntry[] = buildSalonCatalog();
 
 export function assertCatalogIntegrity() {
-  const salon = HEMENEGILDA_SEAT_CATALOG.filter(
-    (s) => s.sectionCode === "SALON",
-  );
-  const vip = HEMENEGILDA_SEAT_CATALOG.filter((s) => s.sectionCode === "VIP");
-  if (salon.length !== 66)
-    throw new Error(`Salón: esperados 66 asientos, hay ${salon.length}`);
-  if (vip.length !== 32)
-    throw new Error(`VIP: esperados 32 asientos, hay ${vip.length}`);
+  const salon = HEMENEGILDA_SEAT_CATALOG;
+  if (salon.length !== HEMENEGILDA_SALON_SEAT_COUNT)
+    throw new Error(
+      `Salón: esperados ${HEMENEGILDA_SALON_SEAT_COUNT} asientos, hay ${salon.length}`,
+    );
   const nums = new Set(salon.map((s) => s.displayNumber));
-  if (nums.size !== 66)
+  if (nums.size !== HEMENEGILDA_SALON_SEAT_COUNT)
     throw new Error("Salón: números de asiento duplicados o incompletos");
 }
 
