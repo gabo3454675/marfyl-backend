@@ -17,7 +17,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
-        value: https://marfyl.site
+        value: https://marfyl-frontend.onrender.com
       - key: CORS_ALLOWED_ORIGINS
         value: https://marfyl.site,https://www.marfyl.site,https://marfyl-frontend.onrender.com
       - key: CONCERT_FEATURE_ENABLED
@@ -31,7 +31,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL
-        value: entradas@marfyl.site
+        value: onboarding@resend.dev
       - key: RESEND_FROM_NAME
         value: MARFYL Entradas
       - key: CONCERT_OWNER_NOTIFY_EMAIL

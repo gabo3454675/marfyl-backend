@@ -21,6 +21,8 @@ import {
 import { resolveTicketQrPayload } from "@/common/utils/concert-ticket-qr.util";
 import { toResendInlineAttachment } from "./utils/resend-attachment.util";
 
+const RESEND_FALLBACK_FROM_EMAIL = "onboarding@resend.dev";
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -365,6 +367,45 @@ export class EmailService {
     return `EV-${shortToken}`;
   }
 
+  private shouldRetryWithResendFallback(errorMessage: string): boolean {
+    const msg = errorMessage.toLowerCase();
+    return (
+      msg.includes("domain is not verified") ||
+      msg.includes("not verified") ||
+      msg.includes("validation_error")
+    );
+  }
+
+  private async sendViaResend(
+    fromEmail: string,
+    params: SendEmailParams,
+  ): Promise<{ ok: boolean; errorMessage?: string }> {
+    if (!this.resend) return { ok: false, errorMessage: "Resend no configurado" };
+
+    const result = await this.resend.emails.send({
+      from: `${this.fromName} <${fromEmail}>`,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      attachments: params.attachments?.map((a) =>
+        toResendInlineAttachment(
+          a.content,
+          a.contentId,
+          a.filename,
+          a.contentType,
+        ),
+      ),
+    } as Parameters<NonNullable<typeof this.resend>["emails"]["send"]>[0]);
+
+    if (result.error) {
+      const errorMessage =
+        result.error.message ?? JSON.stringify(result.error);
+      return { ok: false, errorMessage };
+    }
+
+    return { ok: true };
+  }
+
   private async dispatchEmail(params: SendEmailParams): Promise<boolean> {
     if (!this.resend) {
       this.logger.warn(
@@ -374,24 +415,23 @@ export class EmailService {
     }
 
     try {
-      const result = await this.resend.emails.send({
-        from: `${this.fromName} <${this.fromEmail}>`,
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
-        attachments: params.attachments?.map((a) =>
-          toResendInlineAttachment(
-            a.content,
-            a.contentId,
-            a.filename,
-            a.contentType,
-          ),
-        ),
-      } as Parameters<NonNullable<typeof this.resend>["emails"]["send"]>[0]);
+      let attempt = await this.sendViaResend(this.fromEmail, params);
 
-      if (result.error) {
+      if (
+        !attempt.ok &&
+        attempt.errorMessage &&
+        this.fromEmail !== RESEND_FALLBACK_FROM_EMAIL &&
+        this.shouldRetryWithResendFallback(attempt.errorMessage)
+      ) {
+        this.logger.warn(
+          `Dominio ${this.fromEmail} no verificado en Resend; reintentando con ${RESEND_FALLBACK_FROM_EMAIL}`,
+        );
+        attempt = await this.sendViaResend(RESEND_FALLBACK_FROM_EMAIL, params);
+      }
+
+      if (!attempt.ok) {
         this.logger.error(
-          `Resend error (${params.to}): ${result.error.message ?? JSON.stringify(result.error)}`,
+          `Resend error (${params.to}): ${attempt.errorMessage ?? "desconocido"}`,
         );
         return false;
       }

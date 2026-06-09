@@ -615,7 +615,13 @@ export class ConcertService {
             paidOrder.event,
             paidOrder.tickets,
           )
-          .then(async () => {
+          .then(async (sent) => {
+            if (!sent) {
+              this.logger.error(
+                `Tickets email not sent for order ${orderId} (Resend)`,
+              );
+              return;
+            }
             await this.prisma.concertOrder.update({
               where: { id: orderId },
               data: {
@@ -962,8 +968,9 @@ export class ConcertService {
     if (!order.buyerEmail)
       throw new BadRequestException("Email del comprador no registrado");
 
+    let sent = false;
     try {
-      await this.emailService.sendConcertTicketsToBuyer(
+      sent = await this.emailService.sendConcertTicketsToBuyer(
         order,
         order.event,
         order.tickets,
@@ -975,6 +982,12 @@ export class ConcertService {
       );
       throw new BadRequestException(
         "No se pudo reenviar el email. Intente nuevamente.",
+      );
+    }
+
+    if (!sent) {
+      throw new BadRequestException(
+        "No se pudo reenviar el email. Verifique Resend o el correo del comprador.",
       );
     }
 

@@ -35,11 +35,6 @@ export function resolveTicketQrPayload(
   eventSlug: string,
   frontendUrl: string,
 ): string {
-  if (
-    ticket.qrPayload.startsWith("http://") ||
-    ticket.qrPayload.startsWith("https://")
-  ) {
-    return ticket.qrPayload;
-  }
+  // Siempre reconstruir con FRONTEND_URL vigente (p. ej. Render onrender.com).
   return buildPublicTicketUrl(frontendUrl, eventSlug, ticket.publicToken);
 }
