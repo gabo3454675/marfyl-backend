@@ -544,7 +544,7 @@ export class ConcertService {
         tickets: true,
       },
     });
-    if (!order) throw new NotFoundException("Orden no encontrada");
+    if (!order) throw new NotFoundException(`Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`);
     if (order.status === ConcertOrderStatus.PAID) {
       return this.getOrderDetail(order.organizationId, order.publicToken);
     }
@@ -985,9 +985,9 @@ export class ConcertService {
       where: { id: orderId, organizationId, status: ConcertOrderStatus.PAID },
       include: { event: true, tickets: true },
     });
-    if (!order) throw new NotFoundException("Orden no encontrada o no pagada");
+    if (!order) throw new NotFoundException(`Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`);
     if (!order.buyerEmail)
-      throw new BadRequestException("Email del comprador no registrado");
+      throw new BadRequestException(`La orden #${orderId} no tiene email de comprador registrado (buyerEmail: ${order.buyerEmail})`);
 
     let sent = false;
     try {
@@ -1002,13 +1002,16 @@ export class ConcertService {
         `Resend tickets email failed for order ${orderId}: ${message}`,
       );
       throw new BadRequestException(
-        "No se pudo reenviar el email. Intente nuevamente.",
+        `No se pudo reenviar el email: ${message}`,
       );
     }
 
     if (!sent) {
+      this.logger.error(
+        `Resend tickets email returned false for order ${orderId}. buyerEmail: ${order.buyerEmail}, tickets: ${order.tickets.length}`,
+      );
       throw new BadRequestException(
-        "No se pudo reenviar el email. Verifique Resend o el correo del comprador.",
+        `No se pudo reenviar el email. Verifique la configuración de Resend y el correo del comprador (${order.buyerEmail}).`,
       );
     }
 
@@ -1099,6 +1102,18 @@ export class ConcertService {
     });
     if (!ticket || ticket.order.organizationId !== organizationId) {
       throw new NotFoundException("Entrada no válida");
+    }
+    if (ticket.order.status === ConcertOrderStatus.CANCELLED) {
+      return {
+        ok: false,
+        cancelled: true,
+        checkedInAt: null,
+        buyerName: ticket.order.buyerName,
+        seatLabel: ticket.seatLabel,
+        sectionCode: ticket.sectionCode,
+        eventTitle: ticket.order.event.title,
+        message: "Esta entrada fue cancelada",
+      };
     }
     if (ticket.order.status !== ConcertOrderStatus.PAID) {
       throw new BadRequestException("Entrada sin pago confirmado");

@@ -224,13 +224,13 @@ export class EmailService {
   ): Promise<boolean> {
     if (!order.buyerEmail?.trim()) {
       this.logger.warn(
-        `No se envían boletos: buyerEmail vacío en orden ${order.id}`,
+        `No se envían boletos: buyerEmail vacío en orden ${order.id}. buyerName: ${order.buyerName}`,
       );
       return false;
     }
 
     if (tickets.length === 0) {
-      this.logger.warn(`No se envían boletos: orden ${order.id} sin tickets`);
+      this.logger.warn(`No se envían boletos: orden ${order.id} sin tickets asociados`);
       return false;
     }
 
@@ -306,9 +306,11 @@ export class EmailService {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        `sendConcertTicketsToBuyer falló (orden ${order.id}): ${message}`,
+        `sendConcertTicketsToBuyer falló (orden ${order.id}, email: ${order.buyerEmail}): ${message}`,
       );
+      if (stack) this.logger.error(`Stack: ${stack}`);
       return false;
     }
   }
