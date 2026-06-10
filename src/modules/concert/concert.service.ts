@@ -853,19 +853,40 @@ export class ConcertService {
     };
   }
 
-  async listOrders(organizationId: number, status?: ConcertOrderStatus) {
+  async listOrders(
+    organizationId: number,
+    status?: ConcertOrderStatus,
+    paymentMethod?: ConcertPaymentMethod,
+    paymentReference?: string,
+  ) {
     await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
       where: { organizationId, isActive: true },
     });
     if (!event) return [];
 
+    const where: Prisma.ConcertOrderWhereInput = {
+      organizationId,
+      eventId: event.id,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (paymentMethod) {
+      where.paymentMethod = paymentMethod;
+    }
+
+    if (paymentReference) {
+      where.paymentReference = {
+        contains: paymentReference,
+        mode: "insensitive",
+      };
+    }
+
     return this.prisma.concertOrder.findMany({
-      where: {
-        organizationId,
-        eventId: event.id,
-        ...(status ? { status } : {}),
-      },
+      where,
       orderBy: { createdAt: "desc" },
       include: {
         tickets: {
@@ -1009,6 +1030,35 @@ export class ConcertService {
     return order;
   }
 
+  async deletePaymentProof(
+    orderId: number,
+    organizationId: number,
+  ): Promise<{ ok: boolean; message: string }> {
+    const order = await this.prisma.concertOrder.findFirst({
+      where: { id: orderId, organizationId },
+      select: { id: true, paymentProofUrl: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException("Orden no encontrada");
+    }
+
+    if (!order.paymentProofUrl) {
+      throw new BadRequestException("La orden no tiene comprobante");
+    }
+
+    // Eliminar archivo de Supabase Storage
+    await this.uploadService.deleteFile(order.paymentProofUrl);
+
+    // Actualizar paymentProofUrl a null en la base de datos
+    await this.prisma.concertOrder.update({
+      where: { id: orderId },
+      data: { paymentProofUrl: null },
+    });
+
+    return { ok: true, message: "Comprobante eliminado" };
+  }
+
   async adminSell(organizationId: number, userId: number, dto: AdminSellDto) {
     await this.assertConcertForOrganizationId(organizationId);
     const event = await this.prisma.concertEvent.findFirst({
@@ -1087,21 +1137,36 @@ export class ConcertService {
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
     });
-    if (!order) throw new NotFoundException("Orden no encontrada");
-    if (order.status !== ConcertOrderStatus.PENDING_PAYMENT) {
+    if (!order) throw new NotFoundException('Orden no encontrada');
+
+    // Aceptar PENDING_PAYMENT y PAID
+    if (
+      order.status !== ConcertOrderStatus.PENDING_PAYMENT &&
+      order.status !== ConcertOrderStatus.PAID
+    ) {
       throw new BadRequestException(
-        "Solo se pueden cancelar órdenes pendientes",
+        'Solo se pueden cancelar órdenes pendientes o pagadas',
       );
     }
 
+    // Si tiene comprobante de pago, eliminarlo de Supabase
+    if (order.paymentProofUrl) {
+      await this.uploadService.deleteFile(order.paymentProofUrl);
+    }
+
+    // Liberar asientos
     await this.releaseSeatsForOrder(orderId);
 
+    // Cambiar status a CANCELLED y limpiar referencia del comprobante
     await this.prisma.concertOrder.update({
       where: { id: orderId },
-      data: { status: ConcertOrderStatus.CANCELLED },
+      data: {
+        status: ConcertOrderStatus.CANCELLED,
+        paymentProofUrl: null,
+      },
     });
 
-    return { ok: true, message: "Orden cancelada" };
+    return { ok: true, message: 'Orden cancelada correctamente' };
   }
 
   private catalogEntryToSeat(

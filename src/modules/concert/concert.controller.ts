@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -10,7 +11,6 @@ import {
   Res,
 } from "@nestjs/common";
 import { Response } from "express";
-import { ConcertOrderStatus } from "@prisma/client";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { RolesGuard } from "@/common/guards/roles.guard";
@@ -19,9 +19,10 @@ import { Role } from "@prisma/client";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { ConcertService } from "./concert.service";
+import { UploadService } from "@/common/services/upload.service";
 import { ScanTicketDto } from "./dto/checkout.dto";
 import { AdminSellDto } from "./dto/admin-sell.dto";
-import { SearchOrdersDto } from "./dto/search-orders.dto";
+import { SearchOrdersDto, ListOrdersQueryDto } from "./dto/search-orders.dto";
 import * as path from "path";
 import * as fs from "fs";
 import { NotFoundException } from "@nestjs/common";
@@ -29,7 +30,9 @@ import { NotFoundException } from "@nestjs/common";
 @Controller("concert/admin")
 @UseGuards(JwtAuthGuard, OrganizationGuard, RolesGuard)
 export class ConcertController {
-  constructor(private readonly concertService: ConcertService) {}
+  constructor(private readonly concertService: ConcertService,
+    private readonly uploadService: UploadService,
+  ) {}
 
   @Get("overview")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
@@ -53,9 +56,14 @@ export class ConcertController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   listOrders(
     @ActiveOrganization() organizationId: number,
-    @Query("status") status?: ConcertOrderStatus,
+    @Query() query: ListOrdersQueryDto,
   ) {
-    return this.concertService.listOrders(organizationId, status);
+    return this.concertService.listOrders(
+      organizationId,
+      query.status,
+      query.paymentMethod,
+      query.paymentReference,
+    );
   }
 
   @Get("orders/search")
@@ -119,7 +127,7 @@ export class ConcertController {
     );
   }
 
-  @Get("orders/:id/proof")
+    @Get("orders/:id/proof")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   async getOrderProof(
     @Param("id", ParseIntPipe) orderId: number,
@@ -133,21 +141,33 @@ export class ConcertController {
     if (!order || !order.paymentProofUrl) {
       throw new NotFoundException("Comprobante de pago no encontrado");
     }
-
-    // Extract the file path from the URL
+  
+    const proofUrl = order.paymentProofUrl;
+  
+    // Si es URL de Supabase, generar signed URL fresca y redirigir
+    if (proofUrl.includes("supabase")) {
+      const storagePath = this.uploadService.extractPathFromUrl(proofUrl);
+      if (!storagePath) {
+        throw new NotFoundException("No se pudo extraer la ruta del archivo de Supabase");
+      }
+      const signedUrl = await this.uploadService.getSignedUrl(storagePath);
+      return res.redirect(signedUrl);
+    }
+  
+    // Fallback: servir archivo local (legacy)
     // URL format: http://host/uploads/private/concert/payments/filename.jpg
-    const urlParts = order.paymentProofUrl.split("/uploads/");
+    const urlParts = proofUrl.split("/uploads/");
     if (urlParts.length < 2) {
-      throw new NotFoundException("Ruta de archivo inválida");
+      throw new NotFoundException("Ruta de archivo invalida");
     }
     const relativePath = urlParts[1];
     const filePath = path.join(process.cwd(), "uploads", relativePath);
-
+  
     // Verify file exists
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException("Archivo no encontrado en el servidor");
     }
-
+  
     // Determine content type
     const ext = path.extname(filePath).toLowerCase();
     const contentTypes: Record<string, string> = {
@@ -158,12 +178,21 @@ export class ConcertController {
       ".gif": "image/gif",
     };
     const contentType = contentTypes[ext] || "application/octet-stream";
-
+  
     res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Disposition",
       `inline; filename="${path.basename(filePath)}"`,
     );
     return res.sendFile(filePath);
+  }
+  
+  @Delete("orders/:id/proof")
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  async deleteOrderProof(
+    @Param("id", ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.concertService.deletePaymentProof(id, organizationId);
   }
 }

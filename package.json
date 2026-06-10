@@ -49,6 +49,7 @@
     "@nestjs/throttler": "^6.0.0",
     "@prisma/client": "5.10.0",
     "@react-email/components": "^0.0.19",
+    "@supabase/supabase-js": "^2.108.1",
     "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^3.0.3",
     "cache-manager": "^7.2.8",
