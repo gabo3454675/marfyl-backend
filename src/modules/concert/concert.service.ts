@@ -113,7 +113,7 @@ export class ConcertService {
     await this.prisma.concertSeat.updateMany({
       where: {
         status: ConcertSeatStatus.HELD,
-        heldUntil: { lt: now },
+        OR: [{ heldUntil: { lt: now } }, { heldUntil: null, orderId: null }],
         orderId: null,
         section: { eventId },
       },
@@ -379,10 +379,20 @@ export class ConcertService {
     };
   }
 
-  async holdSeats(slug: string, seatIds: number[]) {
+  async holdSeats(slug: string, seatIds: number[], existingHoldToken?: string) {
     this.assertEnabled();
     const event = await this.getEventBySlug(slug);
     await this.refreshSeatAvailability(event.id);
+
+    if (existingHoldToken) {
+      const extended = await this.tryExtendExistingHold(
+        event.id,
+        seatIds,
+        existingHoldToken,
+        event,
+      );
+      if (extended) return extended;
+    }
 
     const holdToken = randomUUID();
     const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
@@ -410,7 +420,7 @@ export class ConcertService {
         seat.status === ConcertSeatStatus.HELD &&
         seat.heldUntil &&
         seat.heldUntil > new Date() &&
-        seat.holdToken !== holdToken
+        seat.holdToken !== existingHoldToken
       ) {
         throw new ConflictException(
           `Asiento ${seat.rowLabel}-${seat.seatNumber} en reserva`,
@@ -430,6 +440,97 @@ export class ConcertService {
       holdToken,
       heldUntil,
       seatIds,
+      holdMinutes: CONCERT_HOLD_MINUTES,
+      amountUsd: totals.amountUsd,
+      amountUsdBolivares: totals.amountUsdBolivares,
+      amountBs: totals.amountBs,
+      exchangeRate,
+    };
+  }
+
+  async extendHold(slug: string, holdToken: string) {
+    this.assertEnabled();
+    const event = await this.getEventBySlug(slug);
+    await this.refreshSeatAvailability(event.id);
+
+    const seats = await this.prisma.concertSeat.findMany({
+      where: {
+        holdToken,
+        section: { eventId: event.id },
+        status: ConcertSeatStatus.HELD,
+        orderId: null,
+        heldUntil: { gt: new Date() },
+      },
+      include: { section: true },
+    });
+    if (seats.length === 0) {
+      throw new BadRequestException(
+        "Su reserva expiró. Vuelva a elegir asientos.",
+      );
+    }
+
+    const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
+    await this.prisma.concertSeat.updateMany({
+      where: { holdToken },
+      data: { heldUntil },
+    });
+
+    const totals = this.sumSeatTotals(seats, event);
+    const exchangeRate = event.organization.exchangeRate || 1;
+
+    return {
+      holdToken,
+      heldUntil,
+      seatIds: seats.map((s) => s.id),
+      holdMinutes: CONCERT_HOLD_MINUTES,
+      amountUsd: totals.amountUsd,
+      amountUsdBolivares: totals.amountUsdBolivares,
+      amountBs: totals.amountBs,
+      exchangeRate,
+    };
+  }
+
+  private async tryExtendExistingHold(
+    eventId: number,
+    seatIds: number[],
+    holdToken: string,
+    event: Awaited<ReturnType<ConcertService["getEventBySlug"]>>,
+  ) {
+    const held = await this.prisma.concertSeat.findMany({
+      where: {
+        holdToken,
+        section: { eventId },
+        status: ConcertSeatStatus.HELD,
+        orderId: null,
+        heldUntil: { gt: new Date() },
+      },
+      include: { section: true },
+    });
+    if (held.length === 0) return null;
+
+    const heldIds = [...held.map((s) => s.id)].sort((a, b) => a - b);
+    const requestedIds = [...seatIds].sort((a, b) => a - b);
+    if (
+      heldIds.length !== requestedIds.length ||
+      !heldIds.every((id, i) => id === requestedIds[i])
+    ) {
+      return null;
+    }
+
+    const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
+    await this.prisma.concertSeat.updateMany({
+      where: { holdToken },
+      data: { heldUntil },
+    });
+
+    const totals = this.sumSeatTotals(held, event);
+    const exchangeRate = event.organization.exchangeRate || 1;
+
+    return {
+      holdToken,
+      heldUntil,
+      seatIds: requestedIds,
+      holdMinutes: CONCERT_HOLD_MINUTES,
       amountUsd: totals.amountUsd,
       amountUsdBolivares: totals.amountUsdBolivares,
       amountBs: totals.amountBs,
@@ -466,6 +567,15 @@ export class ConcertService {
       !dto.paymentReference?.trim()
     ) {
       throw new BadRequestException("Indique número de referencia del pago");
+    }
+
+    if (
+      dto.paymentMethod === ConcertPaymentMethod.CASH_USD &&
+      !paymentProof
+    ) {
+      throw new BadRequestException(
+        "Suba una foto de los billetes en efectivo (divisa) para registrar la venta",
+      );
     }
 
     const totals = this.sumSeatTotals(seats, event);
@@ -1182,6 +1292,97 @@ export class ConcertService {
     });
 
     return { ok: true, message: 'Orden cancelada correctamente' };
+  }
+
+  /**
+   * Libera asientos bloqueados de una mesa (holds expirados, reservas sin orden u órdenes pendientes).
+   * Útil cuando una compra quedó atascada y la mesa aparece como llena sin ventas.
+   */
+  async releaseMesaSeats(organizationId: number, mesaNumber: number) {
+    await this.assertConcertForOrganizationId(organizationId);
+    const slug = process.env.CONCERT_DEFAULT_SLUG || "hemenegilda-capacidad";
+    const event = await this.prisma.concertEvent.findFirst({
+      where: { organizationId, slug },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException("Evento no configurado");
+
+    await this.refreshSeatAvailability(event.id);
+
+    const seats = await this.prisma.concertSeat.findMany({
+      where: {
+        mesaNumber,
+        section: { eventId: event.id },
+        status: { not: ConcertSeatStatus.SOLD },
+      },
+      select: { id: true, orderId: true, status: true },
+    });
+    if (seats.length === 0) {
+      return {
+        ok: true,
+        mesaNumber,
+        released: 0,
+        cancelledOrders: 0,
+        message: "No hay asientos bloqueados en esta mesa",
+      };
+    }
+
+    const orderIds = [
+      ...new Set(
+        seats
+          .map((s) => s.orderId)
+          .filter((id): id is number => id != null),
+      ),
+    ];
+
+    let cancelledOrders = 0;
+    for (const orderId of orderIds) {
+      const order = await this.prisma.concertOrder.findFirst({
+        where: {
+          id: orderId,
+          organizationId,
+          status: ConcertOrderStatus.PENDING_PAYMENT,
+        },
+      });
+      if (!order) continue;
+      if (order.paymentProofUrl) {
+        await this.uploadService.deleteFile(order.paymentProofUrl);
+      }
+      await this.releaseSeatsForOrder(orderId);
+      await this.prisma.concertOrder.update({
+        where: { id: orderId },
+        data: {
+          status: ConcertOrderStatus.CANCELLED,
+          paymentProofUrl: null,
+        },
+      });
+      cancelledOrders++;
+    }
+
+    const released = await this.prisma.concertSeat.updateMany({
+      where: {
+        id: { in: seats.map((s) => s.id) },
+        status: { not: ConcertSeatStatus.SOLD },
+      },
+      data: {
+        status: ConcertSeatStatus.AVAILABLE,
+        orderId: null,
+        holdToken: null,
+        heldUntil: null,
+      },
+    });
+
+    return {
+      ok: true,
+      mesaNumber,
+      released: released.count,
+      cancelledOrders,
+      message: `Mesa ${mesaNumber}: ${released.count} asiento(s) liberado(s)${
+        cancelledOrders > 0
+          ? `, ${cancelledOrders} orden(es) pendiente(s) cancelada(s)`
+          : ""
+      }`,
+    };
   }
 
   private catalogEntryToSeat(

@@ -490,8 +490,12 @@ export class EmailService {
             .join("")
         : `<li style="margin:6px 0;font-size:13px;color:rgba(255,255,255,0.55);">Asientos por confirmar</li>`;
     const paymentRef = order.paymentReference?.trim();
+    const proofLabel =
+      order.paymentMethod === "CASH_USD"
+        ? "Foto de billetes (divisa)"
+        : "Comprobante de pago";
     const proofLine = order.paymentProofUrl?.trim()
-      ? `<p style="margin:4px 0;font-size:13px;">📎 <a href="${order.paymentProofUrl}" style="color:#5eead4;">Comprobante de pago</a></p>`
+      ? `<p style="margin:4px 0;font-size:13px;">📎 <a href="${order.paymentProofUrl}" style="color:#5eead4;">${proofLabel}</a></p>`
       : "";
     const orderRef = order.publicToken?.slice(0, 8).toUpperCase() ?? String(order.id);
 

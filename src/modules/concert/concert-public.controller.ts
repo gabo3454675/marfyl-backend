@@ -12,7 +12,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { Public } from "@/common/decorators/public.decorator";
 import { ConcertService } from "./concert.service";
-import { HoldSeatsDto } from "./dto/hold-seats.dto";
+import { HoldSeatsDto, ExtendHoldDto } from "./dto/hold-seats.dto";
 import { ConcertCheckoutDto } from "./dto/checkout.dto";
 
 @Controller("concert/public")
@@ -29,7 +29,14 @@ export class ConcertPublicController {
   @Throttle({ long: { limit: 10, ttl: 60000 } })
   @Post(":slug/hold")
   holdSeats(@Param("slug") slug: string, @Body() dto: HoldSeatsDto) {
-    return this.concertService.holdSeats(slug, dto.seatIds);
+    return this.concertService.holdSeats(slug, dto.seatIds, dto.holdToken);
+  }
+
+  @Public()
+  @Throttle({ long: { limit: 20, ttl: 60000 } })
+  @Post(":slug/hold/extend")
+  extendHold(@Param("slug") slug: string, @Body() dto: ExtendHoldDto) {
+    return this.concertService.extendHold(slug, dto.holdToken);
   }
 
   @Public()

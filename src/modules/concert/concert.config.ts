@@ -17,7 +17,14 @@ export function isConcertEnabledForOrganization(org: {
 }
 
 /** Reserva temporal mientras el comprador completa el formulario (sin orden creada). */
-export const CONCERT_HOLD_MINUTES = 12;
+export const CONCERT_HOLD_MINUTES = Number(
+  process.env.CONCERT_HOLD_MINUTES ?? 20,
+);
+
+/** Cada cuántos ms el cliente puede extender la reserva activa (mientras está en checkout). */
+export const CONCERT_HOLD_EXTEND_INTERVAL_MS = Number(
+  process.env.CONCERT_HOLD_EXTEND_INTERVAL_MS ?? 4 * 60 * 1000,
+);
 
 /** Tras enviar la compra sin confirmar pago, la orden pendiente expira y libera asientos. */
 export const CONCERT_PENDING_ORDER_HOURS = Number(

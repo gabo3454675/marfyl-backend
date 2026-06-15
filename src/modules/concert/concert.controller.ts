@@ -52,6 +52,15 @@ export class ConcertController {
     return this.concertService.syncSeatCatalog(organizationId);
   }
 
+  @Post("release-mesa/:mesa")
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  releaseMesa(
+    @ActiveOrganization() organizationId: number,
+    @Param("mesa", ParseIntPipe) mesa: number,
+  ) {
+    return this.concertService.releaseMesaSeats(organizationId, mesa);
+  }
+
   @Get("orders")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   listOrders(
