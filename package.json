@@ -32,6 +32,7 @@
     "provision:monddy-concert": "tsx prisma/provision-monddy-concert.ts",
     "sync:exchange-rates": "tsx scripts/sync-exchange-rates.ts",
     "ingest:fiscal-knowledge": "tsx scripts/fiscal-knowledge/ingest-fiscal-knowledge.ts",
+    "verify:fiscal-vector": "tsx scripts/fiscal-knowledge/verify-vector-db.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
