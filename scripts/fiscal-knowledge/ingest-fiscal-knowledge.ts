@@ -7,6 +7,9 @@
  *   pnpm ingest:fiscal-knowledge -- --ley=LIVA
  *   pnpm ingest:fiscal-knowledge -- --replace --ley=COT
  *   pnpm ingest:fiscal-knowledge -- --dry-run
+ *   pnpm ingest:fiscal-knowledge -- --no-ocr   # solo capa de texto del PDF
+ *
+ * PDFs escaneados (sin texto seleccionable) usan OCR automático (Tesseract spa).
  *
  * Requiere:
  *   DATABASE_URL, HUGGINGFACE_API_KEY (o HF_TOKEN)
@@ -17,7 +20,7 @@ import * as path from "node:path";
 import { assertMarfylDatabaseUrl } from "../../src/common/database-guard";
 import { chunkByArticles } from "../../src/modules/fiscal-knowledge/article-chunker";
 import { generarEmbeddingGratuito, resolveHuggingFaceApiKey } from "../../src/modules/fiscal-knowledge/generar-embedding-gratuito";
-import { extractPdfText } from "../../src/modules/fiscal-knowledge/pdf-extract";
+import { extractPdfTextWithOcr, terminateOcrWorker } from "../../src/modules/fiscal-knowledge/pdf-extract-ocr";
 import { FISCAL_PDF_CATALOG } from "../../src/modules/fiscal-knowledge/fiscal-knowledge.constants";
 import {
   articleExists,
@@ -33,13 +36,15 @@ interface CliOptions {
   ley?: string;
   replace: boolean;
   dryRun: boolean;
+  noOcr: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { replace: false, dryRun: false };
+  const opts: CliOptions = { replace: false, dryRun: false, noOcr: false };
   for (const arg of argv) {
     if (arg === "--replace") opts.replace = true;
     if (arg === "--dry-run") opts.dryRun = true;
+    if (arg === "--no-ocr") opts.noOcr = true;
     if (arg.startsWith("--ley=")) opts.ley = arg.slice("--ley=".length).toUpperCase();
   }
   return opts;
@@ -124,8 +129,25 @@ async function main() {
       console.log(`[ingest] Leyendo PDF: ${path.basename(pdfPath)}`);
 
       let text = "";
+      let usedOcr = false;
       try {
-        text = await extractPdfText(pdfPath);
+        if (opts.noOcr) {
+          const { extractPdfText } = await import(
+            "../../src/modules/fiscal-knowledge/pdf-extract"
+          );
+          text = await extractPdfText(pdfPath);
+        } else {
+          const extracted = await extractPdfTextWithOcr(pdfPath, {
+            onProgress: (msg) => console.log(`[ingest] ${msg}`),
+          });
+          text = extracted.text;
+          usedOcr = extracted.usedOcr;
+          if (usedOcr) {
+            console.log(
+              `[ingest] OCR completado: ${extracted.pageCount} páginas, ${text.length} caracteres`,
+            );
+          }
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`[ingest] ✗ Error extrayendo PDF (${entry.ley}): ${msg}`);
@@ -225,6 +247,7 @@ async function main() {
     }
   } finally {
     if (pool) await pool.end();
+    await terminateOcrWorker().catch(() => undefined);
   }
 }
 
