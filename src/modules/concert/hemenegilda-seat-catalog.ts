@@ -31,8 +31,7 @@ export type SeatCatalogEntry = {
 };
 
 /** Mesas del salón — planilla flyer Monddy (total 66 personas).
- *  Tabla visible: 01=4, 02=2, 05=4, 09=2, 10=2, 11–12=4, 14=4, 16–17=2, 18=3, 19–20=4.
- *  Resto (03,04,06,07,08,13,15): completan el total 66 con la distribución física del plano.
+ *  Capacidades confirmadas: 02=4, 03=2, 08=2, 09=4 (corrección jun 2026).
  */
 const SALON_MESAS: {
   mesa: number;
@@ -44,7 +43,7 @@ const SALON_MESAS: {
 }[] = [
   {
     mesa: 3,
-    seats: [1, 2, 3, 4],
+    seats: [1, 2],
     priceUsd: 60,
     priceBs: 70,
     tier: "VIP",
@@ -68,7 +67,7 @@ const SALON_MESAS: {
   },
   {
     mesa: 8,
-    seats: [12, 13, 14, 15],
+    seats: [12, 13],
     priceUsd: 60,
     priceBs: 70,
     tier: "VIP",
@@ -84,7 +83,7 @@ const SALON_MESAS: {
   },
   {
     mesa: 2,
-    seats: [20, 21],
+    seats: [3, 4, 20, 21],
     priceUsd: 50,
     priceBs: 60,
     tier: "PREFERENCIAL",
@@ -108,7 +107,7 @@ const SALON_MESAS: {
   },
   {
     mesa: 9,
-    seats: [30, 31],
+    seats: [14, 15, 30, 31],
     priceUsd: 45,
     priceBs: 55,
     tier: "MEDIA",
