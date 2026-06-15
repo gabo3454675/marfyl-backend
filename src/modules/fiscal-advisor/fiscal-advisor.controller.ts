@@ -29,6 +29,14 @@ export class FiscalAdvisorController {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
+    const writeEvent = (event: object) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      const flushable = res as Response & { flush?: () => void };
+      flushable.flush?.();
+    };
+
+    writeEvent({ type: "status", phase: "thinking" });
+
     const organizationId =
       req.activeOrganizationId ?? req.activeOrganization?.id ?? 0;
 
@@ -55,11 +63,11 @@ export class FiscalAdvisorController {
       };
 
       for await (const event of this.advisor.adviseStream(payload)) {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
+        writeEvent(event);
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      res.write(`data: ${JSON.stringify({ type: "error", message })}\n\n`);
+      writeEvent({ type: "error", message });
     }
 
     res.end();

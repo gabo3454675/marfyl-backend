@@ -15,6 +15,7 @@ import {
 import type { FiscalAdvisorDto } from "./dto/fiscal-advisor.dto";
 
 export type FiscalAdvisorStreamEvent =
+  | { type: "status"; phase: "thinking" | "analyzing" | "searching" | "generating" }
   | { type: "audit_warnings"; warnings: AuditWarning[] }
   | {
       type: "knowledge";
@@ -30,9 +31,13 @@ export type FiscalAdvisorStreamEvent =
   | { type: "done"; model: string }
   | { type: "error"; message: string };
 
-const DEFAULT_ADVISOR_MODEL = "openai/gpt-oss-120b";
+const DEFAULT_FAST_MODEL = "llama-3.1-8b-instant";
 const ROUTINE_QUERY =
   "sanciones multas ilícitos tributarios infracciones COT providencias contribuyente especial";
+
+function usesReasoningEffort(model: string): boolean {
+  return /gpt-oss|reasoning/i.test(model);
+}
 
 @Injectable()
 export class FiscalAdvisorService {
@@ -61,6 +66,8 @@ export class FiscalAdvisorService {
       facturasSinMaquinaFiscal: dto.resumenOperativo.facturasSinMaquinaFiscal ?? 0,
     };
 
+    yield { type: "status", phase: "analyzing" };
+
     const warnings = runPreventiveAudit(perfil, resumen);
     yield { type: "audit_warnings", warnings };
 
@@ -74,11 +81,13 @@ export class FiscalAdvisorService {
     const mensaje = dto.mensajeUsuario?.trim() ?? "";
     const searchQuery = mensaje || ROUTINE_QUERY;
 
+    yield { type: "status", phase: "searching" };
+
     let articles: Awaited<ReturnType<FiscalKnowledgeService["search"]>> = [];
     try {
       const ready = await this.knowledge.isReady();
       if (ready) {
-        articles = await this.knowledge.search(searchQuery, { limit: 6 });
+        articles = await this.knowledge.search(searchQuery, { limit: 4 });
       }
     } catch (error) {
       this.logger.warn(
@@ -92,16 +101,22 @@ export class FiscalAdvisorService {
         ley: a.ley,
         leyLabel: a.leyLabel,
         articulo: a.articulo,
-        excerpt: a.content.slice(0, 1200),
+        excerpt: a.content.slice(0, 600),
         similarity: a.similarity,
       })),
     };
 
+    yield { type: "status", phase: "generating" };
+
+    const fastModel =
+      this.config.get<string>("GROQ_MODEL")?.trim() || DEFAULT_FAST_MODEL;
+    const configuredAdvisor =
+      this.config.get<string>("FISCAL_ADVISOR_MODEL")?.trim() || "";
     const primaryModel =
-      this.config.get<string>("FISCAL_ADVISOR_MODEL")?.trim() ||
-      DEFAULT_ADVISOR_MODEL;
-    const fallbackModel =
-      this.config.get<string>("GROQ_MODEL")?.trim() || "llama-3.1-8b-instant";
+      configuredAdvisor && !usesReasoningEffort(configuredAdvisor)
+        ? configuredAdvisor
+        : fastModel;
+    const fallbackModel = fastModel;
 
     const systemPrompt = this.buildSystemPrompt(
       perfil,
@@ -119,18 +134,24 @@ export class FiscalAdvisorService {
     let modelUsed = primaryModel;
 
     const runStream = async function* (modelName: string) {
-      const stream = (await groq.chat.completions.create({
+      const body: Record<string, unknown> = {
         model: modelName,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        temperature: 0.6,
-        max_completion_tokens: 2048,
+        temperature: 0.5,
+        max_completion_tokens: 1024,
         top_p: 1,
         stream: true,
-        reasoning_effort: "medium",
-      } as Parameters<Groq["chat"]["completions"]["create"]>[0])) as AsyncIterable<{
+      };
+      if (usesReasoningEffort(modelName)) {
+        body.reasoning_effort = "low";
+      }
+
+      const stream = (await groq.chat.completions.create(
+        body as unknown as Parameters<Groq["chat"]["completions"]["create"]>[0],
+      )) as AsyncIterable<{
         choices: Array<{ delta?: { content?: string | null } }>;
       }>;
 
@@ -174,7 +195,7 @@ export class FiscalAdvisorService {
         ? articles
             .map(
               (a, i) =>
-                `${i + 1}. [${a.leyLabel} · Art. ${a.articulo}] (similitud ${(a.similarity * 100).toFixed(0)}%)\n${a.content.slice(0, 900)}`,
+                `${i + 1}. [${a.leyLabel} · Art. ${a.articulo}] (similitud ${(a.similarity * 100).toFixed(0)}%)\n${a.content.slice(0, 500)}`,
             )
             .join("\n\n")
         : "No se recuperaron artículos en la base vectorial. Indica al cliente que el equipo debe ejecutar la carga de leyes si aún no está hecha.";
