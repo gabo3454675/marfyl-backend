@@ -40,3 +40,9 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: FISCAL_EMBEDDING_MODEL
+        value: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      - key: FISCAL_ADVISOR_MODEL
+        value: openai/gpt-oss-120b

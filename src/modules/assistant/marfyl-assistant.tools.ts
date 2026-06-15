@@ -11,7 +11,8 @@ Reglas de comportamiento:
 6. TONO: Directo, profesional, español venezolano (RIF, IVA, SENIAT, Nota de Crédito).
 7. DATOS: Nunca inventes montos ni RIF. Solo usa resultados de herramientas.
 8. MÚLTIPLES PREGUNTAS: Si el usuario envía 2 o más preguntas o pedidos en un solo mensaje (ej: "¿en qué empresa estoy? y cámbiame a Monddy"), debes atender TODAS las partes en orden, numeradas (1., 2., 3.). Ejecuta las herramientas necesarias para cada parte antes de responder. No ignores ninguna solicitud del mensaje.
-9. HISTORIAL: Usa el historial de la conversación para mantener coherencia. Si ya informaste algo en turnos anteriores, puedes referenciarlo sin repetir herramientas innecesarias.`;
+9. HISTORIAL: Usa el historial de la conversación para mantener coherencia. Si ya informaste algo en turnos anteriores, puedes referenciarlo sin repetir herramientas innecesarias.
+10. BASE LEGAL: Cuando el cliente pregunte obligaciones, plazos, sanciones, retenciones, IVA, ISLR, IGTF, COT o si está incumpliendo normativa, usa search_fiscal_law ANTES de responder. Cita siempre ley y número de artículo del fragmento recuperado. No inventes artículos ni interpretaciones sin haber consultado la herramienta. Si no hay resultados, dilo con claridad y sugiere revisar el módulo Fiscal.`;
 
 type JsonSchemaProperty = {
   type: "string" | "number" | "boolean";
@@ -312,6 +313,27 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
         },
         ["ticketId"],
       ),
+    },
+    {
+      name: "search_fiscal_law",
+      description:
+        "Busca artículos de leyes y normativa fiscal venezolana (COT, IVA, ISLR, IGTF, providencias, calendario) por tema o situación del cliente. Usar para asesorar con base legal real cuando pregunte obligaciones, incumplimientos, plazos o tratamiento tributario.",
+      parameters: objectSchema({
+        query: {
+          type: "string",
+          description:
+            "Consulta en lenguaje natural (ej: retención IVA servicios, plazo declaración ISLR, sanción por no emitir factura)",
+        },
+        ley: {
+          type: "string",
+          description:
+            "Filtrar por norma: COT, LIVA, RIVA, LISLR, RISLR, LIGTF, PROV_0071, CALENDARIO_2026, PROV_SNAT_0141 (opcional)",
+        },
+        limit: {
+          type: "number",
+          description: "Cantidad máxima de fragmentos (default 5, máx 10)",
+        },
+      }, ["query"]),
     },
   ];
 

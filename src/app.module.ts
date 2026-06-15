@@ -35,6 +35,7 @@ import { ConcertModule } from "./modules/concert/concert.module";
 import { EmailModule } from "./modules/email/email.module";
 import { HealthModule } from "./modules/health/health.module";
 import { AiModule } from "./modules/ai/ai.module";
+import { FiscalAdvisorModule } from "./modules/fiscal-advisor/fiscal-advisor.module";
 import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
 
 @Module({
@@ -71,6 +72,7 @@ import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module
     AuditoriaModule,
     FiscalModule,
     AssistantModule,
+    FiscalAdvisorModule,
     EmailModule,
     ConcertModule,
     HealthModule,

@@ -11,6 +11,7 @@ import { ExpensesService } from "@/modules/expenses/expenses.service";
 import { CierreCajaService } from "@/modules/cierre-caja/cierre-caja.service";
 import { InventoryMovementsService } from "@/modules/inventory/inventory-movements.service";
 import { CustomersService } from "@/modules/customers/customers.service";
+import { FiscalKnowledgeService } from "@/modules/fiscal-knowledge/fiscal-knowledge.service";
 import { AssistantSecurityService } from "./assistant-security.service";
 import { TenantContext } from "@/common/context/tenant.context";
 
@@ -64,6 +65,7 @@ export class AssistantToolsService {
     private readonly cierreCaja: CierreCajaService,
     private readonly inventoryMovements: InventoryMovementsService,
     private readonly customers: CustomersService,
+    private readonly fiscalKnowledge: FiscalKnowledgeService,
   ) {
     this.registerHandlers();
   }
@@ -165,6 +167,9 @@ export class AssistantToolsService {
     );
     this.handlers.set("search_concert_orders", (args, ctx) =>
       this.searchEventTicket(args, ctx),
+    );
+    this.handlers.set("search_fiscal_law", (args) =>
+      this.searchFiscalLaw(args),
     );
   }
 
@@ -615,5 +620,44 @@ export class AssistantToolsService {
     const ticketId = String(args.ticketId ?? "").trim();
     if (!ticketId) throw new BadRequestException("ticketId requerido");
     return this.concert.scanTicket(ctx.organizationId, ctx.userId, ticketId);
+  }
+
+  private async searchFiscalLaw(args: Record<string, unknown>) {
+    const query = String(args.query ?? "").trim();
+    if (!query) throw new BadRequestException("query requerido");
+
+    const ready = await this.fiscalKnowledge.isReady();
+    if (!ready) {
+      return {
+        found: false,
+        message:
+          "La base de conocimiento fiscal aún no está cargada. Ejecute pnpm ingest:fiscal-knowledge en el servidor.",
+        results: [],
+      };
+    }
+
+    const ley = args.ley ? String(args.ley).trim().toUpperCase() : undefined;
+    const limit =
+      typeof args.limit === "number" && Number.isFinite(args.limit)
+        ? args.limit
+        : 5;
+
+    const hits = await this.fiscalKnowledge.search(query, { ley, limit });
+    return {
+      found: hits.length > 0,
+      query,
+      leyFilter: ley ?? null,
+      results: hits.map((h) => ({
+        ley: h.ley,
+        leyLabel: h.leyLabel,
+        articulo: h.articulo,
+        titulo: h.titulo,
+        similarity: Math.round(h.similarity * 1000) / 1000,
+        excerpt: h.content.slice(0, 1800),
+        citation: `${h.leyLabel}, Artículo ${h.articulo}`,
+      })),
+      guidance:
+        "Responde al cliente citando ley y artículo. Explica en español venezolano y relaciona con su situación sin inventar normas.",
+    };
   }
 }
