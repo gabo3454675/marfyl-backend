@@ -59,6 +59,7 @@
     "dompurify": "^3.0.8",
     "exceljs": "^4.4.0",
     "firebase-admin": "^13.7.0",
+    "groq-sdk": "^1.2.1",
     "jsdom": "^24.0.0",
     "multer": "^2.0.2",
     "passport": "^0.7.0",

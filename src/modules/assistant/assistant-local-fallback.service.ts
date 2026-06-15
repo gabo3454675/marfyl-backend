@@ -50,7 +50,7 @@ export class AssistantLocalFallbackService {
     if (answers.length === 0) return null;
 
     const suffix =
-      "\n\n_(Respuesta generada localmente por MARFYL; la IA de Gemini no estuvo disponible.)_";
+        "\n\n_(Respuesta generada localmente por MARFYL; la IA de Groq no estuvo disponible.)_";
     return { reply: answers.join("\n\n") + suffix };
   }
 
