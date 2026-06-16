@@ -37,6 +37,7 @@ import { HealthModule } from "./modules/health/health.module";
 import { AiModule } from "./modules/ai/ai.module";
 import { FiscalAdvisorModule } from "./modules/fiscal-advisor/fiscal-advisor.module";
 import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
+import { PlanModule } from "./modules/plan/plan.module";
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module
     HealthModule,
     AiModule,
     ExchangeRateModule,
+    PlanModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

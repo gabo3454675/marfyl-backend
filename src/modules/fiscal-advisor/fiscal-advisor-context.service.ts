@@ -81,7 +81,7 @@ export class FiscalAdvisorContextService {
       ]);
 
     const tipoFacturacion =
-      org?.fiscalProfile?.taxpayerType === "ESPECIAL"
+       org?.fiscalProfile?.taxpayerType === "ESPECIAL"
         ? "Contribuyente Especial"
         : org?.isFormalTaxpayer
           ? "Máquina Fiscal"
