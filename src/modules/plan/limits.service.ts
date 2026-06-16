@@ -51,7 +51,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     hasMultiCompany: false,
     hasWhiteLabel: false,
   },
-  PROFESSIONAL: {
+  PREMIUM: {
     maxUsers: -1,
     maxProducts: -1,
     maxOrganizations: 1,
@@ -88,14 +88,14 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
 export const PLAN_PRICES: Record<Plan, number> = {
   FREE: 0,
   BASIC: 25,
-  PROFESSIONAL: 35,
+  PREMIUM: 35,
   ENTERPRISE: 50,
 };
 
 export const PLAN_DISPLAY_NAMES: Record<Plan, string> = {
   FREE: 'Free',
   BASIC: 'Starter',
-  PROFESSIONAL: 'Professional',
+  PREMIUM: 'Professional',
   ENTERPRISE: 'Enterprise',
 };
 
@@ -103,7 +103,7 @@ export const PLAN_DISPLAY_NAMES: Record<Plan, string> = {
 export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
   FREE: 'Para negocios que inician',
   BASIC: 'Para pequeños comercios',
-  PROFESSIONAL: 'El más popular para pymes',
+  PREMIUM: 'El más popular para pymes',
   ENTERPRISE: 'Control total',
 };
 
@@ -205,7 +205,7 @@ export class PlanLimitsService {
         hasMultiCompany: limits.hasMultiCompany,
       },
       canUpgrade: plan !== 'ENTERPRISE',
-      upgradeTo: plan === 'FREE' ? 'BASIC' : plan === 'BASIC' ? 'PROFESSIONAL' : 'ENTERPRISE',
+      upgradeTo: plan === 'FREE' ? 'BASIC' : plan === 'BASIC' ? 'PREMIUM' : 'ENTERPRISE',
     };
   }
 }
