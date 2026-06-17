@@ -41,34 +41,37 @@ export class CierreCajaService {
       where: { id: tenantId },
       select: { exchangeRate: true },
     });
-    const tasa = await this.prisma.tasaHistorica.create({
-      data: {
-        organizationId: tenantId,
-        rate: Number(org?.exchangeRate ?? 1),
-        source: "BCV",
-        effectiveAt: ahora,
-      },
-    });
-    return this.prisma.cierreCaja.create({
-      data: {
-        tenantId,
-        userId,
-        fechaApertura: ahora,
-        fechaCierre: ahora,
-        montoInicial: dto.montoInicial,
-        ventasEfectivo: 0,
-        ventasDigitales: 0,
-        ventasEfectivoUsd: 0,
-        ventasEfectivoBs: 0,
-        ventasPagoMovil: 0,
-        ventasPos: 0,
-        autoconsumos: 0,
-        estado: CierreCajaEstado.OPEN,
-        tasaHistoricaId: tasa.id,
-      },
-      include: {
-        user: { select: { id: true, email: true, fullName: true } },
-      },
+
+    return this.prisma.$transaction(async (tx) => {
+      const tasa = await tx.tasaHistorica.create({
+        data: {
+          organizationId: tenantId,
+          rate: Number(org?.exchangeRate ?? 1),
+          source: "BCV",
+          effectiveAt: ahora,
+        },
+      });
+      return tx.cierreCaja.create({
+        data: {
+          tenantId,
+          userId,
+          fechaApertura: ahora,
+          fechaCierre: ahora,
+          montoInicial: dto.montoInicial,
+          ventasEfectivo: 0,
+          ventasDigitales: 0,
+          ventasEfectivoUsd: 0,
+          ventasEfectivoBs: 0,
+          ventasPagoMovil: 0,
+          ventasPos: 0,
+          autoconsumos: 0,
+          estado: CierreCajaEstado.OPEN,
+          tasaHistoricaId: tasa.id,
+        },
+        include: {
+          user: { select: { id: true, email: true, fullName: true } },
+        },
+      });
     });
   }
 
@@ -173,44 +176,47 @@ export class CierreCajaService {
       where: { id: tenantId },
       select: { exchangeRate: true },
     });
-    const tasa = await this.prisma.tasaHistorica.create({
-      data: {
-        organizationId: tenantId,
-        rate: Number(org?.exchangeRate ?? 1),
-        source: "BCV",
-        effectiveAt: ahora,
-      },
-    });
 
-    const actualizado = await this.prisma.cierreCaja.update({
-      where: { id: cierre.id },
-      data: {
-        fechaCierre: ahora,
-        ventasEfectivo: ventasEfectivoTotal,
-        ventasDigitales: ventasDigitalesTotal,
-        ventasEfectivoUsd,
-        ventasEfectivoBs,
-        ventasPagoMovil,
-        ventasPos,
-        autoconsumos: autoconsumosTotal,
-        montoFisico: montoFisicoUsd,
-        montoFisicoUsd,
-        montoFisicoVes,
-        diferencia,
-        totalUsd,
-        totalVes,
-        diferenciaUsd,
-        diferenciaVes,
-        impreso: false,
-        observaciones: dto.observaciones ?? null,
-        estado: CierreCajaEstado.CLOSED,
-        publicToken,
-        tasaHistoricaId: tasa.id,
-      },
-      include: {
-        user: { select: { id: true, email: true, fullName: true } },
-        tenant: { select: { id: true, nombre: true } },
-      },
+    const actualizado = await this.prisma.$transaction(async (tx) => {
+      const tasa = await tx.tasaHistorica.create({
+        data: {
+          organizationId: tenantId,
+          rate: Number(org?.exchangeRate ?? 1),
+          source: "BCV",
+          effectiveAt: ahora,
+        },
+      });
+
+      return tx.cierreCaja.update({
+        where: { id: cierre.id },
+        data: {
+          fechaCierre: ahora,
+          ventasEfectivo: ventasEfectivoTotal,
+          ventasDigitales: ventasDigitalesTotal,
+          ventasEfectivoUsd,
+          ventasEfectivoBs,
+          ventasPagoMovil,
+          ventasPos,
+          autoconsumos: autoconsumosTotal,
+          montoFisico: montoFisicoUsd,
+          montoFisicoUsd,
+          montoFisicoVes,
+          diferencia,
+          totalUsd,
+          totalVes,
+          diferenciaUsd,
+          diferenciaVes,
+          impreso: false,
+          observaciones: dto.observaciones ?? null,
+          estado: CierreCajaEstado.CLOSED,
+          publicToken,
+          tasaHistoricaId: tasa.id,
+        },
+        include: {
+          user: { select: { id: true, email: true, fullName: true } },
+          tenant: { select: { id: true, nombre: true } },
+        },
+      });
     });
 
     if (diferencia < -5) {

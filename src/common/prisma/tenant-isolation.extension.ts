@@ -29,6 +29,9 @@ const MODELS_WITH_ORGANIZATION_ID = new Set<string>([
   "TasaHistorica",
   "ActivityLog",
   "ExpensePayment",
+  "PayrollProfile",
+  "PayrollRun",
+  "PayrollLine",
 ]);
 
 function getTenantFieldForModel(

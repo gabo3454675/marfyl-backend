@@ -37,6 +37,7 @@ model User {
   activityLogs  ActivityLog[]            // Auditoría: quién cambió precio, eliminó factura, etc.
   fcmTokens     FcmToken[]               // Tokens FCM para notificaciones push (Super Admin)
   auditorias    Auditoria[]              // Auditoría SAC (declaraciones fiscales)
+  payrollRunsProcessed PayrollRun[]     // Nóminas procesadas por el usuario
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -158,6 +159,9 @@ model Organization {
   fiscalSyncRuns     FiscalSyncRun[]
   declaracionesIva   Declaracion_IVA[]
   concertEvents      ConcertEvent[]
+  payrollProfiles    PayrollProfile[]
+  payrollRuns        PayrollRun[]
+  payrollLines       PayrollLine[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -209,6 +213,7 @@ model Member {
 
   user         User         @relation(fields: [userId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
+  payrollProfile PayrollProfile?
 
   @@unique([userId, organizationId]) // Evita duplicados
   @@index([userId])
@@ -676,6 +681,7 @@ model Expense {
   payments           ExpensePayment[]
   libroCompraLine    LibroCompraLine?
   retencionIva       RetencionIVA?
+  payrollLine        PayrollLine?
 
   @@index([companyId])
   @@index([organizationId])
@@ -1504,5 +1510,99 @@ model ConcertTicket {
   @@index([orderId])
   @@index([qrPayload])
   @@map("concert_tickets")
+}
+
+// ------------------------------------------
+// NÓMINA (Payroll)
+// ------------------------------------------
+
+enum PayrollPayType {
+  FIXED
+  COMMISSION
+  HOURLY
+}
+
+enum PayrollProfileStatus {
+  PENDING
+  REVIEW
+  PAID
+}
+
+enum PayrollRunStatus {
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+// Configuración salarial por miembro de la organización
+model PayrollProfile {
+  id              Int                  @id @default(autoincrement())
+  organizationId  Int
+  memberId        Int                  @unique
+  payType         PayrollPayType       @default(FIXED)
+  baseSalary      Decimal              @default(0) @db.Decimal(15, 2)
+  commissionPct   Decimal?             @db.Decimal(5, 2)
+  hoursWorked     Decimal?             @db.Decimal(8, 2)
+  bonuses         Decimal              @default(0) @db.Decimal(15, 2)
+  deductions      Decimal              @default(0) @db.Decimal(15, 2)
+  status          PayrollProfileStatus @default(PENDING)
+  lastProcessedAt DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  lines        PayrollLine[]
+
+  @@unique([organizationId, memberId])
+  @@index([organizationId])
+  @@index([status])
+  @@map("payroll_profiles")
+}
+
+// Lote de nómina procesado (período)
+model PayrollRun {
+  id             Int              @id @default(autoincrement())
+  organizationId Int
+  processedById  Int
+  periodLabel    String
+  totalAmount    Decimal          @default(0) @db.Decimal(15, 2)
+  employeeCount  Int              @default(0)
+  status         PayrollRunStatus @default(COMPLETED)
+  createdAt      DateTime         @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  processedBy  User          @relation(fields: [processedById], references: [id])
+  lines        PayrollLine[]
+
+  @@index([organizationId])
+  @@index([createdAt])
+  @@map("payroll_runs")
+}
+
+// Línea individual de pago dentro de un lote
+model PayrollLine {
+  id               Int      @id @default(autoincrement())
+  organizationId   Int
+  payrollRunId     Int
+  payrollProfileId Int?
+  memberId         Int
+  employeeName     String
+  amount           Decimal  @db.Decimal(15, 2)
+  baseAmount       Decimal  @default(0) @db.Decimal(15, 2)
+  bonuses          Decimal  @default(0) @db.Decimal(15, 2)
+  deductions       Decimal  @default(0) @db.Decimal(15, 2)
+  expenseId        Int?     @unique
+  createdAt        DateTime @default(now())
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payrollRun     PayrollRun      @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  payrollProfile PayrollProfile? @relation(fields: [payrollProfileId], references: [id], onDelete: SetNull)
+  expense        Expense?        @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@index([payrollRunId])
+  @@index([organizationId])
+  @@index([memberId])
+  @@map("payroll_lines")
 }
 

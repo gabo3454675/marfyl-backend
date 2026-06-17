@@ -38,6 +38,7 @@ import { AiModule } from "./modules/ai/ai.module";
 import { FiscalAdvisorModule } from "./modules/fiscal-advisor/fiscal-advisor.module";
 import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
 import { PlanModule } from "./modules/plan/plan.module";
+import { PayrollModule } from "./modules/payroll/payroll.module";
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PlanModule } from "./modules/plan/plan.module";
     AiModule,
     ExchangeRateModule,
     PlanModule,
+    PayrollModule,
     ThrottlerModule.forRoot([
       {
         name: "short",
