@@ -7,6 +7,7 @@ import {
   PayrollPayType,
   PayrollProfileStatus,
   PayrollRunStatus,
+  PayrollCurrency,
 } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
@@ -161,6 +162,7 @@ export class PayrollService {
     if (dto.baseSalary != null) data.baseSalary = dto.baseSalary;
     if (dto.commission != null) data.commissionPct = dto.commission;
     if (dto.hoursWorked != null) data.hoursWorked = dto.hoursWorked;
+    if (dto.payCurrency) data.payCurrency = dto.payCurrency as PayrollCurrency;
 
     const updated = await this.prisma.payrollProfile.update({
       where: {
@@ -288,6 +290,7 @@ export class PayrollService {
               memberId: profile.memberId,
               employeeName: name,
               amount,
+              payCurrency: profile.payCurrency,
               baseAmount: base,
               bonuses: profile.bonuses,
               deductions: profile.deductions,
@@ -349,6 +352,7 @@ export class PayrollService {
             id: true,
             employeeName: true,
             amount: true,
+            payCurrency: true,
             createdAt: true,
           },
         },
@@ -389,6 +393,7 @@ export class PayrollService {
       avatar: user.avatarUrl,
       role: roleToLabel(profile.member.role),
       type: mapPayTypeToFrontend(profile.payType),
+      payCurrency: profile.payCurrency,
       baseSalary: num(profile.baseSalary),
       commission: profile.commissionPct != null ? num(profile.commissionPct) : undefined,
       hoursWorked: profile.hoursWorked != null ? num(profile.hoursWorked) : undefined,
@@ -413,6 +418,7 @@ export class PayrollService {
         id: number;
         employeeName: string;
         amount: unknown;
+        payCurrency?: PayrollCurrency;
         createdAt: Date;
       }[];
     },
@@ -430,6 +436,7 @@ export class PayrollService {
         id: l.id,
         employeeName: l.employeeName,
         amount: num(l.amount),
+        payCurrency: l.payCurrency ?? "USD",
         date: l.createdAt,
       })),
     };

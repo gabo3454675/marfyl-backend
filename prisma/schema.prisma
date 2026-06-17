@@ -1534,12 +1534,18 @@ enum PayrollRunStatus {
   FAILED
 }
 
+enum PayrollCurrency {
+  USD
+  VES
+}
+
 // Configuración salarial por miembro de la organización
 model PayrollProfile {
   id              Int                  @id @default(autoincrement())
   organizationId  Int
   memberId        Int                  @unique
   payType         PayrollPayType       @default(FIXED)
+  payCurrency     PayrollCurrency      @default(USD)
   baseSalary      Decimal              @default(0) @db.Decimal(15, 2)
   commissionPct   Decimal?             @db.Decimal(5, 2)
   hoursWorked     Decimal?             @db.Decimal(8, 2)
@@ -1589,6 +1595,7 @@ model PayrollLine {
   memberId         Int
   employeeName     String
   amount           Decimal  @db.Decimal(15, 2)
+  payCurrency      PayrollCurrency @default(USD)
   baseAmount       Decimal  @default(0) @db.Decimal(15, 2)
   bonuses          Decimal  @default(0) @db.Decimal(15, 2)
   deductions       Decimal  @default(0) @db.Decimal(15, 2)

@@ -37,4 +37,8 @@ export class UpdatePayrollProfileDto {
   @Min(0)
   @Type(() => Number)
   hoursWorked?: number;
+
+  @IsOptional()
+  @IsEnum(["USD", "VES"])
+  payCurrency?: "USD" | "VES";
 }
