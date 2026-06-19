@@ -25,7 +25,7 @@ export class DolarApiService {
 
   async fetchQuote(kind?: DolarApiRateKind): Promise<DolarApiVenezuelaQuote> {
     const path = kind ?? this.rateKind;
-    const url = `${this.baseUrl}/v1/dolares/${path}`;
+    const url = `${this.baseUrl}/v1/euros/${path}`;
 
     try {
       const res = await fetch(url, {

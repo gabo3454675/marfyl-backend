@@ -16,7 +16,7 @@ async function fetchQuote() {
     (process.env.DOLAR_API_RATE_KIND || "oficial").toLowerCase() === "paralelo"
       ? "paralelo"
       : "oficial";
-  const res = await fetch(`${base}/v1/dolares/${kind}`, {
+  const res = await fetch(`${base}/v1/euros/${kind}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`DolarApi HTTP ${res.status}`);
