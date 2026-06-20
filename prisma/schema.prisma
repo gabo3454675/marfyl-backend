@@ -1613,3 +1613,10 @@ model PayrollLine {
   @@map("payroll_lines")
 }
 
+// ------------------------------------------
+// CONOCIMIENTO ESTRATÉGICO (IA — Asesor Fiscal Proactivo)
+// Embeddings 1024 dims (Cohere). Índice HNSW solo en migración SQL.
+// ------------------------------------------
+
+// model MarfylConocimientoEstrategico — tabla vía migración SQL (requiere pgvector)
+

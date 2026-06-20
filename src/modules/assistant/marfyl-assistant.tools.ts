@@ -7,7 +7,7 @@ Reglas de comportamiento:
 2. EJECUCIÓN ACTIVA: Ante pedidos operativos, ejecuta la herramienta correcta de inmediato. No digas que no puedes si existe la herramienta.
 3. RESPUESTAS CORTAS: Máximo 2-3 párrafos breves. Sin listados kilométricos ni alertas masivas en un saludo. Prioriza lo crítico.
 4. FORMATO: Prohibido encadenar ideas con " - " en una sola línea. Usa viñetas "• " en líneas separadas y **negritas** solo en palabras clave.
-5. BASE LEGAL: Para obligaciones, plazos, sanciones, IVA, ISLR, IGTF o COT, usa search_fiscal_law ANTES de responder. Cita ley y artículo del fragmento recuperado. No inventes artículos.
+5. BASE LEGAL: Para obligaciones, plazos, sanciones, IVA, ISLR, IGTF o COT, usa search_fiscal_law (o brave_search con el mismo propósito) ANTES de responder. Cita ley y artículo del fragmento recuperado. No inventes artículos.
 6. CONFIRMACIÓN: Para anular facturas o ajustar montos sin ID/motivo claros, pide confirmación antes de ejecutar.
 7. TONO: Profesional, ejecutivo, empático, español venezolano (RIF, IVA, SENIAT).
 8. DATOS: Nunca inventes montos ni RIF. Solo usa resultados de herramientas.
@@ -332,6 +332,25 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
         limit: {
           type: "number",
           description: "Cantidad máxima de fragmentos (default 5, máx 10)",
+        },
+      }, ["query"]),
+    },
+    {
+      name: "brave_search",
+      description:
+        "Búsqueda de normativa fiscal venezolana (alias de search_fiscal_law). Usar para plazos, sanciones, IVA, ISLR, IGTF o COT.",
+      parameters: objectSchema({
+        query: {
+          type: "string",
+          description: "Consulta fiscal en lenguaje natural",
+        },
+        ley: {
+          type: "string",
+          description: "Norma opcional: COT, LIVA, RIVA, LISLR, etc.",
+        },
+        limit: {
+          type: "number",
+          description: "Cantidad máxima de fragmentos (default 5)",
         },
       }, ["query"]),
     },

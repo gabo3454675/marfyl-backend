@@ -171,6 +171,18 @@ export class AssistantToolsService {
     this.handlers.set("search_fiscal_law", (args) =>
       this.searchFiscalLaw(args),
     );
+    this.handlers.set("brave_search", (args) =>
+      this.searchFiscalLaw(this.normalizeBraveSearchArgs(args)),
+    );
+  }
+
+  private normalizeBraveSearchArgs(
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const query = String(
+      args.query ?? args.q ?? args.search_query ?? args.searchQuery ?? "",
+    ).trim();
+    return { ...args, query };
   }
 
   private async listMyOrganizations(ctx: AssistantToolContext) {
@@ -623,7 +635,9 @@ export class AssistantToolsService {
   }
 
   private async searchFiscalLaw(args: Record<string, unknown>) {
-    const query = String(args.query ?? "").trim();
+    const query = String(
+      args.query ?? args.q ?? args.search_query ?? "",
+    ).trim();
     if (!query) throw new BadRequestException("query requerido");
 
     const ready = await this.fiscalKnowledge.isReady();

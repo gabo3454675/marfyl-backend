@@ -1,9 +1,31 @@
-import "dotenv/config";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import pg from "pg";
 import { generarEmbeddingGratuito } from "../../src/modules/fiscal-knowledge/generar-embedding-gratuito";
 import { vectorToPgLiteral } from "../../src/modules/fiscal-knowledge/generar-embedding-gratuito";
 
+function loadEnvFile(filePath: string) {
+  if (!fs.existsSync(filePath)) return;
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
 async function main() {
+  loadEnvFile(path.join(process.cwd(), ".env"));
+
   const url = process.env.DATABASE_URL?.trim();
   if (!url) throw new Error("DATABASE_URL no configurada");
 
