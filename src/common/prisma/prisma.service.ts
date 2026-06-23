@@ -36,20 +36,11 @@ export class PrismaService
     const extended = this.$extends(tenantIsolationExtension) as PrismaClient;
     Object.assign(this, extended);
 
-    // Diagnóstico de T3-bis: ahora se imprime DESPUÉS de que ConfigModule
-    // haya cargado .env, por lo que los valores son los reales (no undefined).
-    // Para 'databaseUrl' usamos parseDbTarget (que ya existe en este archivo)
-    // para no exponer el password en logs, coherente con el principio
-    // "Nunca incluye el password" del helper.
-    console.log("databaseUrl (host/sslmode)", parseDbTarget(databaseUrl));
-    console.log(
-      "process.env.DATABASE_URL (host/sslmode)",
-      parseDbTarget(process.env.DATABASE_URL ?? ""),
-    );
-    console.log("process.env.DEBUG_DB", process.env.DEBUG_DB);
-    console.log("process.env.PORT", process.env.PORT);
-    console.log("process.env.NODE_ENV", process.env.NODE_ENV);
-    console.log("process.env.APP_ENV", process.env.APP_ENV);
+    // Diagnóstico condicional solo en desarrollo, sin exponer datos sensibles
+    if (process.env.NODE_ENV === "development") {
+      console.log("databaseUrl (host/sslmode)", parseDbTarget(databaseUrl));
+      console.log("process.env.DEBUG_DB", process.env.DEBUG_DB);
+    }
   }
 
   async onModuleInit() {

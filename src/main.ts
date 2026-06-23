@@ -3,6 +3,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import * as compression from "compression";
+import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { assertMarfylDatabaseUrl } from "./common/database-guard";
 import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter";
@@ -83,6 +84,32 @@ async function bootstrap() {
 
   // Compression Gzip - Reduce el tamaño de las respuestas JSON hasta 70%
   app.use(compression());
+
+  // Helmet - Seguridad HTTP headers
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "https://*.supabase.co"],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    }),
+  );
 
   // CORS Configuration - Seguro para producción
   // En producción, solo acepta peticiones desde el dominio configurado

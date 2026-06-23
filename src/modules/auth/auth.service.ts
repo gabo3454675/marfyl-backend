@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import {
   Injectable,
   UnauthorizedException,
@@ -30,6 +31,14 @@ import { EmailService } from "@/modules/email/email.service";
 
 @Injectable()
 export class AuthService {
+  // Almacén en memoria para tokens de recuperación (1 hora de validez)
+  // En producción, reemplazar con Redis o tabla en BD
+  private readonly resetTokens = new Map<
+    string,
+    { userId: number; expiresAt: Date }
+  >();
+  private readonly RESET_TOKEN_EXPIRY_MS = 3600000; // 1 hora
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -224,8 +233,9 @@ export class AuthService {
   }
 
   /**
-   * Recuperación de contraseña dentro del sistema (sin email externo).
-   * Valida email + nombre completo para permitir restablecer la clave.
+   * Recuperación de contraseña — genera un token de reset y lo envía por email.
+   * NO cambia la contraseña directamente (seguridad).
+   * Valida email + nombre completo para verificar identidad.
    */
   async recoverPassword(dto: RecoverPasswordDto) {
     const user = await this.prisma.user.findUnique({
@@ -238,36 +248,48 @@ export class AuthService {
       },
     });
 
-    if (!user) {
-      throw new UnauthorizedException("No se pudo validar tu identidad");
-    }
+    // No revelar si el email existe o no (seguridad)
+    const genericMessage =
+      "Si el email existe, recibirás un enlace de recuperación";
 
-    if (user.isActive === false) {
-      throw new UnauthorizedException(
-        "Cuenta desactivada. Contacte al administrador.",
-      );
+    if (!user || !user.isActive) {
+      return { message: genericMessage };
     }
 
     const storedName = (user.fullName ?? "").trim().toLowerCase();
     const providedName = dto.fullName.trim().toLowerCase();
     if (!storedName || storedName !== providedName) {
-      throw new UnauthorizedException("No se pudo validar tu identidad");
+      return { message: genericMessage };
     }
 
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(dto.newPassword, saltRounds);
+    // Generar token de reset (válido por 1 hora)
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + this.RESET_TOKEN_EXPIRY_MS);
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        requiresPasswordChange: false,
-      },
-    });
+    // Almacenar en memoria (no requiere migración de BD)
+    this.resetTokens.set(resetToken, { userId: user.id, expiresAt });
 
-    return {
-      message: "Clave actualizada correctamente. Ya puedes iniciar sesión.",
-    };
+    // Limpiar tokens expirados cada vez que se genera uno nuevo
+    this.cleanExpiredResetTokens();
+
+    // Enviar email con el token (fire-and-forget, no bloquear respuesta)
+    this.emailService
+      .sendPasswordResetEmail(user.email, resetToken)
+      .catch(() => undefined);
+
+    return { message: genericMessage };
+  }
+
+  /**
+   * Limpia los tokens de reset expirados del mapa en memoria.
+   */
+  private cleanExpiredResetTokens(): void {
+    const now = new Date();
+    for (const [token, data] of this.resetTokens.entries()) {
+      if (data.expiresAt <= now) {
+        this.resetTokens.delete(token);
+      }
+    }
   }
 
   async login(loginDto: LoginDto) {

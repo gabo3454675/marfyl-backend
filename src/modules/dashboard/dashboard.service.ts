@@ -5,6 +5,7 @@ import type {
   DashboardHealthDto,
   SalesChartDayDto,
   TopProductMarginDto,
+  MonthlySalesDto,
 } from "./dto/dashboard-health.dto";
 import type {
   DashboardDiagnosisDto,
@@ -94,6 +95,7 @@ export class DashboardService {
   async getSummary(organizationId: number): Promise<DashboardSummaryDto> {
     const empty: DashboardSummaryDto = {
       totalSalesToday: 0,
+      totalSalesYesterday: 0,
       productsCount: 0,
       lowStockCount: 0,
       recentTransactions: [],
@@ -108,24 +110,34 @@ export class DashboardService {
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
 
       // Suma de ventas del día (solo facturas pagadas)
-      const invoicesToday = await this.prisma.invoice.aggregate({
-        where: {
-          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-          createdAt: {
-            gte: today,
-            lt: tomorrow,
+      const [invoicesToday, invoicesYesterday] = await Promise.all([
+        this.prisma.invoice.aggregate({
+          where: {
+            organizationId,
+            createdAt: { gte: today, lt: tomorrow },
+            status: "PAID",
           },
-          status: "PAID",
-        },
-        _sum: {
-          totalAmount: true,
-        },
-      });
+          _sum: { totalAmount: true },
+        }),
+        this.prisma.invoice.aggregate({
+          where: {
+            organizationId,
+            createdAt: { gte: yesterday, lt: today },
+            status: "PAID",
+          },
+          _sum: { totalAmount: true },
+        }),
+      ]);
 
       const totalSalesToday = invoicesToday._sum.totalAmount
         ? Number(invoicesToday._sum.totalAmount)
+        : 0;
+      const totalSalesYesterday = invoicesYesterday._sum.totalAmount
+        ? Number(invoicesYesterday._sum.totalAmount)
         : 0;
 
       // Conteo total de productos
@@ -172,6 +184,7 @@ export class DashboardService {
 
       return {
         totalSalesToday,
+        totalSalesYesterday,
         productsCount,
         lowStockCount,
         recentTransactions,
@@ -313,19 +326,120 @@ export class DashboardService {
     const totalThisMonth = Number(invoicesThisMonthAgg._sum.totalAmount ?? 0);
     const totalLastMonth = Number(invoicesLastMonthAgg._sum.totalAmount ?? 0);
     const countThisMonth = invoicesThisMonthAgg._count.id;
+    const countLastMonth = invoicesLastMonthAgg._count.id;
     const ticketPromedio =
       countThisMonth > 0 ? totalThisMonth / countThisMonth : 0;
-    const crecimientoMensual =
+    const ticketPromedioPrev =
+      countLastMonth > 0 ? totalLastMonth / countLastMonth : 0;
+    const crecimientoMensual: number | null =
       totalLastMonth > 0
-        ? ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100
-        : 0;
+        ? Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 * 10) / 10
+        : null;
+
+    // Meta diaria: promedio del mes anterior + 10% de stretch
+    const daysInLastMonth = lastDayLastMonth.getDate();
+    const avgDailyLastMonth =
+      daysInLastMonth > 0 ? totalLastMonth / daysInLastMonth : 0;
+    const dailySalesGoal = Math.round(avgDailyLastMonth * 1.1 * 100) / 100;
+
+    // Ganancia neta estimada (ingresos - costos de reposición) mes actual y anterior
+    const [itemsThisMonth, itemsLastMonth] = await Promise.all([
+      this.prisma.invoiceItem.findMany({
+        where: {
+          invoice: {
+            organizationId,
+            status: "PAID",
+            createdAt: { gte: firstDayThisMonth },
+          },
+        },
+        include: { product: { select: { costPrice: true } } },
+        take: 2000,
+      }),
+      this.prisma.invoiceItem.findMany({
+        where: {
+          invoice: {
+            organizationId,
+            status: "PAID",
+            createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
+          },
+        },
+        include: { product: { select: { costPrice: true } } },
+        take: 2000,
+      }),
+    ]);
+
+    const calcNetProfit = (
+      items: Array<{ unitPrice: unknown; quantity: number; product: { costPrice: unknown } }>,
+    ) =>
+      items.reduce((sum, item) => {
+        const revenue = Number(item.unitPrice) * item.quantity;
+        const cost = Number(item.product.costPrice) * item.quantity;
+        return sum + (revenue - cost);
+      }, 0);
+
+    const estimatedNetProfit = Math.round(calcNetProfit(itemsThisMonth) * 100) / 100;
+    const estimatedNetProfitPrev =
+      Math.round(calcNetProfit(itemsLastMonth) * 100) / 100;
+
+    // Ventas mensuales (últimos 6 meses)
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const monthlySalesRaw = await this.prisma.$queryRaw<
+      Array<{ month: string; total: Prisma.Decimal }>
+    >`
+      SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, SUM("totalAmount") as total
+      FROM "invoices"
+      WHERE "organizationId" = ${organizationId}
+        AND status = 'PAID'
+        AND "createdAt" >= ${sixMonthsAgo}
+      GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
+      ORDER BY month
+    `;
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const monthlySalesChart = monthlySalesRaw.map((row) => {
+      const [year, month] = row.month.split('-');
+      const label = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
+      return { month: label, ventas: Math.round(Number(row.total) * 100) / 100 };
+    });
+
+    // Punto de equilibrio: Costos Fijos / Margen Promedio
+    // Costos fijos = gastos operativos pagados del mes
+    const expensesAgg = await this.prisma.expense.aggregate({
+      where: {
+        organizationId,
+        status: "PAID",
+        deletedAt: null,
+        date: { gte: firstDayThisMonth },
+      },
+      _sum: { amount: true },
+    });
+    const fixedCosts = Number(expensesAgg._sum.amount ?? 0);
+    // Calcular costo de reposición del mes desde los items
+    const costThisMonth = itemsThisMonth.reduce(
+      (sum, item) => sum + Number(item.product.costPrice) * item.quantity,
+      0,
+    );
+    // Margen promedio = (ingresos - costo de reposición) / ingresos
+    // Usamos totalThisMonth como proxy de ingresos (incluye IVA, aproximación aceptable)
+    const avgMargin =
+      totalThisMonth > 0
+        ? (totalThisMonth - costThisMonth) / totalThisMonth
+        : 0.3;
+    const breakEvenPoint =
+      avgMargin > 0 ? Math.round(fixedCosts / avgMargin) : 0;
 
     return {
       salesChartLastMonth,
       topProductsByMargin,
       ticketPromedio: Math.round(ticketPromedio * 100) / 100,
-      crecimientoMensual: Math.round(crecimientoMensual * 10) / 10,
+      ticketPromedioPrev: Math.round(ticketPromedioPrev * 100) / 100,
+      crecimientoMensual,
       totalVentasMes: Math.round(totalThisMonth * 100) / 100,
+      dailySalesGoal,
+      estimatedNetProfit,
+      estimatedNetProfitPrev,
+      monthlySalesChart,
+      breakEvenPoint,
     };
   }
 

@@ -53,6 +53,36 @@ export class EmailService {
       this.config.get<string>("FRONTEND_URL") || "http://localhost:3003";
   }
 
+  /** Envío de email para recuperación de contraseña con token. */
+  async sendPasswordResetEmail(
+    to: string,
+    resetToken: string,
+  ): Promise<boolean> {
+    const recipient = to?.trim();
+    if (!recipient) return false;
+
+    const resetUrl = `${this.frontendUrl.replace(/\/$/, "")}/auth/reset-password?token=${resetToken}`;
+    const html = `
+      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
+        <h1 style="font-size:22px;margin-bottom:8px">Recuperación de contraseña</h1>
+        <p>Hola,</p>
+        <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>MARFYL</strong>.</p>
+        <p style="margin:28px 0">
+          <a href="${resetUrl}" style="background:#0d9488;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+            Restablecer contraseña
+          </a>
+        </p>
+        <p style="font-size:13px;color:#64748b">Este enlace expira en 1 hora.</p>
+        <p style="font-size:13px;color:#64748b">Si no solicitaste este cambio, ignorá este correo.</p>
+      </div>`;
+
+    return this.dispatchEmail({
+      to: recipient,
+      subject: "Recuperación de contraseña — MARFYL",
+      html,
+    });
+  }
+
   /** Bienvenida tras alta self-service de cliente SaaS. */
   async sendWelcomeEmail(
     to: string,

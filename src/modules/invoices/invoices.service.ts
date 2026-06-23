@@ -747,50 +747,12 @@ export class InvoicesService {
    * @deprecated En Venezuela las facturas NO se eliminan nunca. Usar voidInvoice() para anular.
    *              La eliminación física de facturas es ilegal según la ley tributaria venezolana.
    *              Este método será removido en futuras versiones.
+   * @throws BadRequestException siempre — las facturas no se eliminan físicamente.
    */
-  async remove(id: number, organizationId: number, userId: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
-    if (!user?.isSuperAdmin) {
-      throw new ForbiddenException(
-        "Solo el Super Admin puede eliminar facturas",
-      );
-    }
-
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id, organizationId },
-      include: { customer: { select: { name: true } } },
-    });
-    if (!invoice) {
-      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
-    }
-
-    await this.activityLog.log({
-      organizationId,
-      userId,
-      action: "INVOICE_DELETED",
-      entityType: "invoice",
-      entityId: String(id),
-      newValue: {
-        totalAmount: Number(invoice.totalAmount),
-        paymentMethod: invoice.paymentMethod,
-        status: invoice.status,
-      },
-      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} eliminada. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${(invoice.customer as { name?: string })?.name ?? "N/A"}.`,
-    });
-
-    await this.prisma.$transaction([
-      this.prisma.task.updateMany({
-        where: { invoiceId: id },
-        data: { invoiceId: null },
-      }),
-      this.prisma.invoiceItem.deleteMany({ where: { invoiceId: id } }),
-      this.prisma.invoice.delete({ where: { id } }),
-    ]);
-
-    return { message: "Factura eliminada correctamente" };
+  async remove(id: number, organizationId: number, _userId?: number): Promise<void> {
+    throw new BadRequestException(
+      'Las facturas no pueden ser eliminadas según la normativa tributaria venezolana. Use anulación (void) en su lugar.',
+    );
   }
 
   /**
@@ -938,9 +900,10 @@ export class InvoicesService {
         customerName: invoice.customer?.name ?? "Cliente General",
         baseExempt: 0,
         baseReduced: 0,
-        baseGeneral: newAmount,
-        ivaAmount: newAmount * 0.16,
-        totalAmount: newAmount + newAmount * 0.16,
+        // newAmount es el NUEVO TOTAL con IVA; calculamos base e IVA contenido
+        baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
+        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        totalAmount: newAmount,
         status: "ACTIVE",
       },
     });
@@ -950,8 +913,8 @@ export class InvoicesService {
       where: { id },
       data: {
         totalAmount: newAmount,
-        ivaAmount: newAmount * 0.16,
-        baseGeneral: newAmount,
+        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
       },
       include: {
         customer: true,
@@ -968,11 +931,11 @@ export class InvoicesService {
       entityId: String(id),
       oldValue: {
         totalAmount: currentAmount,
-        ivaAmount: currentAmount * 0.16,
+        ivaAmount: this.toNum(invoice.ivaAmount),
       },
       newValue: {
         totalAmount: newAmount,
-        ivaAmount: newAmount * 0.16,
+        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
         difference: difference,
         reason: reason,
         creditNoteId: creditNote.id,
@@ -1325,9 +1288,9 @@ export class InvoicesService {
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 18;
 
-        const subtotalVal = this.toNum(invoice.totalAmount);
+        const totalVal = this.toNum(invoice.totalAmount);
         const taxVal = this.toNum(invoice.ivaAmount);
-        const totalVal = subtotalVal + taxVal;
+        const subtotalVal = totalVal - taxVal;
         const tx = 350;
 
         doc.fontSize(10).fillColor(text);

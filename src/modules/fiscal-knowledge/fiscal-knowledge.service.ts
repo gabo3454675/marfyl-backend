@@ -58,7 +58,16 @@ export class FiscalKnowledgeService {
       );
     }
 
-    const vectorLiteral = `[${vector.join(",")}]`;
+    // Validar que todos los valores del vector son numéricos finitos
+    const safeVector = vector
+      .filter((v) => Number.isFinite(v))
+      .map((v) => Number(v.toFixed(8)));
+
+    if (safeVector.length === 0) {
+      return [];
+    }
+
+    const vectorLiteral = `[${safeVector.join(",")}]`;
 
     const rows = await this.prisma.$queryRawUnsafe<
       Array<{

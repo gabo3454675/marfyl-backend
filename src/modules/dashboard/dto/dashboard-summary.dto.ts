@@ -1,5 +1,6 @@
 export class DashboardSummaryDto {
   totalSalesToday: number;
+  totalSalesYesterday: number;
   productsCount: number;
   lowStockCount: number;
   recentTransactions: {
