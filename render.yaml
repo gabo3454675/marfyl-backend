@@ -40,6 +40,11 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
+      # OCR facturas por foto (visión — no usar llama-3.1-8b-instant)
+      - key: GROQ_VISION_MODEL
+        value: meta-llama/llama-4-scout-17b-16e-instruct
+      - key: GROQ_VISION_MODEL_FALLBACK
+        value: meta-llama/llama-4-maverick-17b-128e-instruct
       - key: HUGGINGFACE_API_KEY
         sync: false
       - key: FISCAL_EMBEDDING_MODEL

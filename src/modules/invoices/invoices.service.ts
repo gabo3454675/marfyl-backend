@@ -458,6 +458,44 @@ export class InvoicesService {
     }
   }
 
+  /** Restaura stock al anular una factura (inverso de create). */
+  private collectVoidStockRestores(
+    items: Array<{
+      quantity: number;
+      product: Product & { bundleComponents?: unknown };
+    }>,
+    productById: Map<number, Product>,
+  ): { productId: number; increment: number }[] {
+    const restores: { productId: number; increment: number }[] = [];
+    const push = (productId: number, increment: number) => {
+      if (increment <= 0) return;
+      const existing = restores.find((r) => r.productId === productId);
+      if (existing) existing.increment += increment;
+      else restores.push({ productId, increment });
+    };
+
+    for (const item of items) {
+      const product = item.product;
+      const compsUnknown = product.bundleComponents as unknown;
+      const compsList =
+        Array.isArray(compsUnknown) && compsUnknown.length > 0
+          ? (compsUnknown as { productId: number; quantity: number }[])
+          : null;
+
+      if (product.isBundle || product.isService) {
+        if (compsList) {
+          for (const comp of compsList) {
+            if (!productById.has(comp.productId)) continue;
+            push(comp.productId, item.quantity * (comp.quantity ?? 1));
+          }
+        }
+      } else {
+        push(product.id, item.quantity);
+      }
+    }
+    return restores;
+  }
+
   async findAll(organizationId: number) {
     return this.prisma.invoice.findMany({
       where: {
@@ -795,18 +833,62 @@ export class InvoicesService {
       throw new BadRequestException("La factura ya está anulada");
     }
 
-    // Soft-delete: marcar como cancelada y establecer deletedAt
-    const voidedInvoice = await this.prisma.invoice.update({
-      where: { id },
-      data: {
-        status: InvoiceStatus.CANCELLED,
-        deletedAt: new Date(),
-      },
-      include: {
-        customer: true,
-        items: { include: { product: true } },
-      },
+    const allProductIds = new Set<number>();
+    for (const item of invoice.items) {
+      allProductIds.add(item.productId);
+      const compsUnknown = item.product?.bundleComponents as unknown;
+      if (Array.isArray(compsUnknown)) {
+        for (const c of compsUnknown as { productId?: number }[]) {
+          if (c?.productId != null) allProductIds.add(c.productId);
+        }
+      }
+    }
+    const relatedProducts = await this.prisma.product.findMany({
+      where: { id: { in: [...allProductIds] }, organizationId },
     });
+    const productById = new Map(relatedProducts.map((p) => [p.id, p]));
+
+    const stockRestores = this.collectVoidStockRestores(
+      invoice.items as Array<{
+        quantity: number;
+        product: Product & { bundleComponents?: unknown };
+      }>,
+      productById,
+    );
+
+    const isCreditSale =
+      invoice.paymentMethod === "CREDIT" ||
+      invoice.paymentStatus === PaymentStatus.pending_credit;
+
+    const voidedInvoice = await this.prisma.$transaction(async (tx) => {
+      for (const { productId, increment } of stockRestores) {
+        await tx.product.update({
+          where: { id: productId, organizationId },
+          data: { stock: { increment } },
+        });
+      }
+      return tx.invoice.update({
+        where: { id },
+        data: {
+          status: InvoiceStatus.CANCELLED,
+          deletedAt: new Date(),
+        },
+        include: {
+          customer: true,
+          items: { include: { product: true } },
+        },
+      });
+    });
+
+    if (isCreditSale && invoice.customerId) {
+      await this.creditsService.reverseChargeForVoid(
+        invoice.customerId,
+        organizationId,
+        id,
+        Number(invoice.totalAmount),
+        reason.trim(),
+      );
+    }
 
     // Registrar en activity log para auditoría
     await this.activityLog.log({
@@ -824,7 +906,7 @@ export class InvoicesService {
         voidReason: reason,
         voidedAt: new Date().toISOString(),
       },
-      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} ANULADA. Motivo: ${reason}. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${invoice.customer?.name ?? "N/A"}.`,
+      summary: `Factura #${(invoice as { consecutiveNumber?: number }).consecutiveNumber ?? id} ANULADA. Motivo: ${reason}. Total: $${Number(invoice.totalAmount).toFixed(2)}. Cliente: ${invoice.customer?.name ?? "N/A"}. Stock restaurado (${stockRestores.length} producto(s)).`,
     });
 
     return voidedInvoice;

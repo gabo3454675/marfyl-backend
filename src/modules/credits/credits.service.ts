@@ -158,6 +158,38 @@ export class CreditsService {
   }
 
   /**
+   * Revierte el cargo de crédito al anular una factura a crédito.
+   */
+  async reverseChargeForVoid(
+    customerId: number,
+    organizationId: number,
+    invoiceId: number,
+    amountUsd: number,
+    reason: string,
+  ) {
+    const credit = await this.getOrCreateCredit(customerId, organizationId);
+    const newBalance = Math.max(
+      0,
+      Number(credit.currentBalance) - amountUsd,
+    );
+    await this.prisma.customerCredit.update({
+      where: { id: credit.id },
+      data: { currentBalance: newBalance },
+    });
+    return this.prisma.creditTransaction.create({
+      data: {
+        creditId: credit.id,
+        invoiceId,
+        type: CreditTransactionType.PAYMENT,
+        amountUsd,
+        amountBs: 0,
+        exchangeRate: 1,
+        description: `Reversión por anulación factura #${invoiceId}: ${reason}`,
+      },
+    });
+  }
+
+  /**
    * Registra un abono. Actualiza current_balance y, si se asocia a factura y queda saldada, marca la tarea de cobranza como DONE.
    */
   async registerPayment(

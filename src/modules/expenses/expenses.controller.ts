@@ -17,6 +17,8 @@ import { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { ExpensesService } from "./expenses.service";
+import { ReceiptScanService } from "./receipt-scan.service";
+import { ConfirmReceiptScanDto } from "./dto/confirm-receipt-scan.dto";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { UpdateExpenseDto } from "./dto/update-expense.dto";
 import { RegisterExpensePaymentDto } from "./dto/register-expense-payment.dto";
@@ -28,7 +30,10 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 @Controller("expenses")
 @UseGuards(JwtAuthGuard, OrganizationGuard)
 export class ExpensesController {
-  constructor(private readonly expensesService: ExpensesService) {}
+  constructor(
+    private readonly expensesService: ExpensesService,
+    private readonly receiptScanService: ReceiptScanService,
+  ) {}
 
   @Post()
   create(
@@ -130,6 +135,40 @@ export class ExpensesController {
       referenceNumber: referenceNumber?.trim() || undefined,
       description: description?.trim() || undefined,
       initialPayment,
+    });
+  }
+
+  /** Escaneo OCR de factura/recibo desde foto (Gemini Vision). */
+  @Post("scan-receipt")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async scanReceipt(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    const scan = await this.receiptScanService.scanReceiptImage(file);
+    return this.receiptScanService.matchLinesToCatalog(organizationId, scan);
+  }
+
+  /** Confirma registro de factura escaneada (inventario o gasto operativo). */
+  @Post("scan-receipt/confirm")
+  confirmReceiptScan(
+    @Body() dto: ConfirmReceiptScanDto,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { sub: number },
+  ) {
+    return this.receiptScanService.confirmReceipt({
+      organizationId,
+      userId: user.sub,
+      mode: dto.mode,
+      scan: dto.scan as import("./receipt-scan.service").ScannedReceiptResult,
+      categoryId: dto.categoryId,
+      supplierId: dto.supplierId,
+      status: dto.status,
     });
   }
 
