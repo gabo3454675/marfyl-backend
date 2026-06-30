@@ -19,6 +19,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { assertMarfylDatabaseUrl } from "../../src/common/database-guard";
 import { chunkByArticles } from "../../src/modules/fiscal-knowledge/article-chunker";
+import { buildChunkEmbeddingText } from "../../src/modules/fiscal-knowledge/fiscal-query-rewriter";
 import { generarEmbeddingGratuito, resolveHuggingFaceApiKey } from "../../src/modules/fiscal-knowledge/generar-embedding-gratuito";
 import { extractPdfTextWithOcr, terminateOcrWorker } from "../../src/modules/fiscal-knowledge/pdf-extract-ocr";
 import { FISCAL_PDF_CATALOG } from "../../src/modules/fiscal-knowledge/fiscal-knowledge.constants";
@@ -209,7 +210,13 @@ async function main() {
             continue;
           }
 
-          const embedding = await generarEmbeddingGratuito(chunk.content, {
+          const embeddingText = buildChunkEmbeddingText({
+            ley: chunk.ley,
+            articulo: chunk.articulo,
+            titulo: chunk.titulo,
+            content: chunk.content,
+          });
+          const embedding = await generarEmbeddingGratuito(embeddingText, {
             apiKey: hfKey!,
           });
           if (!pool) throw new Error("Pool de base de datos no inicializado");

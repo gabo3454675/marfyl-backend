@@ -28,7 +28,7 @@ export function isConcertModuleEnabledForOrg(org: {
   return org.concertModuleEnabled === true || org.slug === CONCERT_ORG_SLUG;
 }
 
-/** Dueños fundadores: solo ven Rancho, Monddy y Davean. */
+/** Todos los usuarios ven TODAS sus membresías. */
 export function filterOrganizationsForLogin<T extends { slug: string }>(
   organizations: T[],
   options: { isPlatformSuperAdmin: boolean },
@@ -36,9 +36,6 @@ export function filterOrganizationsForLogin<T extends { slug: string }>(
   if (options.isPlatformSuperAdmin) {
     return organizations;
   }
-  const hasFounding = organizations.some((o) => isFoundingOrgSlug(o.slug));
-  if (hasFounding) {
-    return organizations.filter((o) => isFoundingOrgSlug(o.slug));
-  }
+  // Todos los usuarios ven TODAS sus membresías (sin filtrar por founding org)
   return organizations;
 }

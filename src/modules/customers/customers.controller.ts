@@ -17,14 +17,17 @@ import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 
 @Controller("customers")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Post()
+  @Permissions("canManageCustomers")
   async create(
     @Body() createCustomerDto: CreateCustomerDto,
     @ActiveOrganization() organizationId: number,
@@ -33,6 +36,7 @@ export class CustomersController {
   }
 
   @Get()
+  @Permissions("canManageCustomers")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   async findAll(@ActiveOrganization() organizationId: number) {
@@ -48,6 +52,7 @@ export class CustomersController {
   }
 
   @Patch(":id")
+  @Permissions("canManageCustomers")
   async update(
     @Param("id", ParseIntPipe) id: number,
     @Body() updateCustomerDto: UpdateCustomerDto,
@@ -57,6 +62,7 @@ export class CustomersController {
   }
 
   @Delete(":id")
+  @Permissions("canManageCustomers")
   async remove(
     @Param("id", ParseIntPipe) id: number,
     @ActiveOrganization() organizationId: number,

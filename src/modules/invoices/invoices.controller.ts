@@ -22,11 +22,13 @@ import { InvoiceHistoryQueryDto } from "./dto/history-query.dto";
 import { VoidInvoiceDto, AdjustAmountDto } from "./dto/void-invoice.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
 @Controller("invoices")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class InvoicesController {
   constructor(
     private readonly invoicesService: InvoicesService,
@@ -34,6 +36,7 @@ export class InvoicesController {
   ) {}
 
   @Post()
+  @Permissions("canManageInvoices")
   async create(
     @Body() createInvoiceDto: CreateInvoiceDto,
     @ActiveOrganization() organizationId: number,
@@ -47,6 +50,7 @@ export class InvoicesController {
   }
 
   @Get()
+  @Permissions("canManageInvoices")
   async findAll(
     @ActiveOrganization() organizationId: number,
     @Query("page") page?: string,
@@ -113,6 +117,7 @@ export class InvoicesController {
   }
 
   @Delete(":id")
+  @Permissions("canDeleteInvoices")
   async remove(
     @Param("id", ParseIntPipe) id: number,
     @ActiveOrganization() organizationId: number,
@@ -176,6 +181,7 @@ export class InvoicesController {
    * La factura pasa a estado CANCELLED, se preservan todos los datos y se registra en auditoría.
    */
   @Post(":id/void")
+  @Permissions("canAnulateInvoices")
   @HttpCode(HttpStatus.OK)
   async voidInvoice(
     @Param("id", ParseIntPipe) id: number,

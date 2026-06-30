@@ -8,13 +8,18 @@ const prisma = new PrismaClient();
 const SUPER_ADMIN_EMAIL = 'admin@marfyl.dev';
 const SUPER_ADMIN_PASSWORD = 'admin123';
 
+// Usuario POS_OPERATOR de prueba (rol nuevo — requiere migración manual del enum en Prisma)
+const POS_OPERATOR_EMAIL = 'pos@marfyl.com';
+const POS_OPERATOR_PASSWORD = 'pos123';
+
 const ORGANIZATIONS = [
   { nombre: 'El Rancho de Germán', slug: 'el-rancho-de-german', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
   { nombre: 'Monddy Corp', slug: 'monddy', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
   { nombre: 'Davean', slug: 'davean', plan: Plan.ENTERPRISE, currency: 'USD', symbol: '$' },
 ];
 
-const ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SELLER', 'WAREHOUSE', 'FISCAL'];
+// ⚠️ POS_OPERATOR es un rol nuevo — requiere migración manual del enum Role en Prisma antes de usarlo
+const ROLES: Role[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'SELLER', 'WAREHOUSE', 'FISCAL', 'POS_OPERATOR' as Role];
 
 const PRODUCT_TEMPLATES = [
   { name: 'Polar IPA', sku: 'CER-001', category: 'Cervezas', cost: 1.2, price: 2.5, exempt: false },
@@ -71,8 +76,24 @@ async function seed() {
   });
   console.log(`✅ Super Admin: ${superAdmin.email}`);
 
+  // ── 1.1. POS Operator (rol nuevo — requiere migración manual del enum en Prisma) ──
+  const posOperator = await prisma.user.upsert({
+    where: { email: POS_OPERATOR_EMAIL },
+    update: { passwordHash },
+    create: {
+      email: POS_OPERATOR_EMAIL,
+      passwordHash,
+      fullName: 'Cajero POS',
+      isActive: true,
+    },
+  });
+  console.log(`✅ POS Operator: ${posOperator.email}`);
+
   // ── 2. Additional employees (10 users per org) ─────────────────────────────
-  const allUsers: { user: typeof superAdmin; role: Role }[] = [{ user: superAdmin, role: 'SUPER_ADMIN' }];
+  const allUsers: { user: typeof superAdmin; role: Role }[] = [
+    { user: superAdmin, role: 'SUPER_ADMIN' },
+    { user: posOperator, role: 'POS_OPERATOR' as Role },
+  ];
 
   for (let i = 0; i < 10; i++) {
     const firstName = faker.person.firstName();
@@ -88,7 +109,7 @@ async function seed() {
         isActive: true,
       },
     });
-    const role = weightedPick(ROLES, [5, 20, 20, 30, 15, 10]);
+    const role = weightedPick(ROLES, [5, 20, 20, 30, 15, 10, 5]);
     allUsers.push({ user, role });
   }
 
@@ -501,8 +522,10 @@ async function seed() {
 
   console.log('\n🎉 Seed DEV completado exitosamente!');
   console.log(`   Super Admin: ${SUPER_ADMIN_EMAIL} / ${SUPER_ADMIN_PASSWORD}`);
+  console.log(`   POS Operator (rol nuevo): ${POS_OPERATOR_EMAIL} / ${POS_OPERATOR_PASSWORD}`);
   console.log(`   Organizaciones: ${orgs.length}`);
   console.log(`   Usuarios: ${allUsers.length}`);
+  console.log('\n⚠️  Nota: El rol POS_OPERATOR es nuevo. Asegúrate de migrar el enum Role en Prisma antes de usarlo en producción.');
 }
 
 seed()

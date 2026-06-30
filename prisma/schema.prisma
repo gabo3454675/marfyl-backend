@@ -93,6 +93,7 @@ enum Role {
   MANAGER
   SELLER
   WAREHOUSE
+  POS_OPERATOR
 }
 
 enum Plan {

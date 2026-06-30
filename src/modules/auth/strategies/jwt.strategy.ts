@@ -29,8 +29,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub },
       select: { isActive: true, isSuperAdmin: true },
     });
-    if (!user || user.isActive === false) {
-      throw new UnauthorizedException("Cuenta desactivada o no válida");
+    if (!user) {
+      throw new UnauthorizedException("Usuario no encontrado. La cuenta pudo haber sido eliminada.");
+    }
+    if (user.isActive === false) {
+      throw new UnauthorizedException("Cuenta desactivada. Contacte al administrador.");
     }
     return {
       id: payload.sub,

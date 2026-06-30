@@ -22,14 +22,17 @@ import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 
 @Controller("products")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
+  @Permissions("canManageProducts")
   @UseInterceptors(FileInterceptor("image"))
   async create(
     @Body() createProductDto: CreateProductDto,
@@ -50,6 +53,7 @@ export class ProductsController {
   }
 
   @Get()
+  @Permissions("canManageProducts")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   findAll(
@@ -103,6 +107,7 @@ export class ProductsController {
   }
 
   @Patch(":id")
+  @Permissions("canManageProducts")
   update(
     @Param("id", ParseIntPipe) id: number,
     @Body() updateProductDto: UpdateProductDto,
@@ -118,6 +123,7 @@ export class ProductsController {
   }
 
   @Delete(":id")
+  @Permissions("canManageProducts")
   remove(
     @Param("id", ParseIntPipe) id: number,
     @ActiveOrganization() organizationId: number,

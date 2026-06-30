@@ -6,6 +6,15 @@ import {
   resolveHuggingFaceApiKey,
 } from "./generar-embedding-gratuito";
 import { FISCAL_LEY_LABELS } from "./fiscal-knowledge.constants";
+import {
+  rewriteFiscalQuery,
+  type ParsedFiscalQuery,
+} from "./fiscal-query-rewriter";
+import {
+  hasConfidentFiscalHits,
+  rerankFiscalHits,
+  type RankedFiscalHit,
+} from "./fiscal-search-rerank";
 
 export interface FiscalKnowledgeSearchHit {
   ley: string;
@@ -15,8 +24,31 @@ export interface FiscalKnowledgeSearchHit {
   titulo: string | null;
   content: string;
   metadata: Record<string, unknown>;
+  /** Similitud coseno del vector (pre-rerank) */
   similarity: number;
+  /** Puntuación final tras rerank semántico + metadata */
+  rerankScore?: number;
 }
+
+export interface FiscalKnowledgeSearchOptions {
+  ley?: string;
+  articulo?: number;
+  /** Resultados finales devueltos al caller (default 5, máx 10) */
+  limit?: number;
+  /** Candidatos vectoriales antes del rerank (default 20, máx 30) */
+  candidateLimit?: number;
+  /** Desactiva rewrite/rerank (solo vector puro) */
+  rawVector?: boolean;
+}
+
+export interface FiscalKnowledgeSearchResult {
+  hits: RankedFiscalHit[];
+  parsed: ParsedFiscalQuery;
+  confident: boolean;
+}
+
+const DEFAULT_FINAL_LIMIT = 5;
+const DEFAULT_CANDIDATE_LIMIT = 20;
 
 @Injectable()
 export class FiscalKnowledgeService {
@@ -35,9 +67,80 @@ export class FiscalKnowledgeService {
     }
   }
 
+  /**
+   * Búsqueda semántica con query rewrite + pool amplio + rerank por ley/artículo.
+   */
+  async searchSemantic(
+    query: string,
+    options?: FiscalKnowledgeSearchOptions,
+  ): Promise<FiscalKnowledgeSearchResult> {
+    const parsed = rewriteFiscalQuery(query);
+    const finalLimit = Math.min(Math.max(options?.limit ?? DEFAULT_FINAL_LIMIT, 1), 10);
+    const candidateLimit = Math.min(
+      Math.max(options?.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT, finalLimit),
+      30,
+    );
+
+    const leyHint = options?.ley?.trim().toUpperCase() || parsed.ley;
+    const articuloHint = options?.articulo ?? parsed.articulo;
+
+    if (options?.rawVector) {
+      const hits = await this.vectorSearch(parsed.originalQuery, {
+        leyFilter: leyHint,
+        limit: finalLimit,
+      });
+      const ranked = hits.map((h) => ({ ...h, rerankScore: h.similarity }));
+      return {
+        hits: ranked,
+        parsed,
+        confident: hasConfidentFiscalHits(ranked),
+      };
+    }
+
+    const embeddingQuery = parsed.embeddingQuery;
+    this.logger.debug(
+      `RAG rewrite: "${parsed.originalQuery}" → "${embeddingQuery}"` +
+        (leyHint ? ` [ley=${leyHint}]` : "") +
+        (articuloHint != null ? ` [art=${articuloHint}]` : ""),
+    );
+
+    const candidates = await this.vectorSearch(embeddingQuery, {
+      leyFilter: leyHint,
+      limit: candidateLimit,
+    });
+
+    const ranked = rerankFiscalHits(
+      candidates,
+      { ley: leyHint, articulo: articuloHint },
+      finalLimit,
+    );
+
+    return {
+      hits: ranked,
+      parsed,
+      confident: hasConfidentFiscalHits(ranked),
+    };
+  }
+
+  /** Compatibilidad con callers existentes */
   async search(
     query: string,
-    options?: { ley?: string; limit?: number },
+    options?: { ley?: string; limit?: number; articulo?: number },
+  ): Promise<FiscalKnowledgeSearchHit[]> {
+    const result = await this.searchSemantic(query, {
+      ley: options?.ley,
+      articulo: options?.articulo,
+      limit: options?.limit,
+    });
+    return result.hits.map((hit) => ({
+      ...hit,
+      rerankScore: hit.rerankScore,
+    }));
+  }
+
+  private async vectorSearch(
+    query: string,
+    options: { leyFilter?: string | null; limit: number },
   ): Promise<FiscalKnowledgeSearchHit[]> {
     const q = query.trim();
     if (!q) return [];
@@ -48,8 +151,7 @@ export class FiscalKnowledgeService {
       );
     }
 
-    const limit = Math.min(Math.max(options?.limit ?? 5, 1), 10);
-    const leyFilter = options?.ley?.trim().toUpperCase() || null;
+    const leyFilter = options.leyFilter?.trim().toUpperCase() || null;
 
     const vector = await generarEmbeddingGratuito(q);
     if (vector.length !== EMBEDDING_DIMENSIONS) {
@@ -96,7 +198,7 @@ export class FiscalKnowledgeService {
       `,
       vectorLiteral,
       leyFilter,
-      limit,
+      options.limit,
     );
 
     return rows.map((row) => ({

@@ -12,6 +12,8 @@ import {
 import { CierreCajaService } from "./cierre-caja.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { AperturaCajaDto } from "./dto/apertura-caja.dto";
@@ -19,7 +21,7 @@ import { CierreCajaZDto } from "./dto/cierre-caja-z.dto";
 import { CierreCajaEstado } from "@prisma/client";
 
 @Controller("cierre-caja")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class CierreCajaController {
   constructor(private readonly cierreCajaService: CierreCajaService) {}
 
@@ -27,6 +29,7 @@ export class CierreCajaController {
    * Apertura de caja (inicio de turno). Body: { montoInicial }
    */
   @Post("apertura")
+  @Permissions("canManageCierreCaja")
   async apertura(
     @ActiveOrganization() tenantId: number,
     @ActiveUser() user: { id: number },
@@ -76,6 +79,7 @@ export class CierreCajaController {
    * Conciliación ciega: el cajero solo ingresa monto físico; el sistema calcula diferencia después.
    */
   @Post("cerrar")
+  @Permissions("canManageCierreCaja")
   async cerrar(
     @ActiveOrganization() tenantId: number,
     @ActiveUser() user: { id: number },
@@ -88,6 +92,7 @@ export class CierreCajaController {
    * Historial de cierres. Query: userId?, estado? (OPEN|CLOSED), limit?
    */
   @Get()
+  @Permissions("canManageCierreCaja")
   async listar(
     @ActiveOrganization() tenantId: number,
     @Query("userId") userId?: string,

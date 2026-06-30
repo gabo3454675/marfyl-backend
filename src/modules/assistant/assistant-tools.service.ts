@@ -651,27 +651,46 @@ export class AssistantToolsService {
     }
 
     const ley = args.ley ? String(args.ley).trim().toUpperCase() : undefined;
+    const articuloRaw = args.articulo ?? args.article;
+    const articulo =
+      typeof articuloRaw === "number" && Number.isFinite(articuloRaw)
+        ? articuloRaw
+        : typeof articuloRaw === "string" && articuloRaw.trim()
+          ? Number.parseInt(articuloRaw, 10)
+          : undefined;
     const limit =
       typeof args.limit === "number" && Number.isFinite(args.limit)
         ? args.limit
         : 5;
 
-    const hits = await this.fiscalKnowledge.search(query, { ley, limit });
+    const rag = await this.fiscalKnowledge.searchSemantic(query, {
+      ley,
+      articulo: Number.isFinite(articulo) ? articulo : undefined,
+      limit,
+    });
+    const hits = rag.hits;
     return {
       found: hits.length > 0,
+      confident: rag.confident,
       query,
-      leyFilter: ley ?? null,
+      parsed: {
+        ley: rag.parsed.ley,
+        articulo: rag.parsed.articulo,
+        embeddingQuery: rag.parsed.embeddingQuery,
+      },
+      leyFilter: ley ?? rag.parsed.ley ?? null,
       results: hits.map((h) => ({
         ley: h.ley,
         leyLabel: h.leyLabel,
         articulo: h.articulo,
         titulo: h.titulo,
-        similarity: Math.round(h.similarity * 1000) / 1000,
+        vectorSimilarity: Math.round(h.similarity * 1000) / 1000,
+        relevance: Math.round((h.rerankScore ?? h.similarity) * 1000) / 1000,
         excerpt: h.content.slice(0, 1800),
         citation: `${h.leyLabel}, Artículo ${h.articulo}`,
       })),
       guidance:
-        "Responde al cliente citando ley y artículo. Explica en español venezolano y relaciona con su situación sin inventar normas.",
+        "Responde al cliente citando ley y artículo del fragmento recuperado. No afirmes que un artículo no existe si aparece en results. Explica en español venezolano.",
     };
   }
 }

@@ -24,11 +24,13 @@ import { UpdateExpenseDto } from "./dto/update-expense.dto";
 import { RegisterExpensePaymentDto } from "./dto/register-expense-payment.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
 @Controller("expenses")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class ExpensesController {
   constructor(
     private readonly expensesService: ExpensesService,
@@ -36,6 +38,7 @@ export class ExpensesController {
   ) {}
 
   @Post()
+  @Permissions("canManageExpenses")
   create(
     @Body() createExpenseDto: CreateExpenseDto,
     @ActiveOrganization() organizationId: number,
@@ -49,6 +52,7 @@ export class ExpensesController {
   }
 
   @Get()
+  @Permissions("canManageExpenses")
   findAll(@ActiveOrganization() organizationId: number) {
     return this.expensesService.findAll(organizationId);
   }
@@ -190,6 +194,7 @@ export class ExpensesController {
   }
 
   @Patch(":id")
+  @Permissions("canManageExpenses")
   update(
     @Param("id", ParseIntPipe) id: number,
     @Body() updateExpenseDto: UpdateExpenseDto,
@@ -199,6 +204,7 @@ export class ExpensesController {
   }
 
   @Delete(":id")
+  @Permissions("canManageExpenses")
   remove(
     @Param("id", ParseIntPipe) id: number,
     @ActiveOrganization() organizationId: number,

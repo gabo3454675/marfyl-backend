@@ -322,12 +322,17 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
         query: {
           type: "string",
           description:
-            "Consulta en lenguaje natural (ej: retención IVA servicios, plazo declaración ISLR, sanción por no emitir factura)",
+            "Consulta en lenguaje natural (ej: retención IVA servicios, plazo declaración ISLR, sanción por no emitir factura, qué dice el artículo 120 del COT)",
         },
         ley: {
           type: "string",
           description:
             "Filtrar por norma: COT, LIVA, RIVA, LISLR, RISLR, LIGTF, PROV_0071, CALENDARIO_2026, PROV_SNAT_0141 (opcional)",
+        },
+        articulo: {
+          type: "number",
+          description:
+            "Número de artículo si el usuario lo menciona (ej: 120). Mejora el rerank semántico.",
         },
         limit: {
           type: "number",
@@ -347,6 +352,10 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
         ley: {
           type: "string",
           description: "Norma opcional: COT, LIVA, RIVA, LISLR, etc.",
+        },
+        articulo: {
+          type: "number",
+          description: "Número de artículo mencionado por el usuario (opcional)",
         },
         limit: {
           type: "number",

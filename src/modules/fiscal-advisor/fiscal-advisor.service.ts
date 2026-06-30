@@ -84,10 +84,18 @@ export class FiscalAdvisorService {
     yield { type: "status", phase: "searching" };
 
     let articles: Awaited<ReturnType<FiscalKnowledgeService["search"]>> = [];
+    let ragConfident = false;
     try {
       const ready = await this.knowledge.isReady();
       if (ready) {
-        articles = await this.knowledge.search(searchQuery, { limit: 4 });
+        const rag = await this.knowledge.searchSemantic(searchQuery, { limit: 5 });
+        articles = rag.hits;
+        ragConfident = rag.confident;
+        if (rag.parsed.ley || rag.parsed.articulo != null) {
+          this.logger.log(
+            `RAG semántico: ley=${rag.parsed.ley ?? "—"} art=${rag.parsed.articulo ?? "—"} confident=${ragConfident}`,
+          );
+        }
       }
     } catch (error) {
       this.logger.warn(
@@ -102,7 +110,7 @@ export class FiscalAdvisorService {
         leyLabel: a.leyLabel,
         articulo: a.articulo,
         excerpt: a.content.slice(0, 600),
-        similarity: a.similarity,
+        similarity: a.rerankScore ?? a.similarity,
       })),
     };
 
@@ -124,6 +132,7 @@ export class FiscalAdvisorService {
       warnings,
       articles,
       mensaje,
+      ragConfident,
     );
 
     const userContent = mensaje
@@ -189,16 +198,22 @@ export class FiscalAdvisorService {
     warnings: AuditWarning[],
     articles: Awaited<ReturnType<FiscalKnowledgeService["search"]>>,
     mensajeUsuario: string,
+    ragConfident: boolean,
   ): string {
     const articulosTexto =
       articles.length > 0
         ? articles
             .map(
               (a, i) =>
-                `${i + 1}. [${a.leyLabel} · Art. ${a.articulo}] (similitud ${(a.similarity * 100).toFixed(0)}%)\n${a.content.slice(0, 500)}`,
+                `${i + 1}. [${a.leyLabel} · Art. ${a.articulo}] (relevancia ${((a.rerankScore ?? a.similarity) * 100).toFixed(0)}%)\n${a.content.slice(0, 500)}`,
             )
             .join("\n\n")
         : "No se recuperaron artículos en la base vectorial. Indica al cliente que el equipo debe ejecutar la carga de leyes si aún no está hecha.";
+
+    const ragNota =
+      articles.length > 0 && !ragConfident
+        ? "\nNOTA RAG: Los fragmentos recuperados tienen baja confianza semántica. No afirmes que un artículo no existe; indica que no se encontró un match claro y sugiere reformular la consulta."
+        : "";
 
     const alertasTexto =
       warnings.length > 0
@@ -229,7 +244,7 @@ ALERTAS DEL SISTEMA:
 ${alertasTexto}
 
 ARTÍCULOS LEGALES (RAG — cita solo estos, no inventes):
-${articulosTexto}
+${articulosTexto}${ragNota}
 
 REGLAS DE RESPUESTA (OBLIGATORIAS):
 1. Máximo 2 o 3 párrafos cortos. Directo al grano.
@@ -239,8 +254,9 @@ REGLAS DE RESPUESTA (OBLIGATORIAS):
 5. Usa saltos de línea, viñetas con "• " en líneas separadas, y **negritas** solo en palabras clave.
 6. Conecta COT/SENIAT solo cuando sea estrictamente relevante; traduce a lenguaje sencillo.
 7. Si hay alertas críticas, menciona primero el riesgo en una frase empática; luego la acción en MARFYL.
-8. Si el usuario preguntó algo concreto${mensajeUsuario ? ` ("${mensajeUsuario}")` : ""}, respóndelo después del estado fiscal (máx. 1 bloque breve de contexto).
-9. Multas: recuerda que el COT indexa sanciones a la moneda de mayor valor del BCV.
-10. Tono: profesional, ejecutivo, empático, español venezolano (RIF, IVA, SENIAT).`;
+8. Si el usuario preguntó por un artículo o norma concreta${mensajeUsuario ? ` ("${mensajeUsuario}")` : ""}, responde ESO primero citando el fragmento RAG; el estado fiscal solo si aporta contexto breve.
+9. PROHIBIDO afirmar que un artículo no existe si hay fragmentos RAG recuperados arriba.
+10. Multas: recuerda que el COT indexa sanciones a la moneda de mayor valor del BCV.
+11. Tono: profesional, ejecutivo, empático, español venezolano (RIF, IVA, SENIAT).`;
   }
 }
