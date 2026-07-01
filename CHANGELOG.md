@@ -4,6 +4,42 @@ Todos los cambios significativos del sistema se documentan aquí.
 
 ---
 
+## [1 Julio 2026] - Módulo de Subida de Facturas con Actualización Automática de Inventario
+
+### ✨ Nuevo Módulo
+
+#### Módulo `invoice-upload` — Backend
+- **Endpoint POST `/invoice-upload/preview`**: Parsea archivos Excel/PDF de facturas de compra, resuelve productos por SKU → código de barras → nombre fuzzy, y retorna vista previa editable
+- **Endpoint POST `/invoice-upload/confirm`**: Ejecuta la importación con líneas ajustadas — crea InventoryMovement(type=COMPRA), actualiza Product.stock y costPrice, opcionalmente crea Expense
+- **Endpoint GET `/invoice-upload/products/search`**: Búsqueda de productos para autocomplete (nombre, SKU, código de barras)
+- **Endpoint GET `/invoice-upload/history`**: Historial de subidas anteriores (consultando Expense por descripción)
+
+#### Módulo `invoice-upload` — Frontend
+- **Página `/inventory/invoice-upload`**: Interfaz completa con zona de drag-and-drop, tabla de preview editable inline, autocomplete de productos para filas sin match, y pestaña de historial
+- **Navegación**: Nuevo ítem "Subir Factura" en la sección Inventario del sidebar
+
+### 🔧 Detalles Técnicos
+- **Fuzzy matching**: Algoritmo de búsqueda difusa por nombre (normalización + substring containment) con scores de confianza
+- **Transaccionalidad**: Confirm ejecuta en `$transaction` Prisma (todo o nada)
+- **Multi-tenant**: Aislamiento completo por organizationId en todas las queries
+- **Permisos**: Requiere `canManageInventory`
+
+### 📁 Archivos Creados
+- `src/modules/invoice-upload/invoice-upload.module.ts`
+- `src/modules/invoice-upload/invoice-upload.controller.ts`
+- `src/modules/invoice-upload/invoice-upload.service.ts`
+- `src/modules/invoice-upload/dto/confirm-invoice.dto.ts`
+- `src/modules/invoice-upload/dto/invoice-upload-history.dto.ts`
+- `src/app/(dashboard)/inventory/invoice-upload/page.tsx`
+- `src/lib/api/invoice-upload.ts`
+
+### 📁 Archivos Modificados
+- `src/app.module.ts` — Registro de InvoiceUploadModule
+- `src/config/app-nav.ts` — Nuevo ítem de navegación
+- `src/lib/api/index.ts` — Export de invoice-upload service
+
+---
+
 ## [4 Junio 2026] - Auditoría Integral y Hardening de Seguridad
 
 ### 🔒 Seguridad

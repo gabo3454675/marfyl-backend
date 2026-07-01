@@ -63,6 +63,10 @@ export class ProductsController {
     @Query("search") search?: string,
     @Query("categoryId") categoryId?: string,
   ) {
+    console.log(
+      "[ProductsController] findAll called with",
+      { organizationId, page, limit, search, categoryId },
+    );
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
 

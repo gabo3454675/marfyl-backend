@@ -39,6 +39,7 @@ import { FiscalAdvisorModule } from "./modules/fiscal-advisor/fiscal-advisor.mod
 import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
 import { PlanModule } from "./modules/plan/plan.module";
 import { PayrollModule } from "./modules/payroll/payroll.module";
+import { InvoiceUploadModule } from "./modules/invoice-upload/invoice-upload.module";
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { PayrollModule } from "./modules/payroll/payroll.module";
     ExchangeRateModule,
     PlanModule,
     PayrollModule,
+    InvoiceUploadModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

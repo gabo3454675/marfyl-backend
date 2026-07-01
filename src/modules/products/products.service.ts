@@ -103,7 +103,7 @@ export class ProductsService {
   }
 
   async findAll(organizationId: number) {
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: {
         organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
       },
@@ -111,6 +111,13 @@ export class ProductsService {
         createdAt: "desc",
       },
     });
+    console.log(
+      "[ProductsService] findAll result for organizationId",
+      organizationId,
+      "- products found:",
+      products.length,
+    );
+    return products;
   }
 
   /**
@@ -129,6 +136,17 @@ export class ProductsService {
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(100, Math.max(1, options.limit ?? 50));
     const skip = (page - 1) * limit;
+
+    console.log(
+      "[ProductsService] findAllPaginated called with",
+      {
+        organizationId,
+        page,
+        limit,
+        search: options.search,
+        categoryId: options.categoryId,
+      },
+    );
 
     const where: any = { organizationId };
 
@@ -153,6 +171,15 @@ export class ProductsService {
         take: limit,
       }),
     ]);
+
+    console.log(
+      "[ProductsService] findAllPaginated result for organizationId",
+      organizationId,
+      "- total:",
+      total,
+      "returned:",
+      data.length,
+    );
 
     return {
       data,
