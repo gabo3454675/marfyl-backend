@@ -239,6 +239,7 @@ export class InventoryService {
       const name = String(row.getCell(COL_NAME)?.value ?? "").trim();
       const price = this.parseNumber(row.getCell(COL_PRICE)?.value);
       const stock = this.parseIntSafe(row.getCell(COL_STOCK)?.value);
+      const stockVal = Number.isNaN(stock) ? 0 : stock;
       const description =
         String(row.getCell(COL_DESC)?.value ?? "").trim() || null;
       const exento =
@@ -251,7 +252,7 @@ export class InventoryService {
         !sku &&
         !name &&
         (Number.isNaN(price) || price === 0) &&
-        (Number.isNaN(stock) || stock === 0) &&
+        (stockVal === 0) &&
         !description
       ) {
         continue;
@@ -272,7 +273,7 @@ export class InventoryService {
           sku,
           name,
           price,
-          stock,
+          stock: stockVal,
           description,
           isExempt: exento === "SI",
         };
@@ -295,7 +296,7 @@ export class InventoryService {
         });
         continue;
       }
-      if (Number.isNaN(stock) || stock < 0) {
+      if (stockVal < 0) {
         errors.push({
           row: rowNum,
           field: "STOCK",
@@ -320,7 +321,7 @@ export class InventoryService {
         sku,
         name,
         price,
-        stock,
+        stock: stockVal,
         description,
         isExempt,
       });
