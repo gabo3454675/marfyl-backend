@@ -224,8 +224,6 @@ export class InventoryService {
     const errors: Array<{ row: number; field?: string; message: string }> = [];
     const previewRowsRaw: Array<Omit<PreviewRow, "action">> = [];
 
-    const seenSku = new Set<string>();
-
     // Columnas (1-based): A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
     const COL_SKU = 1;
     const COL_NAME = 2;
@@ -264,15 +262,22 @@ export class InventoryService {
         continue;
       }
       const skuKey = sku.toUpperCase();
-      if (seenSku.has(skuKey)) {
-        errors.push({
-          row: rowNum,
-          field: "SKU",
-          message: `SKU duplicado en el archivo: "${sku}"`,
-        });
+      const existingIndex = previewRowsRaw.findIndex(
+        (r) => r.sku.toUpperCase() === skuKey,
+      );
+      if (existingIndex >= 0) {
+        // Overwrite with last occurrence — no merge
+        previewRowsRaw[existingIndex] = {
+          rowNumber: rowNum,
+          sku,
+          name,
+          price,
+          stock,
+          description,
+          isExempt: exento === "SI",
+        };
         continue;
       }
-      seenSku.add(skuKey);
 
       if (!name) {
         errors.push({
