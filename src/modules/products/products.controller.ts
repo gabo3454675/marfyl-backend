@@ -53,7 +53,7 @@ export class ProductsController {
   }
 
   @Get()
-  @Permissions("canManageProducts")
+  @Permissions("canViewProducts")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   findAll(
