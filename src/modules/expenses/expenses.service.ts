@@ -11,22 +11,9 @@ import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
 import { computeExpenseFiscal } from "@/modules/fiscal/helpers/expense-fiscal.helper";
 import type { PurchaseLineDto } from "./dto/purchase-line.dto";
 import type { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
+import { num } from "@/common/helpers/number.helper";
 import * as ExcelJS from "exceljs";
 import pdfParse from "pdf-parse";
-
-function num(v: unknown): number {
-  if (v == null) return 0;
-  if (
-    typeof v === "object" &&
-    v !== null &&
-    "toNumber" in v &&
-    typeof (v as { toNumber: () => number }).toNumber === "function"
-  ) {
-    return (v as { toNumber: () => number }).toNumber();
-  }
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
 
 @Injectable()
 export class ExpensesService {
@@ -249,10 +236,10 @@ export class ExpensesService {
           type: "COMPRA",
           quantity: qty,
           reason: `Entrada por compra / factura proveedor (gasto #${expenseId})`,
-          productId: line.productId,
-          userId,
-          tenantId: organizationId,
           unitCostAtTransaction: unitCost,
+          product: { connect: { id: line.productId } },
+          user: { connect: { id: userId } },
+          tenant: { connect: { id: organizationId } },
         },
       });
 
@@ -373,7 +360,11 @@ export class ExpensesService {
   ) {
     const expense = await this.findOne(id, organizationId);
     const total = num(expense.amount);
-    const paid = this.computeAmountPaid(expense);
+    // Use actual payment sum, NOT computeAmountPaid (which has special case for PAID status with 0 payments)
+    const paid = (expense.payments ?? []).reduce(
+      (s: number, p: { amount: unknown }) => s + num(p.amount),
+      0,
+    );
     const remaining = Math.max(0, total - paid);
     if (dto.amount > remaining + 0.01) {
       throw new BadRequestException(

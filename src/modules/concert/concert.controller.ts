@@ -89,9 +89,9 @@ export class ConcertController {
   confirm(
     @ActiveOrganization() organizationId: number,
     @Param("id", ParseIntPipe) id: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
-    return this.concertService.confirmOrder(organizationId, id, user.sub);
+    return this.concertService.confirmOrder(organizationId, id, user.id);
   }
 
   @Post("orders/:id/resend-email")
@@ -116,22 +116,22 @@ export class ConcertController {
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.SELLER)
   sell(
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
     @Body() dto: AdminSellDto,
   ) {
-    return this.concertService.adminSell(organizationId, user.sub, dto);
+    return this.concertService.adminSell(organizationId, user.id, dto);
   }
 
   @Post("scan")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.SELLER)
   scan(
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
     @Body() dto: ScanTicketDto,
   ) {
     return this.concertService.scanTicket(
       organizationId,
-      user.sub,
+      user.id,
       dto.qrPayload,
     );
   }

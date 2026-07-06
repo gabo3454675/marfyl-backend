@@ -44,12 +44,12 @@ export class ExpensesController {
   create(
     @Body() createExpenseDto: CreateExpenseDto,
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
     return this.expensesService.create(
       createExpenseDto,
       organizationId,
-      user.sub,
+      user.id,
     );
   }
 
@@ -119,7 +119,7 @@ export class ExpensesController {
     @Body("description") description?: string,
     @Body("initialPayment") rawInitialPayment?: string,
     @ActiveOrganization() organizationId?: number,
-    @ActiveUser() user?: { sub: number },
+    @ActiveUser() user?: { id: number },
   ) {
     if (!file) {
       throw new BadRequestException("Archivo requerido");
@@ -146,7 +146,7 @@ export class ExpensesController {
     return this.expensesService.importPurchaseInvoice({
       file,
       organizationId: organizationId!,
-      userId: user!.sub,
+      userId: user!.id,
       confirm: confirmBool,
       supplierId,
       date: date?.trim() || undefined,
@@ -177,11 +177,11 @@ export class ExpensesController {
   confirmReceiptScan(
     @Body() dto: ConfirmReceiptScanDto,
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
     return this.receiptScanService.confirmReceipt({
       organizationId,
-      userId: user.sub,
+      userId: user.id,
       mode: dto.mode,
       scan: dto.scan as import("./receipt-scan.service").ScannedReceiptResult,
       categoryId: dto.categoryId,

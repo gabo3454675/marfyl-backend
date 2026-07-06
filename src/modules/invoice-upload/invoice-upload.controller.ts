@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Query, UseGuards, UploadedFile, UseInterceptors, BadRequestException } from "@nestjs/common";
+import { Controller, Get, Post, Body, Query, Param, ParseIntPipe, UseGuards, UploadedFile, UseInterceptors, BadRequestException } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { InvoiceUploadService } from "./invoice-upload.service";
+import { InvoiceUploadHistoryService } from "./invoice-upload-history.service";
 import { ConfirmInvoiceUploadDto } from "./dto/confirm-invoice.dto";
 import { InvoiceUploadHistoryDto } from "./dto/invoice-upload-history.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -14,7 +15,10 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 @Controller("invoice-upload")
 @UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class InvoiceUploadController {
-  constructor(private readonly invoiceUploadService: InvoiceUploadService) {}
+  constructor(
+    private readonly invoiceUploadService: InvoiceUploadService,
+    private readonly historyService: InvoiceUploadHistoryService,
+  ) {}
 
   @Post("preview")
   @Permissions("canManageInventory")
@@ -49,11 +53,11 @@ export class InvoiceUploadController {
   async confirm(
     @Body() dto: ConfirmInvoiceUploadDto,
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
     return this.invoiceUploadService.confirm({
       organizationId,
-      userId: user.sub,
+      userId: user.id,
       dto,
     });
   }
@@ -75,6 +79,15 @@ export class InvoiceUploadController {
     @Query() query: InvoiceUploadHistoryDto,
     @ActiveOrganization() organizationId: number,
   ) {
-    return this.invoiceUploadService.getHistory(organizationId, query);
+    return this.historyService.getHistory(organizationId, query);
+  }
+
+  @Get("history/:id")
+  @Permissions("canManageInventory")
+  async getHistoryDetail(
+    @ActiveOrganization() organizationId: number,
+    @Param("id", ParseIntPipe) id: number,
+  ) {
+    return this.historyService.getHistoryDetail(organizationId, id);
   }
 }

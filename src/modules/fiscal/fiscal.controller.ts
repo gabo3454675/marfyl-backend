@@ -63,12 +63,12 @@ export class FiscalController {
   @Post("calendario/sync")
   async syncCalendario(
     @Query("force") force?: string,
-    @ActiveUser() user?: { sub: number },
+    @ActiveUser() user?: { id: number },
   ) {
     const cal = await this.fiscalCalendar.syncSeniatRulesFromJson(
       force === "true",
     );
-    const norms = await this.fiscalNorms.syncNormsFromCalendarJson(user?.sub);
+    const norms = await this.fiscalNorms.syncNormsFromCalendarJson(user?.id);
     return { ...cal, norms };
   }
 
@@ -102,7 +102,7 @@ export class FiscalController {
   emitEvent(
     @ActiveOrganization() organizationId: number,
     @Body() dto: EmitFiscalEventDto,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
     return this.fiscalEvents.emit({
       organizationId,
@@ -110,7 +110,7 @@ export class FiscalController {
       entityType: dto.entityType,
       entityId: dto.entityId,
       payload: dto.payload,
-      userId: user.sub,
+      userId: user.id,
       auditAction: "FISCAL_EVENT_EMIT",
     });
   }
@@ -132,8 +132,8 @@ export class FiscalController {
   }
 
   @Post("compliance/norms/sync")
-  syncNorms(@ActiveUser() user: { sub: number }) {
-    return this.fiscalNorms.syncNormsFromCalendarJson(user.sub);
+  syncNorms(@ActiveUser() user: { id: number }) {
+    return this.fiscalNorms.syncNormsFromCalendarJson(user.id);
   }
 
   @Post("backfill/libro-ventas")
@@ -158,9 +158,9 @@ export class FiscalController {
   upsertProfile(
     @ActiveOrganization() organizationId: number,
     @Body() dto: UpsertFiscalProfileDto,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
-    return this.fiscalService.upsertProfile(organizationId, dto, user.sub);
+    return this.fiscalService.upsertProfile(organizationId, dto, user.id);
   }
 
   @Get("libro-ventas")
@@ -294,13 +294,13 @@ export class FiscalController {
     @ActiveOrganization() organizationId: number,
     @Param("year", ParseIntPipe) year: number,
     @Param("month", ParseIntPipe) month: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
     return this.fiscalService.closePeriod(
       organizationId,
       year,
       month,
-      user.sub,
+      user.id,
     );
   }
 }

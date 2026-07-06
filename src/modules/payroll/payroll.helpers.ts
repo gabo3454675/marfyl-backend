@@ -3,6 +3,9 @@ import {
   PayrollProfileStatus,
   type PayrollProfile,
 } from "@prisma/client";
+import { num } from "@/common/helpers/number.helper";
+
+export { num };
 
 export const PAYROLL_CATEGORY_NAME = "Nómina";
 
@@ -36,19 +39,6 @@ export function defaultProfileForRole(role: string) {
   );
 }
 
-export function num(v: unknown): number {
-  if (v == null) return 0;
-  if (
-    typeof v === "object" &&
-    v !== null &&
-    "toNumber" in v &&
-    typeof (v as { toNumber: () => number }).toNumber === "function"
-  ) {
-    return (v as { toNumber: () => number }).toNumber();
-  }
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export function calculateNetAmount(profile: {
   payType: PayrollPayType;

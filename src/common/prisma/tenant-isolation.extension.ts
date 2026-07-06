@@ -89,7 +89,16 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
               break;
             case "create":
               if (argsCopy.data && typeof argsCopy.data === "object") {
-                (argsCopy.data as Record<string, unknown>)[field] = tenantId;
+                const data = argsCopy.data as Record<string, unknown>;
+                // Derive relation name from FK field: tenantId → tenant, organizationId → organization
+                const relationName = field.replace(/Id$/, "");
+                const hasRelationConnect =
+                  data[relationName] &&
+                  typeof data[relationName] === "object" &&
+                  "connect" in (data[relationName] as Record<string, unknown>);
+                if (!hasRelationConnect) {
+                  data[field] = tenantId;
+                }
               }
               break;
             case "createMany":
@@ -97,11 +106,16 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
                 const data = Array.isArray(argsCopy.data)
                   ? argsCopy.data
                   : [argsCopy.data];
+                const relationName = field.replace(/Id$/, "");
                 (argsCopy as any).data = data.map(
-                  (row: Record<string, unknown>) => ({
-                    ...row,
-                    [field]: tenantId,
-                  }),
+                  (row: Record<string, unknown>) => {
+                    const hasRelationConnect =
+                      row[relationName] &&
+                      typeof row[relationName] === "object" &&
+                      "connect" in (row[relationName] as Record<string, unknown>);
+                    if (hasRelationConnect) return row;
+                    return { ...row, [field]: tenantId };
+                  },
                 );
               }
               break;
@@ -128,7 +142,15 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
                 );
               }
               if (argsCopy.create && typeof argsCopy.create === "object") {
-                (argsCopy.create as Record<string, unknown>)[field] = tenantId;
+                const createData = argsCopy.create as Record<string, unknown>;
+                const relationName = field.replace(/Id$/, "");
+                const hasRelationConnect =
+                  createData[relationName] &&
+                  typeof createData[relationName] === "object" &&
+                  "connect" in (createData[relationName] as Record<string, unknown>);
+                if (!hasRelationConnect) {
+                  createData[field] = tenantId;
+                }
               }
               if (argsCopy.update && typeof argsCopy.update === "object") {
                 (argsCopy.update as Record<string, unknown>)[field] = tenantId;

@@ -81,11 +81,11 @@ export class InventoryMovementsService {
           type: movementType,
           quantity: -dto.quantity,
           reason: dto.reason ?? null,
-          productId: dto.productId,
-          userId,
-          tenantId: organizationId,
           unitCostAtTransaction: unitCost,
           consumptionReason,
+          product: { connect: { id: dto.productId } },
+          user: { connect: { id: userId } },
+          tenant: { connect: { id: organizationId } },
         },
       });
 

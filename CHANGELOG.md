@@ -4,6 +4,46 @@ Todos los cambios significativos del sistema se documentan aquí.
 
 ---
 
+## [6 Julio 2026] - Módulo de Gestión de Proveedores
+
+### ✨ Nuevo Módulo
+
+#### Página de Proveedores — Frontend
+- **Página `/suppliers`**: CRUD completo con tabla paginada con búsqueda server-side (`usePaginatedQuery`), diálogo de creación y edición pre-rellenado, y eliminación con confirmación
+- **Permisos**: Requiere `canManageExpenses` para ver/editar, `canDelete` para eliminar
+
+### 🔧 Refactor
+
+#### Expenses — Frontend
+- **`expenses/page.tsx`**: Reemplazadas llamadas directas a `apiClient.get('/suppliers')` con `supplierService.getAll()` para listar proveedores
+- **CRUD de proveedores**: Reemplazados `apiClient.patch/post/delete` con `supplierService.update/create/remove` respectivamente
+- **Interface `Supplier`**: Eliminada definición local — ahora se importa desde `@/lib/api/suppliers`
+- **UX**: Botón "Agregar Proveedor" integrado en 3 contextos dentro de expenses:
+  - Diálogo de gasto (selector de proveedor vacío)
+  - Importación de compra (selector de proveedor vacío)
+  - Pestaña de proveedores (estado vacío)
+
+### 🗄️ Base de Datos
+
+- **Nuevo índice**: `suppliers_taxId_idx` sobre `taxId` en tabla `suppliers` para optimizar búsqueda
+- **Migración**: `20260706120000_add_suppliers_taxid_index`
+- **Ejecutar con**: `npx prisma migrate deploy`
+
+### 📁 Archivos Creados
+
+| Archivo | Descripción |
+|---------|------------|
+| `src/app/(dashboard)/suppliers/page.tsx` | Página CRUD de proveedores con tabla paginada |
+| `prisma/migrations/20260706120000_add_suppliers_taxid_index/migration.sql` | Índice `taxId` |
+
+### 📁 Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/app/(dashboard)/expenses/page.tsx` | Refactor a `supplierService`, botón "Agregar Proveedor" contextual |
+
+---
+
 ## [1 Julio 2026] - Módulo de Subida de Facturas con Actualización Automática de Inventario
 
 ### ✨ Nuevo Módulo

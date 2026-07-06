@@ -50,9 +50,9 @@ export class PayrollController {
   @Post("process")
   processPayroll(
     @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { sub: number },
+    @ActiveUser() user: { id: number },
   ) {
-    return this.payrollService.processPayroll(organizationId, user.sub);
+    return this.payrollService.processPayroll(organizationId, user.id);
   }
 
   @Get("runs")

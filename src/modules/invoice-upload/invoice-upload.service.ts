@@ -3,17 +3,10 @@ import { PrismaService } from "@/common/prisma/prisma.service";
 import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import type { ConfirmInvoiceUploadDto } from "./dto/confirm-invoice.dto";
+import { buildMovementReason } from "./invoice-upload.constants";
+import { num } from "@/common/helpers/number.helper";
 import * as ExcelJS from "exceljs";
 import pdfParse from "pdf-parse";
-
-function num(v: unknown): number {
-  if (v == null) return 0;
-  if (typeof v === "object" && v !== null && "toNumber" in v && typeof (v as { toNumber: () => number }).toNumber === "function") {
-    return (v as { toNumber: () => number }).toNumber();
-  }
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
 
 @Injectable()
 export class InvoiceUploadService {
@@ -574,11 +567,11 @@ export class InvoiceUploadService {
             data: {
               type: "COMPRA",
               quantity: line.quantity,
-              reason: `Entrada por compra importada (gasto #${expenseId})`,
-              productId: line.productId,
-              userId,
-              tenantId: organizationId,
+              reason: buildMovementReason(expenseId),
               unitCostAtTransaction: line.unitCost,
+              product: { connect: { id: line.productId } },
+              user: { connect: { id: userId } },
+              tenant: { connect: { id: organizationId } },
             },
           });
           movementsCreated++;
@@ -624,10 +617,10 @@ export class InvoiceUploadService {
               type: "COMPRA",
               quantity: line.quantity,
               reason: "Entrada por compra importada",
-              productId: line.productId,
-              userId,
-              tenantId: organizationId,
               unitCostAtTransaction: line.unitCost,
+              product: { connect: { id: line.productId } },
+              user: { connect: { id: userId } },
+              tenant: { connect: { id: organizationId } },
             },
           });
           movementsCreated++;
@@ -733,64 +726,6 @@ export class InvoiceUploadService {
       isBundle: p.isBundle,
       isService: p.isService,
     }));
-  }
-
-  async getHistory(
-    organizationId: number,
-    params?: { page?: number; limit?: number; dateFrom?: string; dateTo?: string },
-  ) {
-    const page = Math.max(params?.page ?? 1, 1);
-    const limit = Math.min(Math.max(params?.limit ?? 20, 1), 100);
-    const skip = (page - 1) * limit;
-
-    const where: any = {
-      organizationId,
-      OR: [
-        { description: { contains: "Compra", mode: "insensitive" } },
-        { description: { contains: "Importación", mode: "insensitive" } },
-        { description: { contains: "importación", mode: "insensitive" } },
-      ],
-    };
-
-    if (params?.dateFrom) {
-      where.date = { ...where.date, gte: new Date(params.dateFrom) };
-    }
-    if (params?.dateTo) {
-      const endDate = new Date(params.dateTo);
-      endDate.setHours(23, 59, 59, 999);
-      where.date = { ...where.date, lte: endDate };
-    }
-
-    const [items, total] = await Promise.all([
-      this.prisma.expense.findMany({
-        where,
-        include: {
-          supplier: { select: { id: true, name: true } },
-          payments: { select: { amount: true } },
-        },
-        orderBy: { date: "desc" },
-        skip,
-        take: limit,
-      }),
-      this.prisma.expense.count({ where }),
-    ]);
-
-    return {
-      items: items.map((e) => ({
-        id: e.id,
-        date: e.date,
-        amount: Number(e.amount),
-        description: e.description,
-        referenceNumber: e.referenceNumber,
-        status: e.status,
-        supplier: e.supplier,
-        amountPaid: e.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0,
-        createdAt: e.createdAt,
-      })),
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-    };
   }
 
   // ── Private helpers ───────────────────────────────────────────────────
