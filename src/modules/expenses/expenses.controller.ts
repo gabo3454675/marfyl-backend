@@ -12,6 +12,7 @@ import {
   UploadedFile,
   UseInterceptors,
   Res,
+  Query,
 } from "@nestjs/common";
 import { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -28,6 +29,7 @@ import { PermissionsGuard } from "@/common/guards/permissions.guard";
 import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 
 @Controller("expenses")
 @UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
@@ -53,7 +55,19 @@ export class ExpensesController {
 
   @Get()
   @Permissions("canManageExpenses")
-  findAll(@ActiveOrganization() organizationId: number) {
+  findAll(
+    @ActiveOrganization() organizationId: number,
+    @Query() query: PaginationQueryDto,
+    @Query("status") status?: string,
+  ) {
+    if (query.page && query.page > 0) {
+      return this.expensesService.findAllPaginated(organizationId, {
+        page: query.page,
+        limit: query.limit ?? 20,
+        search: query.search,
+        status: status?.trim() || undefined,
+      });
+    }
     return this.expensesService.findAll(organizationId);
   }
 

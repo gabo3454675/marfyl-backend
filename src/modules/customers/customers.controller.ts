@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   UseGuards,
   ParseIntPipe,
   UseInterceptors,
@@ -20,6 +21,7 @@ import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { PermissionsGuard } from "@/common/guards/permissions.guard";
 import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 
 @Controller("customers")
 @UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
@@ -39,7 +41,17 @@ export class CustomersController {
   @Permissions("canManageCustomers")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
-  async findAll(@ActiveOrganization() organizationId: number) {
+  async findAll(
+    @ActiveOrganization() organizationId: number,
+    @Query() query: PaginationQueryDto,
+  ) {
+    if (query.page && query.page > 0) {
+      return this.customersService.findAllPaginated(organizationId, {
+        page: query.page,
+        limit: query.limit ?? 20,
+        search: query.search,
+      });
+    }
     return this.customersService.findAll(organizationId);
   }
 

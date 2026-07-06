@@ -7,6 +7,7 @@ import { PrismaService } from "@/common/prisma/prisma.service";
 import { CreateSupplierDto } from "./dto/create-supplier.dto";
 import { UpdateSupplierDto } from "./dto/update-supplier.dto";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 
 @Injectable()
 export class SuppliersService {
@@ -37,6 +38,52 @@ export class SuppliersService {
         name: "asc",
       },
     });
+  }
+
+  async findAllPaginated(
+    organizationId: number,
+    params: { page: number; limit?: number; search?: string },
+  ): Promise<PaginatedResponse<any>> {
+    const { page, limit = 20, search } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { taxId: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.supplier.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          taxId: true,
+          email: true,
+          phone: true,
+          address: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.supplier.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number, organizationId: number) {

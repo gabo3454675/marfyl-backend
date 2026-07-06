@@ -11,6 +11,7 @@ import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import { UploadService } from "@/common/services/upload.service";
+import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 import * as ExcelJS from "exceljs";
 
 @Injectable()
@@ -132,7 +133,7 @@ export class ProductsService {
       search?: string;
       categoryId?: number;
     } = {},
-  ) {
+  ): Promise<PaginatedResponse<any>> {
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(100, Math.max(1, options.limit ?? 50));
     const skip = (page - 1) * limit;
@@ -169,6 +170,21 @@ export class ProductsService {
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          barcode: true,
+          costPrice: true,
+          salePrice: true,
+          salePriceCurrency: true,
+          stock: true,
+          minStock: true,
+          imageUrl: true,
+          isExempt: true,
+          isBundle: true,
+          isService: true,
+        },
       }),
     ]);
 
@@ -183,10 +199,12 @@ export class ProductsService {
 
     return {
       data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 

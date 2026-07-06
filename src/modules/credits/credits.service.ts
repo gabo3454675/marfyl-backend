@@ -13,6 +13,7 @@ import {
 import { UpdateCreditLimitDto } from "./dto/update-credit-limit.dto";
 import { RegisterPaymentDto } from "./dto/register-payment.dto";
 import { TaskStatus } from "@prisma/client";
+import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 
 import * as PDFKit from "pdfkit";
 
@@ -69,6 +70,55 @@ export class CreditsService {
       },
       orderBy: { customer: { name: "asc" } },
     });
+  }
+
+  /**
+   * Lista créditos de la organización con paginación y búsqueda server-side.
+   */
+  async listPaginated(
+    organizationId: number,
+    params: { page: number; limit?: number; search?: string },
+  ): Promise<PaginatedResponse<any>> {
+    const { page, limit = 20, search } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId };
+
+    if (search) {
+      where.customer = { name: { contains: search, mode: "insensitive" } };
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.customerCredit.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { customer: { name: "asc" } },
+        select: {
+          id: true,
+          customerId: true,
+          limitAmount: true,
+          currentBalance: true,
+          status: true,
+          creditDueDays: true,
+          createdAt: true,
+          customer: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      }),
+      this.prisma.customerCredit.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**

@@ -623,6 +623,7 @@ model Supplier {
   @@index([companyId])
   @@index([organizationId])
   @@index([name])
+  @@index([taxId])
   @@map("suppliers")
 }
 
@@ -687,6 +688,8 @@ model Expense {
   @@index([companyId])
   @@index([organizationId])
   @@index([date])
+  @@index([description])
+  @@index([referenceNumber])
   @@index([categoryId])
   @@index([inventoryMovementId])
   @@index([deletedAt])

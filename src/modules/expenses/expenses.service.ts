@@ -10,6 +10,7 @@ import { getCompanyIdFromOrganization } from "@/common/helpers/organization.help
 import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
 import { computeExpenseFiscal } from "@/modules/fiscal/helpers/expense-fiscal.helper";
 import type { PurchaseLineDto } from "./dto/purchase-line.dto";
+import type { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 import * as ExcelJS from "exceljs";
 import pdfParse from "pdf-parse";
 
@@ -280,6 +281,69 @@ export class ExpensesService {
       },
     });
     return rows.map((e) => this.enrichExpense(e));
+  }
+
+  async findAllPaginated(
+    organizationId: number,
+    params: {
+      page: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+    },
+  ): Promise<PaginatedResponse<Record<string, unknown>>> {
+    const { page, limit = 20, search, status } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = { organizationId };
+
+    if (search) {
+      where.OR = [
+        { description: { contains: search } },
+        { referenceNumber: { contains: search } },
+      ];
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.expense.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { date: "desc" },
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          description: true,
+          referenceNumber: true,
+          status: true,
+          supplierId: true,
+          categoryId: true,
+          createdAt: true,
+          supplier: {
+            select: { id: true, name: true },
+          },
+          category: {
+            select: { id: true, name: true },
+          },
+        },
+      }),
+      this.prisma.expense.count({ where }),
+    ]);
+
+    return {
+      data: data.map((e) => this.enrichExpense(e)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number, organizationId: number) {

@@ -408,7 +408,7 @@ export class AssistantToolsService {
       page: 1,
     });
     return {
-      count: result.total,
+      count: result.pagination.total,
       products: result.data.map((p) => ({
         id: p.id,
         name: p.name,

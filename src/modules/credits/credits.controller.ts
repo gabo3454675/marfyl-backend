@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   UseGuards,
   Res,
+  Query,
 } from "@nestjs/common";
 import { Response } from "express";
 import { CreditsService } from "./credits.service";
@@ -17,6 +18,7 @@ import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
+import { PaginationQueryDto } from "@/common/dto/pagination-query.dto";
 
 @Controller("credits")
 @UseGuards(JwtAuthGuard, OrganizationGuard)
@@ -25,9 +27,20 @@ export class CreditsController {
 
   /**
    * Lista todas las cuentas de crédito de la organización (para panel de abonos).
+   * Soporta paginación y búsqueda server-side cuando se envía `page` como query param.
    */
   @Get()
-  list(@ActiveOrganization() organizationId: number) {
+  list(
+    @ActiveOrganization() organizationId: number,
+    @Query() query: PaginationQueryDto,
+  ) {
+    if (query.page && query.page > 0) {
+      return this.creditsService.listPaginated(organizationId, {
+        page: query.page,
+        limit: query.limit ?? 20,
+        search: query.search,
+      });
+    }
     return this.creditsService.listByOrganization(organizationId);
   }
 
