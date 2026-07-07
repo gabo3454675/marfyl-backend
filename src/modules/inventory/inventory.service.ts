@@ -13,13 +13,15 @@ export class InventoryService {
 
   /**
    * Plantilla oficial del importador de inventario (columnas exactas).
-   * A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO.
+   * A: SKU, B: NOMBRE, C: COSTO, D: PRECIO VENTA, E: GANANCIA, F: STOCK, G: DESCRIPCION, H: EXENTO.
    * Mantener sincronizado con el parser de Excel.
    */
   static readonly INVENTORY_IMPORT_HEADERS = [
     "SKU",
-    "NOMBRE",
-    "PRECIO",
+    "NOMBRE DEL PRODUCTO",
+    "COSTO",
+    "PRECIO VENTA",
+    "GANANCIA",
     "STOCK",
     "DESCRIPCION",
     "EXENTO",
@@ -30,11 +32,13 @@ export class InventoryService {
     string
   > = {
     SKU: "SKU: Obligatorio. Debe ser único por organización. Ej: ABC-001",
-    NOMBRE: "NOMBRE: Obligatorio. Nombre del producto.",
-    PRECIO: "PRECIO: Obligatorio. Solo números (ej: 10.50).",
+    "NOMBRE DEL PRODUCTO": "NOMBRE DEL PRODUCTO: Obligatorio. Nombre del producto.",
+    COSTO: "COSTO: Obligatorio. Solo números (ej: 10.50).",
+    "PRECIO VENTA": "PRECIO VENTA: Obligatorio. Solo números (ej: 10.50).",
+    GANANCIA: "GANANCIA: Obligatorio. Solo números (ej: 10.50).",
     STOCK: "STOCK: Obligatorio. Entero >= 0.",
     DESCRIPCION: "DESCRIPCION: Opcional. Texto libre.",
-    EXENTO: "EXENTO: SI o NO (impuesto). Use el desplegable.",
+    EXENTO: "EXENTO: SI/NO o EXENTO/GRAVADO (impuesto). Use el desplegable.",
   };
 
   getTemplateFormat() {
@@ -42,8 +46,10 @@ export class InventoryService {
       headers: [...InventoryService.INVENTORY_IMPORT_HEADERS],
       exampleRow: {
         SKU: "ABC-001",
-        NOMBRE: "Café 250g",
-        PRECIO: 4.99,
+        "NOMBRE DEL PRODUCTO": "Café 250g",
+        COSTO: 3.5,
+        "PRECIO VENTA": 4.99,
+        GANANCIA: 1.49,
         STOCK: 20,
         DESCRIPCION: "Café molido, presentación 250g",
         EXENTO: "NO",
@@ -51,18 +57,18 @@ export class InventoryService {
       notes: [
         "La primera fila debe contener exactamente estos headers (mismos textos).",
         "SKU es obligatorio y debe ser único por organización.",
-        "PRECIO debe ser numérico (ej: 10.5). STOCK entero >= 0.",
-        "EXENTO: use el desplegable (SI o NO).",
+        "COSTO debe ser numérico (ej: 10.5). PRECIO VENTA debe ser numérico (ej: 10.5). GANANCIA debe ser numérico (ej: 10.5). STOCK entero >= 0.",
+        "EXENTO: use SI/NO o EXENTO/GRAVADO.",
       ],
     };
   }
 
   /**
    * Genera un archivo Excel (.xlsx) de plantilla descargable.
-   * Columnas: A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO.
+   * Columnas: A–H según INVENTORY_IMPORT_HEADERS.
    * Incluye:
    * - Headers exactos en negrita
-   * - Validación lista en F (EXENTO): "SI", "NO" para 1000 filas (dropdown)
+   * - Validación lista en H (EXENTO): "SI", "NO" para 1000 filas (dropdown)
    * - Notas en headers, anchos de columna ajustados, freeze de encabezados
    */
   async generateTemplateXlsxBuffer() {
@@ -72,7 +78,6 @@ export class InventoryService {
 
     const worksheet = workbook.addWorksheet("Inventario");
 
-    // Columnas exactas: A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
     const headers = [...InventoryService.INVENTORY_IMPORT_HEADERS];
     worksheet.addRow(headers);
 
@@ -91,39 +96,44 @@ export class InventoryService {
     worksheet.addRow([
       "ABC-001",
       "Café 250g",
+      3.5,
       4.99,
+      1.49,
       20,
       "Café molido, presentación 250g",
       "NO",
     ]);
 
-    // Validación de datos en columna F (EXENTO): lista "SI", "NO" — por celda (evita worksheet.dataValidations sin tipos)
+    // Validación de datos en columna H (EXENTO): lista "SI", "NO"
     const listValidation = {
       type: "list" as const,
       allowBlank: true,
-      formulae: ['"SI,NO"'],
+      formulae: ['"SI,NO,EXENTO,GRAVADO"'],
       showErrorMessage: true,
       errorTitle: "Valor no permitido",
-      error: "Seleccione SI o NO.",
+      error: "Seleccione SI, NO, EXENTO o GRAVADO.",
     };
     for (let i = 2; i <= 1001; i++) {
-      const cell = worksheet.getCell("F" + i);
+      const cell = worksheet.getCell("H" + i);
       (cell as { dataValidation?: typeof listValidation }).dataValidation =
         listValidation;
     }
 
-    // Anchos de columnas para lectura fácil
     worksheet.getColumn(1).width = 16; // A: SKU
     worksheet.getColumn(2).width = 32; // B: NOMBRE
-    worksheet.getColumn(3).width = 14; // C: PRECIO
-    worksheet.getColumn(4).width = 12; // D: STOCK
-    worksheet.getColumn(5).width = 42; // E: DESCRIPCION
-    worksheet.getColumn(6).width = 12; // F: EXENTO
+    worksheet.getColumn(3).width = 14; // C: COSTO
+    worksheet.getColumn(4).width = 14; // D: PRECIO VENTA
+    worksheet.getColumn(5).width = 14; // E: GANANCIA
+    worksheet.getColumn(6).width = 12; // F: STOCK
+    worksheet.getColumn(7).width = 42; // G: DESCRIPCION
+    worksheet.getColumn(8).width = 12; // H: EXENTO
 
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
 
-    worksheet.getColumn(3).numFmt = "#,##0.00"; // PRECIO
-    worksheet.getColumn(4).numFmt = "0"; // STOCK
+    worksheet.getColumn(3).numFmt = "#,##0.00"; // COSTO
+    worksheet.getColumn(4).numFmt = "#,##0.00"; // PRECIO VENTA
+    worksheet.getColumn(5).numFmt = "#,##0.00"; // GANANCIA
+    worksheet.getColumn(6).numFmt = "0"; // STOCK
 
     return workbook.xlsx.writeBuffer();
   }
@@ -179,6 +189,105 @@ export class InventoryService {
     return parseInt(s, 10);
   }
 
+  private findColumnIndex(headers: string[], candidates: string[]): number {
+    const normalized = headers.map((h) => this.normalizeHeader(h));
+    for (const candidate of candidates) {
+      const norm = this.normalizeHeader(candidate);
+      const idx = normalized.findIndex(
+        (h) => h === norm || h.includes(norm) || norm.includes(h),
+      );
+      if (idx >= 0) return idx + 1;
+    }
+    return -1;
+  }
+
+  /**
+   * Resuelve columnas por nombre de header.
+   * Soporta plantilla MARFYL (STOCK) y export MonddY (NUMERO + columna % extra).
+   */
+  private resolveImportColumns(received: string[]) {
+    const sku = this.findColumnIndex(received, ["sku"]);
+    const name = this.findColumnIndex(received, [
+      "nombre del producto",
+      "nombre",
+    ]);
+    const cost = this.findColumnIndex(received, ["costo"]);
+    const salePrice = this.findColumnIndex(received, [
+      "precio venta",
+      "precio",
+    ]);
+    const profit = this.findColumnIndex(received, ["ganancia", "margen"]);
+    const stock = this.findColumnIndex(received, [
+      "stock",
+      "numero",
+      "número",
+      "cantidad",
+    ]);
+    const description = this.findColumnIndex(received, [
+      "descripcion",
+      "descripción",
+    ]);
+    const exento = this.findColumnIndex(received, ["exento", "gravado"]);
+
+    if (sku < 0 || name < 0 || cost < 0 || salePrice < 0 || stock < 0) {
+      return null;
+    }
+
+    return {
+      sku,
+      name,
+      cost,
+      salePrice,
+      profit,
+      stock,
+      description,
+      exento,
+    };
+  }
+
+  private headersMatchStandardTemplate(received: string[]): boolean {
+    const expected = [...InventoryService.INVENTORY_IMPORT_HEADERS];
+    if (received.length < expected.length) return false;
+    for (let i = 0; i < expected.length; i++) {
+      if (
+        this.normalizeHeader(received[i] || "") !==
+        this.normalizeHeader(expected[i])
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private parseExemptFlag(raw: string | null): boolean {
+    if (!raw) return false;
+    const v = raw.trim().toUpperCase();
+    return v === "SI" || v === "EXENTO" || v === "S";
+  }
+
+  private validateExemptValue(raw: string | null): string | null {
+    if (!raw || !raw.trim()) return null;
+    const v = raw.trim().toUpperCase();
+    if (["SI", "NO", "EXENTO", "GRAVADO", "S", "N"].includes(v)) return v;
+    return "__INVALID__";
+  }
+
+  private toMoney(value: number): number {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+
+  private buildProductNames(categoryName: string, productDesc: string) {
+    const name = productDesc || categoryName;
+    const description =
+      productDesc && categoryName && productDesc !== categoryName
+        ? categoryName
+        : productDesc
+          ? null
+          : categoryName || null;
+    return { name, description };
+  }
+
   /**
    * Importación con "dry run".
    *
@@ -211,33 +320,33 @@ export class InventoryService {
       );
     }
 
-    // Validar headers
-    const expected = [...InventoryService.INVENTORY_IMPORT_HEADERS];
+    // Leer todos los headers de la fila 1
     const headerRow = worksheet.getRow(1);
     const received: string[] = [];
-    headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      if (colNumber <= expected.length) {
-        received.push(String(cell.value ?? "").trim());
-      }
-    });
+    const maxCol = Math.max(headerRow.cellCount || 0, 20);
+    for (let c = 1; c <= maxCol; c++) {
+      received.push(String(headerRow.getCell(c).value ?? "").trim());
+    }
+    while (received.length > 0 && received[received.length - 1] === "") {
+      received.pop();
+    }
 
-    for (let i = 0; i < expected.length; i++) {
-      if (
-        this.normalizeHeader(received[i] || "") !==
-        this.normalizeHeader(expected[i])
-      ) {
-        throw new BadRequestException(
-          `Formato inválido. Header columna ${i + 1} debe ser "${expected[i]}". ` +
-            `Recibido: "${received[i] || ""}".`,
-        );
-      }
+    const cols = this.resolveImportColumns(received);
+    if (!cols) {
+      const hint = this.headersMatchStandardTemplate(received)
+        ? "Revise que todas las columnas obligatorias tengan datos."
+        : `Headers detectados: ${received.filter(Boolean).join(" | ")}. ` +
+          "Se requieren columnas reconocibles: SKU, NOMBRE, COSTO, PRECIO VENTA, STOCK o NUMERO.";
+      throw new BadRequestException(`Formato inválido. ${hint}`);
     }
 
     type PreviewRow = {
       rowNumber: number;
       sku: string;
       name: string;
-      price: number;
+      costPrice: number;
+      salePrice: number;
+      profit: number;
       stock: number;
       description: string | null;
       isExempt: boolean;
@@ -247,35 +356,56 @@ export class InventoryService {
     const errors: Array<{ row: number; field?: string; message: string }> = [];
     const previewRowsRaw: Array<Omit<PreviewRow, "action">> = [];
 
-    // Columnas (1-based): A: SKU, B: NOMBRE, C: PRECIO, D: STOCK, E: DESCRIPCION, F: EXENTO
-    const COL_SKU = 1;
-    const COL_NAME = 2;
-    const COL_PRICE = 3;
-    const COL_STOCK = 4;
-    const COL_DESC = 5;
-    const COL_EXENTO = 6;
+    const COL_SKU = cols.sku;
+    const COL_NAME = cols.name;
+    const COL_COST = cols.cost;
+    const COL_SALE_PRICE = cols.salePrice;
+    const COL_PROFIT = cols.profit;
+    const COL_STOCK = cols.stock;
+    const COL_DESC = cols.description;
+    const COL_EXENTO = cols.exento;
 
     for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
       const row = worksheet.getRow(rowNum);
 
       const sku = String(row.getCell(COL_SKU)?.value ?? "").trim();
-      const name = String(row.getCell(COL_NAME)?.value ?? "").trim();
-      const price = this.parseNumber(row.getCell(COL_PRICE)?.value);
+      const categoryName = String(row.getCell(COL_NAME)?.value ?? "").trim();
+      const productDesc =
+        COL_DESC > 0
+          ? String(row.getCell(COL_DESC)?.value ?? "").trim()
+          : "";
+      const { name, description } = this.buildProductNames(
+        categoryName,
+        productDesc,
+      );
+      const cost = this.parseNumber(row.getCell(COL_COST)?.value);
+      const salePrice = this.parseNumber(row.getCell(COL_SALE_PRICE)?.value);
+      const profitRaw =
+        COL_PROFIT > 0
+          ? this.parseNumber(row.getCell(COL_PROFIT)?.value)
+          : NaN;
+      const profit = Number.isNaN(profitRaw)
+        ? !Number.isNaN(salePrice) && !Number.isNaN(cost)
+          ? Math.round((salePrice - cost) * 100) / 100
+          : NaN
+        : profitRaw;
       const stock = this.parseIntSafe(row.getCell(COL_STOCK)?.value);
       const stockVal = Number.isNaN(stock) ? 0 : stock;
-      const description =
-        String(row.getCell(COL_DESC)?.value ?? "").trim() || null;
       const exento =
-        String(row.getCell(COL_EXENTO)?.value ?? "")
-          .trim()
-          .toUpperCase() || null;
+        COL_EXENTO > 0
+          ? String(row.getCell(COL_EXENTO)?.value ?? "")
+              .trim()
+              .toUpperCase() || null
+          : null;
 
       // Ignorar filas completamente vacías
       if (
         !sku &&
         !name &&
-        (Number.isNaN(price) || price === 0) &&
-        (stockVal === 0) &&
+        (Number.isNaN(cost) || cost === 0) &&
+        (Number.isNaN(salePrice) || salePrice === 0) &&
+        (Number.isNaN(profit) || profit === 0) &&
+        stockVal === 0 &&
         !description
       ) {
         continue;
@@ -295,10 +425,12 @@ export class InventoryService {
           rowNumber: rowNum,
           sku,
           name,
-          price,
+          costPrice: cost,
+          salePrice,
+          profit,
           stock: stockVal,
           description,
-          isExempt: exento === "SI",
+          isExempt: this.parseExemptFlag(exento),
         };
         continue;
       }
@@ -306,16 +438,32 @@ export class InventoryService {
       if (!name) {
         errors.push({
           row: rowNum,
-          field: "NOMBRE",
+          field: "NOMBRE DEL PRODUCTO",
           message: "NOMBRE es requerido",
         });
         continue;
       }
-      if (Number.isNaN(price) || price < 0) {
+      if (Number.isNaN(cost) || cost < 0) {
         errors.push({
           row: rowNum,
-          field: "PRECIO",
-          message: "PRECIO debe ser numérico y >= 0",
+          field: "COSTO",
+          message: "COSTO debe ser numérico y >= 0",
+        });
+        continue;
+      }
+      if (Number.isNaN(salePrice) || salePrice < 0) {
+        errors.push({
+          row: rowNum,
+          field: "PRECIO VENTA",
+          message: "PRECIO VENTA debe ser numérico y >= 0",
+        });
+        continue;
+      }
+      if (Number.isNaN(profit) || profit < 0) {
+        errors.push({
+          row: rowNum,
+          field: "GANANCIA",
+          message: "GANANCIA debe ser numérico y >= 0",
         });
         continue;
       }
@@ -327,23 +475,28 @@ export class InventoryService {
         });
         continue;
       }
-      if (exento && exento !== "SI" && exento !== "NO") {
-        errors.push({
-          row: rowNum,
-          field: "EXENTO",
-          message: "EXENTO debe ser SI o NO",
-        });
-        continue;
+      if (exento) {
+        const exemptCheck = this.validateExemptValue(exento);
+        if (exemptCheck === "__INVALID__") {
+          errors.push({
+            row: rowNum,
+            field: "EXENTO",
+            message: "EXENTO debe ser SI, NO, EXENTO o GRAVADO",
+          });
+          continue;
+        }
       }
 
-      // EXENTO: "SI" -> isExempt true; "NO" o vacío -> false
-      const isExempt = exento === "SI";
+      // EXENTO: SI/EXENTO -> isExempt true; NO/GRAVADO o vacío -> false
+      const isExempt = this.parseExemptFlag(exento);
 
       previewRowsRaw.push({
         rowNumber: rowNum,
         sku,
         name,
-        price,
+        costPrice: cost,
+        salePrice,
+        profit,
         stock: stockVal,
         description,
         isExempt,
@@ -404,44 +557,47 @@ export class InventoryService {
     const toCreate = preview.filter((p) => p.action === "create");
     const toUpdate = preview.filter((p) => p.action === "update");
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      let createdCount = 0;
-      if (toCreate.length) {
-        const created = await tx.product.createMany({
-          data: toCreate.map((r) => ({
-            companyId,
-            organizationId,
-            sku: r.sku,
-            name: r.name,
-            description: r.description,
-            salePrice: r.price as any,
-            costPrice: 0 as any,
-            stock: r.stock,
-            minStock: 5,
-            isExempt: r.isExempt,
-          })),
-        });
-        createdCount = created.count;
-      }
+    let createdCount = 0;
+    if (toCreate.length) {
+      const created = await this.prisma.product.createMany({
+        data: toCreate.map((r) => ({
+          companyId,
+          organizationId,
+          sku: r.sku,
+          name: r.name,
+          description: r.description,
+          salePrice: this.toMoney(r.salePrice),
+          costPrice: this.toMoney(r.costPrice),
+          stock: r.stock,
+          minStock: 5,
+          isExempt: r.isExempt,
+        })),
+      });
+      createdCount = created.count;
+    }
 
-      // Updates por SKU (1 query por fila, dentro de la transacción)
+    // Updates por SKU en lotes (sin transacción única: evita timeout en Neon con ~1000 filas)
+    const UPDATE_BATCH = 40;
+    for (let i = 0; i < toUpdate.length; i += UPDATE_BATCH) {
+      const batch = toUpdate.slice(i, i + UPDATE_BATCH);
       await Promise.all(
-        toUpdate.map((r) =>
-          tx.product.updateMany({
+        batch.map((r) =>
+          this.prisma.product.updateMany({
             where: { organizationId, sku: r.sku },
             data: {
               name: r.name,
               description: r.description,
-              salePrice: r.price as any,
+              salePrice: this.toMoney(r.salePrice),
+              costPrice: this.toMoney(r.costPrice),
               stock: r.stock,
               isExempt: r.isExempt,
             },
           }),
         ),
       );
+    }
 
-      return { created: createdCount, updated: toUpdate.length };
-    });
+    const result = { created: createdCount, updated: toUpdate.length };
 
     return {
       confirm: true,
