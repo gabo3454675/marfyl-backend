@@ -5,14 +5,17 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
+import { Prisma } from "@prisma/client";
 import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
 import { PushNotificationService } from "@/modules/notifications/push-notification.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
+import { CreateVariantDto } from "./dto/create-variant.dto";
+import { UpdateVariantDto } from "./dto/update-variant.dto";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import { UploadService } from "@/common/services/upload.service";
 import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
-import * as ExcelJS from "exceljs";
+import { parseMonddyExcel } from "./monddy-excel.parser";
 
 @Injectable()
 export class ProductsService {
@@ -405,8 +408,9 @@ export class ProductsService {
   }
 
   /**
-   * Importa productos desde un archivo Excel
-   * Usa transacciones de Prisma para velocidad y lógica de upsert inteligente
+   * Importa productos desde un archivo Excel en formato MonddY.
+   * Usa el parser MonddY para extraer productos con variantes,
+   * y realiza upsert por SKU para idempotencia multi-tenant.
    */
   async importFromExcel(file: Express.Multer.File, organizationId: number) {
     try {
@@ -415,73 +419,13 @@ export class ProductsService {
         throw new BadRequestException("Archivo no válido");
       }
 
-      // Leer el archivo Excel con exceljs
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(file.buffer as any);
+      // Parsear con el parser MonddY (productos + variantes)
+      const parsedProducts = await parseMonddyExcel(file.buffer);
 
-      // Obtener la primera hoja
-      const worksheet = workbook.worksheets[0];
-      if (!worksheet) {
-        throw new BadRequestException("El archivo Excel no contiene hojas");
-      }
-
-      // Validar que tiene filas
-      if (worksheet.rowCount < 2) {
+      if (parsedProducts.length === 0) {
         throw new BadRequestException(
-          "El archivo Excel debe tener al menos una fila de datos (excluyendo encabezados)",
-        );
-      }
-
-      // Obtener encabezados de la primera fila
-      const headerRow = worksheet.getRow(1);
-      const headers: string[] = [];
-      headerRow.eachCell({ includeEmpty: false }, (cell) => {
-        headers.push(
-          String(cell.value || "")
-            .trim()
-            .toLowerCase(),
-        );
-      });
-
-      // Validar columnas requeridas (case-insensitive) vía columnVariations
-      const columnMap: Record<string, number> = {};
-
-      // Buscar columnas (flexible con variaciones)
-      const columnVariations: Record<string, string[]> = {
-        nombre: [
-          "nombre",
-          "name",
-          "producto",
-          "product",
-          "descripción",
-          "descripcion",
-        ],
-        precio: ["precio", "price", "precio de venta", "sale price", "venta"],
-        stock: ["stock", "inventario", "inventory", "cantidad", "quantity"],
-        sku: ["sku", "código", "codigo", "code"],
-        codigoBarras: [
-          "código de barras",
-          "codigo de barras",
-          "barcode",
-          "código barras",
-          "codigo barras",
-        ],
-      };
-
-      for (const [key, variations] of Object.entries(columnVariations)) {
-        const foundIndex = headers.findIndex((h) =>
-          variations.some((v) => h.includes(v) || v.includes(h)),
-        );
-        if (foundIndex !== -1) {
-          columnMap[key] = foundIndex + 1; // ExcelJS usa índices basados en 1
-        }
-      }
-
-      // Validar columnas requeridas
-      if (!columnMap.nombre || !columnMap.precio || !columnMap.stock) {
-        throw new BadRequestException(
-          "El archivo Excel debe contener las columnas: Nombre, Precio, Stock. " +
-            "Columnas opcionales: SKU, Código de Barras",
+          "No se encontraron productos válidos en el archivo. " +
+            "Verifique que tenga datos en el formato MonddY esperado.",
         );
       }
 
@@ -496,155 +440,113 @@ export class ProductsService {
       let updated = 0;
       const errors: string[] = [];
 
-      // Usar transacción de Prisma para velocidad y atomicidad
+      // Transacción atómica para crear/actualizar productos y variantes
       await this.prisma.$transaction(
         async (tx) => {
-          // Procesar cada fila (empezando desde la fila 2, ya que la 1 es encabezados)
-          for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
-            const row = worksheet.getRow(rowNum);
-
+          for (const pp of parsedProducts) {
             try {
-              // Extraer valores de las celdas
-              const nombre = row
-                .getCell(columnMap.nombre)
-                ?.value?.toString()
-                ?.trim();
-              const precioStr = row
-                .getCell(columnMap.precio)
-                ?.value?.toString()
-                ?.trim();
-              const stockStr = row
-                .getCell(columnMap.stock)
-                ?.value?.toString()
-                ?.trim();
-              const sku = columnMap.sku
-                ? row.getCell(columnMap.sku)?.value?.toString()?.trim()
-                : undefined;
-              const codigoBarras = columnMap.codigoBarras
-                ? row.getCell(columnMap.codigoBarras)?.value?.toString()?.trim()
-                : undefined;
+              // Verificar existencia previa para el contador (antes del upsert)
+              const existing = await tx.product.findFirst({
+                where: { organizationId, sku: pp.sku },
+                select: { id: true },
+              });
 
-              // Validar datos requeridos
-              if (!nombre) {
-                errors.push(`Fila ${rowNum}: El nombre es requerido`);
-                continue;
-              }
+              // Upsert producto base por organizationId + sku (idempotente)
+              const product = await tx.product.upsert({
+                where: {
+                  organizationId_sku: { organizationId, sku: pp.sku },
+                },
+                create: {
+                  companyId,
+                  organizationId,
+                  sku: pp.sku,
+                  name: pp.name,
+                  costPrice: pp.costPrice,
+                  salePrice: pp.salePrice,
+                  stock: pp.stock,
+                  isActive: pp.isActive,
+                  minStock: 5,
+                },
+                update: {
+                  name: pp.name,
+                  costPrice: pp.costPrice,
+                  stock: pp.stock,
+                  isActive: pp.isActive,
+                },
+              });
 
-              const precio = parseFloat(precioStr || "0");
-              if (isNaN(precio) || precio < 0) {
-                errors.push(
-                  `Fila ${rowNum}: El precio debe ser un número válido mayor o igual a 0`,
-                );
-                continue;
-              }
-
-              const stock = parseInt(stockStr || "0", 10);
-              if (isNaN(stock) || stock < 0) {
-                errors.push(
-                  `Fila ${rowNum}: El stock debe ser un número entero válido mayor o igual a 0`,
-                );
-                continue;
-              }
-
-              // Lógica de upsert inteligente: Si existe SKU, actualizar; si no, crear
-              if (sku) {
-                // Buscar producto existente por SKU
-                const existingProduct = await tx.product.findFirst({
-                  where: {
-                    organizationId,
-                    sku,
-                  },
-                });
-
-                if (existingProduct) {
-                  // Actualizar producto existente (actualizar stock y precio si cambió)
-                  await tx.product.update({
-                    where: { id: existingProduct.id },
-                    data: {
-                      name: nombre,
-                      salePrice: precio,
-                      stock: stock, // Actualizar stock
-                      ...(codigoBarras && { barcode: codigoBarras }),
-                    },
-                  });
-                  updated++;
-                } else {
-                  // Crear nuevo producto con SKU
-                  await tx.product.create({
-                    data: {
-                      name: nombre,
-                      sku,
-                      salePrice: precio,
-                      costPrice: 0,
-                      stock,
-                      minStock: 5,
-                      companyId,
-                      organizationId,
-                      ...(codigoBarras && { barcode: codigoBarras }),
-                    },
-                  });
-                  created++;
-                }
-              } else if (codigoBarras) {
-                // Si no hay SKU pero hay código de barras, usar código de barras para upsert
-                const existingProduct = await tx.product.findFirst({
-                  where: {
-                    organizationId,
-                    barcode: codigoBarras,
-                  },
-                });
-
-                if (existingProduct) {
-                  // Actualizar producto existente
-                  await tx.product.update({
-                    where: { id: existingProduct.id },
-                    data: {
-                      name: nombre,
-                      salePrice: precio,
-                      stock: stock,
-                    },
-                  });
-                  updated++;
-                } else {
-                  // Crear nuevo producto
-                  await tx.product.create({
-                    data: {
-                      name: nombre,
-                      barcode: codigoBarras,
-                      salePrice: precio,
-                      costPrice: 0,
-                      stock,
-                      minStock: 5,
-                      companyId,
-                      organizationId,
-                    },
-                  });
-                  created++;
-                }
+              if (existing) {
+                updated++;
               } else {
-                // Si no hay SKU ni código de barras, solo crear (no podemos hacer upsert)
-                await tx.product.create({
-                  data: {
-                    name: nombre,
-                    salePrice: precio,
-                    costPrice: 0,
-                    stock,
-                    minStock: 5,
-                    companyId,
-                    organizationId,
-                  },
-                });
                 created++;
+              }
+
+              // Procesar variantes si el producto tiene
+              if (pp.variants.length > 0) {
+                // 1) Resetear todas las variantes a no-default
+                await tx.productVariant.updateMany({
+                  where: { productId: product.id },
+                  data: { isDefault: false },
+                });
+
+                // 2) Ordenar: "UNIDAD" primero si existe, luego el resto
+                const sortedVariants = [...pp.variants].sort((a, b) => {
+                  const aIsUnidad = a.name.toUpperCase() === "UNIDAD";
+                  const bIsUnidad = b.name.toUpperCase() === "UNIDAD";
+                  if (aIsUnidad && !bIsUnidad) return -1;
+                  if (!aIsUnidad && bIsUnidad) return 1;
+                  return 0;
+                });
+
+                // 3) Upsert cada variante por productId + name
+                for (let i = 0; i < sortedVariants.length; i++) {
+                  const v = sortedVariants[i];
+                  const isDefault = i === 0;
+
+                  await tx.productVariant.upsert({
+                    where: {
+                      productId_name: {
+                        productId: product.id,
+                        name: v.name,
+                      },
+                    },
+                    create: {
+                      productId: product.id,
+                      name: v.name,
+                      salePrice: v.salePrice,
+                      unitQuantity: v.unitQuantity,
+                      stockBehavior: v.stockBehavior,
+                      inheritCost: v.inheritCost,
+                      customCost: v.customCost,
+                      isDefault,
+                      sortOrder: i,
+                      isActive: true,
+                    },
+                    update: {
+                      salePrice: v.salePrice,
+                      unitQuantity: v.unitQuantity,
+                      stockBehavior: v.stockBehavior,
+                      inheritCost: v.inheritCost,
+                      customCost: v.customCost,
+                      isDefault,
+                      sortOrder: i,
+                      isActive: true,
+                    },
+                  });
+                }
+
+                // 4) Sincronizar Product.salePrice con la variante default
+                await this.syncProductSalePrice(product.id, tx);
               }
             } catch (error: any) {
               errors.push(
-                `Fila ${rowNum}: ${error.message || "Error desconocido"}`,
+                `Producto ${pp.sku} (${pp.name}): ${error.message || "Error desconocido"}`,
               );
             }
           }
         },
         {
-          timeout: 30000, // 30 segundos de timeout para transacciones largas
+          timeout: 60000, // 60 segundos para transacciones con muchas variantes
         },
       );
 
@@ -652,8 +554,8 @@ export class ProductsService {
         success: true,
         created,
         updated,
-        total: worksheet.rowCount - 1, // Excluir fila de encabezados
-        errors: errors.slice(0, 50), // Limitar errores a 50 para no saturar la respuesta
+        total: parsedProducts.length,
+        errors: errors.slice(0, 50),
       };
     } catch (error: any) {
       if (error instanceof BadRequestException) {
@@ -663,5 +565,316 @@ export class ProductsService {
         `Error al procesar el archivo Excel: ${error.message || "Error desconocido"}`,
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // SYNC: Sincroniza Product.salePrice con la variante default
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Actualiza Product.salePrice con el salePrice de la variante isDefault=true.
+   * Debe llamarse dentro de una transacción existente.
+   */
+  private async syncProductSalePrice(
+    productId: number,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const defaultVariant = await tx.productVariant.findFirst({
+      where: { productId, isDefault: true, isActive: true },
+      select: { salePrice: true },
+    });
+
+    if (defaultVariant) {
+      await tx.product.update({
+        where: { id: productId },
+        data: { salePrice: defaultVariant.salePrice },
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // VARIANTES DE PRODUCTO
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Retorna todas las variantes activas de un producto, ordenadas por sortOrder y luego id.
+   */
+  async findVariantsByProduct(productId: number, organizationId: number) {
+    // Verificar que el producto existe y pertenece a la organización
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con ID ${productId} no encontrado`);
+    }
+
+    return this.prisma.productVariant.findMany({
+      where: {
+        productId,
+        isActive: true,
+      },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        productId: true,
+        name: true,
+        salePrice: true,
+        unitQuantity: true,
+        stockBehavior: true,
+        inheritCost: true,
+        customCost: true,
+        isDefault: true,
+        sortOrder: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  /**
+   * Crea una nueva variante para un producto.
+   */
+  async createVariant(
+    productId: number,
+    dto: CreateVariantDto,
+    organizationId: number,
+  ) {
+    // Verificar que el producto existe y pertenece a la organización
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Producto con ID ${productId} no encontrado`);
+    }
+
+    // Validar unicidad de nombre por producto
+    const existingVariant = await this.prisma.productVariant.findFirst({
+      where: { productId, name: dto.name },
+    });
+
+    if (existingVariant) {
+      throw new ConflictException(
+        `Ya existe una variante con el nombre "${dto.name}" para este producto`,
+      );
+    }
+
+    // Validar costo: si no hereda, debe tener un costo personalizado
+    if (dto.inheritCost === false) {
+      if (dto.customCost === undefined || dto.customCost === null) {
+        throw new BadRequestException(
+          "La variante requiere un costo personalizado cuando no hereda del producto",
+        );
+      }
+    }
+
+    // Si es default y hay otros defaults, desactivarlos en una transacción
+    if (dto.isDefault === true) {
+      return this.prisma.$transaction(async (tx) => {
+        await tx.productVariant.updateMany({
+          where: {
+            productId,
+            isDefault: true,
+            isActive: true,
+          },
+          data: { isDefault: false },
+        });
+
+        const variant = await tx.productVariant.create({
+          data: {
+            productId,
+            name: dto.name,
+            salePrice: dto.salePrice,
+            unitQuantity: dto.unitQuantity ?? 1,
+            stockBehavior: dto.stockBehavior ?? "DEDUCT",
+            inheritCost: dto.inheritCost ?? true,
+            customCost: dto.customCost ?? null,
+            isDefault: true,
+            sortOrder: dto.sortOrder ?? 0,
+            isActive: dto.isActive ?? true,
+          },
+          include: { product: true },
+        });
+
+        await this.syncProductSalePrice(productId, tx);
+
+        return variant;
+      });
+    }
+
+    // Crear la variante sin tocar defaults
+    return this.prisma.productVariant.create({
+      data: {
+        productId,
+        name: dto.name,
+        salePrice: dto.salePrice,
+        unitQuantity: dto.unitQuantity ?? 1,
+        stockBehavior: dto.stockBehavior ?? "DEDUCT",
+        inheritCost: dto.inheritCost ?? true,
+        customCost: dto.customCost ?? null,
+        isDefault: dto.isDefault ?? false,
+        sortOrder: dto.sortOrder ?? 0,
+        isActive: dto.isActive ?? true,
+      },
+      include: { product: true },
+    });
+  }
+
+  /**
+   * Actualiza una variante existente.
+   */
+  async updateVariant(
+    variantId: number,
+    dto: UpdateVariantDto,
+    organizationId: number,
+  ) {
+    // Verificar que la variante existe y pertenece a la organización (via Product)
+    const variant = await this.prisma.productVariant.findFirst({
+      where: { id: variantId },
+      include: {
+        product: {
+          select: { organizationId: true, id: true },
+        },
+      },
+    });
+
+    if (!variant) {
+      throw new NotFoundException(`Variante con ID ${variantId} no encontrada`);
+    }
+
+    if (variant.product.organizationId !== organizationId) {
+      throw new NotFoundException(`Variante con ID ${variantId} no encontrada`);
+    }
+
+    // Validar unicidad de nombre por producto si se está actualizando el nombre
+    if (dto.name && dto.name !== variant.name) {
+      const duplicate = await this.prisma.productVariant.findFirst({
+        where: {
+          productId: variant.productId,
+          name: dto.name,
+          id: { not: variantId },
+        },
+      });
+
+      if (duplicate) {
+        throw new ConflictException(
+          `Ya existe una variante con el nombre "${dto.name}" para este producto`,
+        );
+      }
+    }
+
+    // Validar costo: determinar los valores finales después del update
+    const finalInheritCost =
+      dto.inheritCost !== undefined ? dto.inheritCost : variant.inheritCost;
+    const finalCustomCost =
+      dto.customCost !== undefined ? dto.customCost : variant.customCost;
+
+    if (finalInheritCost === false && finalCustomCost === null) {
+      throw new BadRequestException(
+        "La variante requiere un costo personalizado cuando no hereda del producto",
+      );
+    }
+
+    // Si se marca como default, desactivar otros defaults en transacción
+    if (dto.isDefault === true) {
+      return this.prisma.$transaction(async (tx) => {
+        await tx.productVariant.updateMany({
+          where: {
+            productId: variant.productId,
+            isDefault: true,
+            isActive: true,
+            id: { not: variantId },
+          },
+          data: { isDefault: false },
+        });
+
+        const updated = await tx.productVariant.update({
+          where: { id: variantId },
+          data: {
+            ...(dto.name !== undefined && { name: dto.name }),
+            ...(dto.salePrice !== undefined && { salePrice: dto.salePrice }),
+            ...(dto.unitQuantity !== undefined && {
+              unitQuantity: dto.unitQuantity,
+            }),
+            ...(dto.stockBehavior !== undefined && {
+              stockBehavior: dto.stockBehavior,
+            }),
+            ...(dto.inheritCost !== undefined && {
+              inheritCost: dto.inheritCost,
+            }),
+            ...(dto.customCost !== undefined && { customCost: dto.customCost }),
+            ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+            ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+            isDefault: true,
+          },
+        });
+
+        if (dto.salePrice !== undefined) {
+          await this.syncProductSalePrice(variant.productId, tx);
+        }
+
+        return updated;
+      });
+    }
+
+    // Actualizar sin tocar defaults
+    const updated = await this.prisma.productVariant.update({
+      where: { id: variantId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.salePrice !== undefined && { salePrice: dto.salePrice }),
+        ...(dto.unitQuantity !== undefined && {
+          unitQuantity: dto.unitQuantity,
+        }),
+        ...(dto.stockBehavior !== undefined && {
+          stockBehavior: dto.stockBehavior,
+        }),
+        ...(dto.inheritCost !== undefined && { inheritCost: dto.inheritCost }),
+        ...(dto.customCost !== undefined && { customCost: dto.customCost }),
+        ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
+        ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+    });
+
+    // Si la variante es default y se actualizó salePrice, sincronizar producto
+    if (variant.isDefault && dto.salePrice !== undefined) {
+      await this.syncProductSalePrice(variant.productId, this.prisma);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Eliminación lógica de una variante (isActive = false).
+   */
+  async deleteVariant(variantId: number, organizationId: number) {
+    // Verificar que la variante existe y pertenece a la organización (via Product)
+    const variant = await this.prisma.productVariant.findFirst({
+      where: { id: variantId },
+      include: {
+        product: {
+          select: { organizationId: true },
+        },
+      },
+    });
+
+    if (!variant) {
+      throw new NotFoundException(`Variante con ID ${variantId} no encontrada`);
+    }
+
+    if (variant.product.organizationId !== organizationId) {
+      throw new NotFoundException(`Variante con ID ${variantId} no encontrada`);
+    }
+
+    // Soft delete: marcar como inactiva
+    await this.prisma.productVariant.update({
+      where: { id: variantId },
+      data: { isActive: false },
+    });
+
+    return { success: true };
   }
 }

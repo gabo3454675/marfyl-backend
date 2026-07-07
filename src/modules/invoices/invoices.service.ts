@@ -26,6 +26,7 @@ import {
   PaymentStatus,
   InvoiceStatus,
   FiscalDocumentType,
+  MovementType,
 } from "@prisma/client";
 
 @Injectable()
@@ -116,6 +117,26 @@ export class InvoicesService {
       throw new NotFoundException("Uno o más productos no fueron encontrados");
     }
 
+    // ── Batch de variantes ──
+    const requestedVariantIds = [
+      ...new Set(items.filter((i) => i.variantId != null).map((i) => i.variantId!)),
+    ];
+    const activeVariants =
+      requestedVariantIds.length > 0
+        ? await this.prisma.productVariant.findMany({
+            where: { id: { in: requestedVariantIds }, isActive: true },
+          })
+        : [];
+    if (activeVariants.length !== requestedVariantIds.length) {
+      const foundIds = new Set(activeVariants.map((v) => v.id));
+      const missing = requestedVariantIds.filter((id) => !foundIds.has(id));
+      throw new BadRequestException(
+        `Variante(s) no encontrada(s) o inactiva(s): ${missing.join(", ")}`,
+      );
+    }
+    const variantById = new Map(activeVariants.map((v) => [v.id, v]));
+
+    // ── Arrays para la transacción ──
     const taxLineInputs: LineTaxInput[] = [];
     const invoiceItemsData: {
       productId: number;
@@ -125,8 +146,12 @@ export class InvoicesService {
       taxRate: number;
       taxableBase: number;
       ivaLine: number;
+      variantId: number | null;
     }[] = [];
     const stockUpdates: ReturnType<PrismaService["product"]["update"]>[] = [];
+    const inventoryMovementPromises: ReturnType<
+      PrismaService["inventoryMovement"]["create"]
+    >[] = [];
 
     for (const item of items) {
       const product = productById.get(item.productId);
@@ -136,9 +161,35 @@ export class InvoicesService {
         );
       }
 
-      const unitPrice = Number(product.salePrice);
+      // ── Resolver precio y cantidad efectiva (variante vs producto base) ──
+      const hasVariant = item.variantId != null;
+      let unitPrice: number;
+      let effectiveQty: number; // cantidad a descontar de stock
+      let shouldDeduct = true;
+
+      if (hasVariant) {
+        const variant = variantById.get(item.variantId!);
+
+        // Validar que la variante pertenezca al producto
+        if (variant.productId !== product.id) {
+          throw new BadRequestException(
+            `La variante ID ${variant.id} no pertenece al producto "${product.name}"`,
+          );
+        }
+
+        unitPrice = Number(variant.salePrice);
+        effectiveQty = item.quantity * variant.unitQuantity;
+        shouldDeduct = variant.stockBehavior === "DEDUCT";
+      } else {
+        unitPrice = Number(product.salePrice);
+        effectiveQty = item.quantity;
+      }
+
       const subtotal = unitPrice * item.quantity;
-      const lineTax = { amount: subtotal, isExempt: product.isExempt };
+      const lineTax = {
+        amount: subtotal,
+        isExempt: product.isExempt,
+      };
       taxLineInputs.push(lineTax);
 
       invoiceItemsData.push({
@@ -149,6 +200,7 @@ export class InvoicesService {
         taxRate: product.isExempt ? 0 : 16,
         taxableBase: 0,
         ivaLine: 0,
+        variantId: item.variantId ?? null,
       });
 
       const compsUnknown = product.bundleComponents as unknown;
@@ -183,17 +235,37 @@ export class InvoicesService {
           );
         }
       } else {
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
+        // ── Stock para productos normales ──
+        if (shouldDeduct) {
+          if (product.stock < effectiveQty) {
+            throw new BadRequestException(
+              `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${effectiveQty}`,
+            );
+          }
+          stockUpdates.push(
+            this.prisma.product.update({
+              where: { id: product.id },
+              data: { stock: { decrement: effectiveQty } },
+            }),
           );
         }
-        stockUpdates.push(
-          this.prisma.product.update({
-            where: { id: product.id },
-            data: { stock: { decrement: item.quantity } },
-          }),
-        );
+
+        // ── InventoryMovement solo cuando se usa variante ──
+        if (hasVariant) {
+          inventoryMovementPromises.push(
+            this.prisma.inventoryMovement.create({
+              data: {
+                type: MovementType.VENTA,
+                quantity: -effectiveQty,
+                productId: product.id,
+                variantId: item.variantId!,
+                userId: sellerId,
+                tenantId: organizationId,
+                reason: `Venta: ${product.name} (${variantById.get(item.variantId!)!.name}) x${item.quantity}`,
+              },
+            }),
+          );
+        }
       }
     }
 
@@ -311,6 +383,7 @@ export class InvoicesService {
     // El array devuelve [resultadoUpdate1, ..., resultadoUpdateN, facturaCreada]; la factura es el último elemento
     const results = await this.prisma.$transaction([
       ...stockUpdates,
+      ...inventoryMovementPromises,
       this.prisma.invoice.create({
         data: {
           companyId,

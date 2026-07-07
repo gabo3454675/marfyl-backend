@@ -4,6 +4,67 @@ Todos los cambios significativos del sistema se documentan aquí.
 
 ---
 
+## [7 Julio 2026] - Variantes de Producto
+
+### ✨ Nueva Funcionalidad
+
+#### Backend — CRUD de Variantes
+- **Modelo `ProductVariant`**: Nueva tabla `product_variants` con relación 1:N a `Product`
+- **DTOs**: `CreateVariantDto` y `UpdateVariantDto` con validaciones (class-validator)
+- **Endpoints**:
+  - `GET /products/:id/variants` — Listar variantes de un producto
+  - `POST /products/:id/variants` — Crear variante (nombre, precio, cantidad, comportamiento de stock, costo)
+  - `PATCH /products/variants/:variantId` — Actualizar variante (todos los campos opcionales)
+  - `DELETE /products/variants/:variantId` — Eliminar variante
+- **Permisos**: Lectura requiere `canViewProducts`, escritura requiere `canManageProducts`
+- **Multi-tenant**: Aislamiento por `organizationId` en todas las queries
+
+#### Modelo de Datos
+- **`ProductVariant`**: `name`, `salePrice`, `unitQuantity`, `stockBehavior` (DEDUCT/NO_DEDUCT), `inheritCost`, `customCost`, `isDefault`, `sortOrder`, `isActive`
+- **`InvoiceItem`**: Campo `variantId` opcional para asociar ítems de factura a variante
+- **`InventoryMovement`**: Campo `variantId` opcional para movimientos de inventario por variante
+- **Unique**: `@@unique([productId, name])` — no duplicados por producto
+- **Cascade**: `onDelete: Cascade` desde Product
+
+#### Frontend — Gestión de Variantes
+- **`VariantManager`** (`components/products/`): Card con lista de variantes, crear/editar/eliminar, reordenar, toggle activo, cambiar default
+- **`VariantForm`**: Diálogo de creación/edición con todos los campos del modelo
+- **`VariantListItem`**: Fila individual con indicador de default, badge de cantidad, selector de activo
+- **`VariantSelector`** (`components/pos/`): Diálogo modal para seleccionar variante al agregar producto al carrito POS
+
+#### API Client
+- **`lib/api/variants.ts`**: `variantService.getAll()`, `.create()`, `.update()`, `.remove()`, `.reorder()`
+- **Tipos**: `ProductVariant`, `CreateVariantPayload`, `UpdateVariantPayload` en `types/product-variant.ts`
+
+### 📁 Archivos Creados
+
+#### Backend
+| Archivo | Descripción |
+|---------|------------|
+| `src/modules/products/dto/create-variant.dto.ts` | DTO de creación con validaciones |
+| `src/modules/products/dto/update-variant.dto.ts` | DTO de actualización (campos opcionales) |
+
+#### Frontend
+| Archivo | Descripción |
+|---------|------------|
+| `src/components/products/VariantManager.tsx` | Gestor completo de variantes |
+| `src/components/products/VariantForm.tsx` | Formulario crear/editar variante |
+| `src/components/products/VariantListItem.tsx` | Fila individual de variante |
+| `src/components/products/index.ts` | Barrel export |
+| `src/components/pos/variant-selector.tsx` | Selector modal para POS |
+| `src/lib/api/variants.ts` | API client de variantes |
+| `src/types/product-variant.ts` | Tipos TypeScript |
+
+### 📁 Archivos Modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `prisma/schema.prisma` | Modelo `ProductVariant`, campos `variantId` en `InvoiceItem` e `InventoryMovement` |
+| `src/modules/products/products.controller.ts` | 4 endpoints de variantes |
+| `src/modules/products/products.service.ts` | Métodos CRUD de variantes |
+
+---
+
 ## [6 Julio 2026] - Módulo de Gestión de Proveedores
 
 ### ✨ Nuevo Módulo

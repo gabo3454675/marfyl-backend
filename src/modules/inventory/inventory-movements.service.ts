@@ -57,9 +57,33 @@ export class InventoryMovementsService {
       );
     }
 
-    if (product.stock < dto.quantity) {
+    // ────────── Lógica de variante ──────────
+    let effectiveQuantity = dto.quantity;
+    let shouldDeductStock = true;
+
+    if (dto.variantId) {
+      const variant = await this.prisma.productVariant.findUnique({
+        where: { id: dto.variantId },
+        select: { id: true, unitQuantity: true, stockBehavior: true },
+      });
+
+      if (!variant) {
+        throw new NotFoundException(
+          `Variante con id ${dto.variantId} no encontrada.`,
+        );
+      }
+
+      effectiveQuantity = dto.quantity * variant.unitQuantity;
+
+      if (variant.stockBehavior === "NO_DEDUCT") {
+        shouldDeductStock = false;
+      }
+    }
+
+    // Solo validar stock si se va a descontar
+    if (shouldDeductStock && product.stock < effectiveQuantity) {
       throw new BadRequestException(
-        `Stock insuficiente. Disponible: ${product.stock}, solicitado: ${dto.quantity}. No se permite stock negativo.`,
+        `Stock insuficiente. Disponible: ${product.stock}, solicitado: ${effectiveQuantity}. No se permite stock negativo.`,
       );
     }
 
@@ -84,15 +108,21 @@ export class InventoryMovementsService {
           unitCostAtTransaction: unitCost,
           consumptionReason,
           product: { connect: { id: dto.productId } },
+          ...(dto.variantId && {
+            variant: { connect: { id: dto.variantId } },
+          }),
           user: { connect: { id: userId } },
           tenant: { connect: { id: organizationId } },
         },
       });
 
-      await tx.product.update({
-        where: { id: dto.productId },
-        data: { stock: { decrement: dto.quantity } },
-      });
+      // Solo descontar stock si no es NO_DEDUCT
+      if (shouldDeductStock) {
+        await tx.product.update({
+          where: { id: dto.productId },
+          data: { stock: { decrement: effectiveQuantity } },
+        });
+      }
 
       const category = await this.getOrCreateAutoconsumoCategory(
         tx,

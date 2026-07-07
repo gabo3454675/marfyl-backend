@@ -57,4 +57,10 @@ export class CreateMovementDto {
     message: "consumptionReason debe ser MERMA, MUESTRAS o USO_OPERATIVO",
   })
   consumptionReason?: ConsumptionReason;
+
+  /** Opcional: ID de la variante que generó el movimiento. Si se envía, usa unitQuantity para el descuento de stock. */
+  @IsOptional()
+  @IsInt()
+  @Min(1, { message: "variantId debe ser un entero positivo" })
+  variantId?: number;
 }
