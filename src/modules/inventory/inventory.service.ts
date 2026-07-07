@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import * as ExcelJS from "exceljs";
@@ -134,6 +138,25 @@ export class InventoryService {
         updatedAt: "desc",
       },
     });
+  }
+
+  /**
+   * Retorna el stock actual de un producto.
+   * El stock siempre vive en Product.stock (no se duplica por variante).
+   */
+  async getStock(productId: number, organizationId: number) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+      select: { id: true, name: true, sku: true, stock: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        `Producto con id ${productId} no encontrado en esta organización.`,
+      );
+    }
+
+    return product;
   }
 
   private normalizeHeader(s: string) {

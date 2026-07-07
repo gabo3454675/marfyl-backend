@@ -42,6 +42,10 @@ El servidor arranca en `http://localhost:3001`.
 | POST | `/api/auth/register` | Registro |
 | GET | `/api/dashboard/summary` | Resumen dashboard |
 | GET | `/api/products` | Lista productos |
+| GET | `/api/products/:id/variants` | Variantes de un producto |
+| POST | `/api/products/:id/variants` | Crear variante |
+| PATCH | `/api/products/variants/:variantId` | Actualizar variante |
+| DELETE | `/api/products/variants/:variantId` | Eliminar variante |
 | POST | `/api/invoices` | Crear factura |
 | POST | `/api/assistant/chat` | Asistente IA |
 
