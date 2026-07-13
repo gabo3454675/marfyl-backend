@@ -39,6 +39,28 @@ export class DashboardService {
     };
   }
 
+  /** Volumen de ventas (incluye legacy importado por issueDate). */
+  private paidVolumeWhere(organizationId: number, extra?: object) {
+    return {
+      organizationId,
+      status: "PAID" as const,
+      deletedAt: null,
+      ...extra,
+    };
+  }
+
+  private startOfUtcDay(date = new Date()): Date {
+    return new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
+  }
+
+  private addUtcDays(date: Date, days: number): Date {
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d;
+  }
+
   /**
    * Ganancia neta estimada en USD vía agregación SQL.
    * Solo ventas operativas; costPrice del catálogo siempre en USD.
@@ -72,15 +94,19 @@ export class DashboardService {
     return Math.round(Number(rows[0]?.profit ?? 0) * 100) / 100;
   }
 
-  /** Costo de reposición del mes (USD) para punto de equilibrio — solo ventas operativas. */
+  /** Costo de reposición (USD). Por defecto solo ventas operativas; opcional incluir legacy. */
   private async aggregateReplacementCostUsd(
     organizationId: number,
     from: Date,
     to?: Date,
+    operationalOnly = true,
   ): Promise<number> {
     const dateToFilter = to
-      ? Prisma.sql`AND i."issueDate" <= ${to}`
+      ? Prisma.sql`AND i."issueDate" < ${to}`
       : Prisma.empty;
+    const scopeFilter = operationalOnly
+      ? Prisma.sql`AND COALESCE(i."isLegacyImport", false) = false`
+      : Prisma.sql`AND i."deletedAt" IS NULL`;
 
     const rows = await this.prisma.$queryRaw<
       Array<{ cost: Prisma.Decimal | null }>
@@ -91,7 +117,7 @@ export class DashboardService {
       INNER JOIN products p ON p.id = ii."productId"
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
-        AND COALESCE(i."isLegacyImport", false) = false
+        ${scopeFilter}
         AND i."issueDate" >= ${from}
         ${dateToFilter}
     `;
@@ -140,6 +166,7 @@ export class DashboardService {
     const products = await this.prisma.product.findMany({
       where: {
         organizationId,
+        isActive: true,
         stock: { lt: threshold },
       },
       take: 5,
@@ -181,23 +208,19 @@ export class DashboardService {
     }
 
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const today = this.startOfUtcDay();
+      const tomorrow = this.addUtcDays(today, 1);
+      const yesterday = this.addUtcDays(today, -1);
 
-      // Suma de ventas del día (solo facturas pagadas)
       const [invoicesToday, invoicesYesterday] = await Promise.all([
         this.prisma.invoice.aggregate({
-          where: this.operationalPaidWhere(organizationId, {
+          where: this.paidVolumeWhere(organizationId, {
             issueDate: { gte: today, lt: tomorrow },
           }),
           _sum: { totalAmount: true },
         }),
         this.prisma.invoice.aggregate({
-          where: this.operationalPaidWhere(organizationId, {
+          where: this.paidVolumeWhere(organizationId, {
             issueDate: { gte: yesterday, lt: today },
           }),
           _sum: { totalAmount: true },
@@ -211,25 +234,20 @@ export class DashboardService {
         ? Number(invoicesYesterday._sum.totalAmount)
         : 0;
 
-      // Conteo total de productos
       const productsCount = await this.prisma.product.count({
-        where: {
-          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-        },
+        where: { organizationId, isActive: true },
       });
 
-      // Productos con stock bajo (conteo)
-      // Performance: conteo directo por umbral fijo para evitar traer todo a memoria.
       const lowStockCount = await this.prisma.product.count({
         where: {
           organizationId,
+          isActive: true,
           stock: { lt: 5 },
         },
       });
 
-      // Últimas 5 facturas
       const recentInvoices = await this.prisma.invoice.findMany({
-        where: this.operationalPaidWhere(organizationId),
+        where: this.paidVolumeWhere(organizationId),
         take: 5,
         orderBy: { issueDate: "desc" },
         include: {
@@ -273,23 +291,19 @@ export class DashboardService {
     const rate = safeExchangeRate(Number(org?.exchangeRate ?? 1));
 
     const now = new Date();
-    const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const todayUtc = this.startOfUtcDay(now);
+    const firstDayThisMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
     const firstDayLastMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() - 1,
-      1,
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
     );
     const lastDayLastMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      0,
-      23,
-      59,
-      59,
-      999,
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999),
     );
+    const chartFrom = this.addUtcDays(todayUtc, -29);
 
-    // Ventas último mes por día (solo PAID) - OPTIMIZADO con raw SQL para GROUP BY
+    // Ventas últimos 30 días (incluye importación histórica por issueDate)
     const dailySalesRaw = await this.prisma.$queryRaw<
       Array<{ date: string; total: Prisma.Decimal }>
     >`
@@ -297,9 +311,9 @@ export class DashboardService {
       FROM "invoices"
       WHERE "organizationId" = ${organizationId}
         AND status = 'PAID'
-        AND COALESCE("isLegacyImport", false) = false
-        AND "issueDate" >= ${firstDayLastMonth}
-        AND "issueDate" <= ${lastDayLastMonth}
+        AND "deletedAt" IS NULL
+        AND "issueDate" >= ${chartFrom}
+        AND "issueDate" < ${this.addUtcDays(todayUtc, 1)}
       GROUP BY DATE("issueDate")
       ORDER BY date
     `;
@@ -314,8 +328,9 @@ export class DashboardService {
     }
 
     const salesChartLastMonth: SalesChartDayDto[] = [];
-    const d = new Date(firstDayLastMonth);
-    while (d <= lastDayLastMonth) {
+    const d = new Date(chartFrom);
+    const chartEnd = this.addUtcDays(todayUtc, 1);
+    while (d < chartEnd) {
       const key = d.toISOString().slice(0, 10);
       const dayUsd = byDay.get(key) ?? 0;
       salesChartLastMonth.push({
@@ -323,7 +338,7 @@ export class DashboardService {
         ventasUsd: Math.round(dayUsd * 100) / 100,
         ventasBs: Math.round(dayUsd * rate * 100) / 100,
       });
-      d.setDate(d.getDate() + 1);
+      d.setUTCDate(d.getUTCDate() + 1);
     }
 
     // Top 5 productos por margen (SQL agregado, sin límite arbitrario de filas)
@@ -346,9 +361,9 @@ export class DashboardService {
       INNER JOIN products p ON p.id = ii."productId"
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
-        AND COALESCE(i."isLegacyImport", false) = false
-        AND i."issueDate" >= ${firstDayLastMonth}
-        AND i."issueDate" <= ${lastDayLastMonth}
+        AND i."deletedAt" IS NULL
+        AND i."issueDate" >= ${chartFrom}
+        AND i."issueDate" < ${this.addUtcDays(todayUtc, 1)}
       GROUP BY p.id, p.name
       ORDER BY margin DESC
       LIMIT 5
@@ -363,14 +378,14 @@ export class DashboardService {
     // KPIs: ticket promedio (mes actual), crecimiento mensual - OPTIMIZADO con aggregations
     const [invoicesThisMonthAgg, invoicesLastMonthAgg] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: this.operationalPaidWhere(organizationId, {
+        where: this.paidVolumeWhere(organizationId, {
           issueDate: { gte: firstDayThisMonth },
         }),
         _sum: { totalAmount: true },
         _count: { id: true },
       }),
       this.prisma.invoice.aggregate({
-        where: this.operationalPaidWhere(organizationId, {
+        where: this.paidVolumeWhere(organizationId, {
           issueDate: { gte: firstDayLastMonth, lte: lastDayLastMonth },
         }),
         _sum: { totalAmount: true },
@@ -386,10 +401,12 @@ export class DashboardService {
       countThisMonth > 0 ? totalThisMonth / countThisMonth : 0;
     const ticketPromedioPrev =
       countLastMonth > 0 ? totalLastMonth / countLastMonth : 0;
-    const crecimientoMensual: number | null =
+    const crecimientoMensual: number =
       totalLastMonth > 0
         ? Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 * 10) / 10
-        : null;
+        : totalThisMonth > 0
+          ? 100
+          : 0;
 
     // Meta diaria: promedio del mes anterior + 10% de stretch
     const daysInLastMonth = lastDayLastMonth.getDate();
@@ -398,7 +415,7 @@ export class DashboardService {
     const dailySalesGoal = Math.round(avgDailyLastMonth * 1.1 * 100) / 100;
 
     // Ganancia neta estimada (ingresos - costos de reposición en USD), sin importaciones legacy
-    const [estimatedNetProfit, estimatedNetProfitPrev, costThisMonth] =
+    const [estimatedNetProfit, estimatedNetProfitPrev, costAllSalesMonth] =
       await Promise.all([
         this.aggregateNetProfitUsd(organizationId, firstDayThisMonth, undefined),
         this.aggregateNetProfitUsd(
@@ -406,11 +423,17 @@ export class DashboardService {
           firstDayLastMonth,
           lastDayLastMonth,
         ),
-        this.aggregateReplacementCostUsd(organizationId, firstDayThisMonth),
+        this.aggregateReplacementCostUsd(
+          organizationId,
+          firstDayThisMonth,
+          this.addUtcDays(todayUtc, 1),
+          false,
+        ),
       ]);
 
-    // Ventas mensuales (últimos 6 meses)
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const sixMonthsAgo = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1),
+    );
     const monthlySalesRaw = await this.prisma.$queryRaw<
       Array<{ month: string; total: Prisma.Decimal }>
     >`
@@ -418,7 +441,7 @@ export class DashboardService {
       FROM "invoices"
       WHERE "organizationId" = ${organizationId}
         AND status = 'PAID'
-        AND COALESCE("isLegacyImport", false) = false
+        AND "deletedAt" IS NULL
         AND "issueDate" >= ${sixMonthsAgo}
       GROUP BY TO_CHAR("issueDate", 'YYYY-MM')
       ORDER BY month
@@ -452,7 +475,7 @@ export class DashboardService {
     // Usamos totalThisMonth como proxy de ingresos (incluye IVA, aproximación aceptable)
     const avgMargin =
       totalThisMonth > 0
-        ? (totalThisMonth - costThisMonth) / totalThisMonth
+        ? (totalThisMonth - costAllSalesMonth) / totalThisMonth
         : 0.3;
     const breakEvenPoint =
       avgMargin > 0 ? Math.round(fixedCosts / avgMargin) : 0;
@@ -612,7 +635,7 @@ export class DashboardService {
     // --- Pareto: clientes con volumen y frecuencia (últimos 12 meses, PAID)
     const invoicesForPareto = await this.prisma.invoice.findMany({
       where: {
-        ...this.operationalPaidWhere(organizationId),
+        ...this.paidVolumeWhere(organizationId),
         issueDate: { gte: twelveMonthsAgo },
       },
       select: {
@@ -671,10 +694,7 @@ export class DashboardService {
     frictionSince.setDate(frictionSince.getDate() - 90);
     const paidInvoices = await this.prisma.invoice.findMany({
       where: {
-        organizationId,
-        status: "PAID",
-        deletedAt: null,
-        isLegacyImport: { not: true },
+        ...this.paidVolumeWhere(organizationId),
         issueDate: { gte: frictionSince },
       },
       select: { createdAt: true, updatedAt: true, markedAsPaidAt: true, issueDate: true },
@@ -698,17 +718,13 @@ export class DashboardService {
       where: {
         organizationId,
         deletedAt: null,
-        isLegacyImport: { not: true },
         status: { in: ["PENDING", "PAID"] },
         issueDate: { gte: frictionSince },
       },
     });
     const totalPagadas = await this.prisma.invoice.count({
       where: {
-        organizationId,
-        deletedAt: null,
-        isLegacyImport: { not: true },
-        status: "PAID",
+        ...this.paidVolumeWhere(organizationId),
         issueDate: { gte: frictionSince },
       },
     });
