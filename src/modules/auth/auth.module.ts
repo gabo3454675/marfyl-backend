@@ -19,8 +19,8 @@ import { LocalStrategy } from "./strategies/local.strategy";
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>("JWT_SECRET"),
         signOptions: {
-          // Access token: 365 días por defecto. Refresh token (si se implementa): usar JWT_REFRESH_EXPIRES_IN con valor largo (ej. 365d).
-          expiresIn: configService.get<string>("JWT_EXPIRES_IN", "365d"),
+          // Access token: 60 minutos (JWT expiry corto). Refresh token para renovar.
+          expiresIn: configService.get<string>("JWT_EXPIRES_IN", "60m"),
         },
       }),
     }),

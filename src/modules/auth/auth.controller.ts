@@ -16,6 +16,7 @@ import { CompletePasswordResetDto } from "./dto/complete-password-reset.dto";
 import { RecoverPasswordDto } from "./dto/recover-password.dto";
 import { SwitchOrganizationDto } from "./dto/switch-organization.dto";
 import { SetupOrganizationDto } from "./dto/setup-organization.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
@@ -32,6 +33,29 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Public()
+  @Throttle({
+    short: { limit: 10, ttl: 60000 },
+    long: { limit: 50, ttl: 3600000 },
+  })
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  @Public()
+  @Throttle({
+    short: { limit: 5, ttl: 60000 },
+    long: { limit: 20, ttl: 3600000 },
+  })
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() dto: RefreshTokenDto) {
+    await this.authService.revokeRefreshToken(dto.refreshToken);
+    return { success: true };
   }
 
   @Public()

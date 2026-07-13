@@ -38,6 +38,7 @@ model User {
   fcmTokens     FcmToken[]               // Tokens FCM para notificaciones push (Super Admin)
   auditorias    Auditoria[]              // Auditoría SAC (declaraciones fiscales)
   payrollRunsProcessed PayrollRun[]     // Nóminas procesadas por el usuario
+  refreshTokens       RefreshToken[]   // Refresh tokens para autenticación
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -163,6 +164,8 @@ model Organization {
   payrollProfiles    PayrollProfile[]
   payrollRuns        PayrollRun[]
   payrollLines       PayrollLine[]
+  invoiceSequence    OrganizationInvoiceSequence?
+  salesImportPreviews SalesImportPreviewBatch[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -547,6 +550,10 @@ model Invoice {
   // La eliminación física solo debe hacerse por un Super Admin con justificación legal
   deletedAt           DateTime?
 
+  legacyImportKey     String?   // ej. FAC-00009605 — idempotencia importación POS
+  importSource        String?   // fastreport
+  isLegacyImport      Boolean   @default(false)
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -572,7 +579,35 @@ model Invoice {
   @@index([paymentStatus])
   @@index([tasaHistoricaId])
   @@index([deletedAt])
+  @@unique([organizationId, consecutiveNumber])
+  @@unique([organizationId, legacyImportKey])
   @@map("invoices")
+}
+
+// Secuencia atómica de facturas por organización
+model OrganizationInvoiceSequence {
+  organizationId Int      @id
+  nextNumber     Int      @default(1)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_invoice_sequences")
+}
+
+// Preview de importación ventas POS (multi-réplica, TTL)
+model SalesImportPreviewBatch {
+  id             String   @id
+  organizationId Int
+  payload        Json
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([expiresAt])
+  @@map("sales_import_preview_batches")
 }
 
 model InvoiceItem {
@@ -657,6 +692,7 @@ model Expense {
   date                DateTime       @default(now())
   amount              Decimal        @db.Decimal(15, 2)
   description         String
+  importKey           String?        // Idempotencia importaciones (ej. monddy-compra:...)
   referenceNumber     String?        // Número de factura del proveedor
   status              ExpenseStatus  @default(PENDING)
   supplierId          Int?
@@ -689,6 +725,8 @@ model Expense {
   @@index([organizationId])
   @@index([date])
   @@index([description])
+  @@index([importKey])
+  @@unique([organizationId, importKey])
   @@index([referenceNumber])
   @@index([categoryId])
   @@index([inventoryMovementId])
@@ -849,6 +887,28 @@ model FcmToken {
 
   @@index([userId])
   @@map("fcm_tokens")
+}
+
+// ------------------------------------------
+// REFRESH TOKENS (Autenticación - JWT)
+// Almacena hash SHA-256 del token, nunca plaintext.
+// Permite refresh con JWT expiry corto (60min).
+// ------------------------------------------
+model RefreshToken {
+  id             String    @id @default(uuid())
+  token          String    @unique  // Hash SHA-256 del refresh token (nunca plaintext)
+  userId         Int
+  organizationId Int?      // Organización activa al momento de generar el token (nullable para retrocompatibilidad)
+  expiresAt      DateTime  // Fecha de expiración del token
+  revokedAt      DateTime?          // Null = activo; con valor = revocado lógicamente
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt]) // Queries de limpieza: tokens expirados por usuario
+  @@index([token])             // Lookup rápido por token (refresh flow)
+  @@index([organizationId])    // Lookup rápido por organización
+  @@map("refresh_tokens")
 }
 
 // ------------------------------------------

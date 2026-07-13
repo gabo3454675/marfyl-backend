@@ -193,7 +193,13 @@ async function bootstrap() {
     exposedHeaders: ["Content-Range", "X-Content-Range"],
   });
 
-  // CSRF Protection: Validate Origin header for state-changing requests
+  // CSRF Protection: Validate Origin header for state-changing requests.
+  // This is implemented as an inline middleware rather than a NestMiddleware
+  // because it needs access to runtime config (FRONTEND_URL, CORS_ALLOWED_ORIGINS)
+  // resolved at bootstrap time and cannot be injected via NestJS DI in a module
+  // without coupling it to a specific module's scope. The former
+  // `src/common/middleware/csrf.middleware.ts` class was dead code (never registered)
+  // and has been removed. This inline implementation is the sole CSRF guard.
   app.use((req: any, res: any, next: any) => {
     if (
       req.method === "GET" ||

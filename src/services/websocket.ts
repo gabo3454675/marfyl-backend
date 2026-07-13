@@ -12,6 +12,7 @@ import {
   OnModuleDestroy,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
 import { ChatHandler, ChatMessage } from "../ai/chatHandler";
@@ -94,6 +95,7 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly chatHandler: ChatHandler,
+    private readonly jwtService: JwtService,
   ) {}
 
   /**
@@ -131,28 +133,54 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
       pingInterval: 25000,
     });
 
-    // Authentication middleware
+    // Authentication middleware — real JWT validation
     this.io.use((socket: AuthenticatedSocket, next) => {
-      // In production, validate JWT token from handshake
-      const token =
+      const rawToken =
         socket.handshake.auth.token || socket.handshake.headers.authorization;
+
+      // Strip "Bearer " prefix if present
+      const token =
+        typeof rawToken === "string"
+          ? rawToken.replace(/^Bearer\s+/i, "")
+          : undefined;
+
+      // SECURITY: Always require JWT authentication, regardless of environment
+      // Previously, development/QA allowed unauthenticated connections, which was
+      // a security risk in staging environments. All connections must now be
+      // authenticated with a valid JWT token.
       if (!token) {
-        // For development, allow connection without auth
-        const devAuth = this.config.get<string>("NODE_ENV") !== "production";
-        if (!devAuth) {
-          return next(new Error("Authentication required"));
-        }
+        this.logger.warn(
+          `WebSocket connection rejected: no token provided (${socket.id})`,
+        );
+        socket.emit("error", { message: "Authentication required" });
+        return next(new Error("Authentication required"));
       }
 
-      // Extract organization ID from token or header
-      const orgId =
-        socket.handshake.auth.organizationId ||
-        socket.handshake.headers["x-tenant-id"];
-      if (orgId) {
-        socket.organizationId = parseInt(orgId as string, 10);
-      }
+      try {
+        // Validate JWT signature and expiration
+        const payload = this.jwtService.verify<{
+          sub: number;
+          email?: string;
+          isSuperAdmin?: boolean;
+          organizationId?: number;
+        }>(token);
 
-      next();
+        // Attach validated identity to socket
+        socket.userId = payload.sub;
+        socket.organizationId =
+          socket.organizationId ?? payload.organizationId;
+
+        this.logger.debug(
+          `JWT validated for user ${payload.sub}, org ${payload.organizationId}`,
+        );
+
+        return next();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Invalid token";
+        this.logger.warn(`JWT validation failed for ${socket.id}: ${message}`);
+        return next(new Error("Authentication required"));
+      }
     });
 
     // Register namespace handlers

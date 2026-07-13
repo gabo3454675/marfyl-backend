@@ -1,5 +1,6 @@
 import {
   computeInvoiceTax,
+  computeInvoiceTaxFromGross,
   computeLineTax,
   computeWithholdingIva,
   IVA_GENERAL_RATE,
@@ -31,5 +32,16 @@ describe("tax-calculator", () => {
 
   it("retencion 75% del IVA", () => {
     expect(computeWithholdingIva(100)).toBe(75);
+  });
+
+  it("desglosa IVA desde precio bruto legacy POS", () => {
+    const t = computeInvoiceTaxFromGross([
+      { amount: 116, isExempt: false },
+      { amount: 10, isExempt: true },
+    ]);
+    expect(t.totalWithTax).toBe(126);
+    expect(t.ivaAmount).toBe(16);
+    expect(t.baseGeneral).toBe(100);
+    expect(t.baseExempt).toBe(10);
   });
 });

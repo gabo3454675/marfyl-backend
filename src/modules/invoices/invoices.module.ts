@@ -4,6 +4,8 @@ import { ActivityLogModule } from "@/modules/activity-log/activity-log.module";
 import { InvoicesController } from "./invoices.controller";
 import { InvoicesPublicController } from "./invoices-public.controller";
 import { InvoicesService } from "./invoices.service";
+import { InvoiceSequenceService } from "./invoice-sequence.service";
+import { AnyPermissionsGuard } from "@/common/guards/any-permissions.guard";
 import { CreditsModule } from "../credits/credits.module";
 import { TasksModule } from "../tasks/tasks.module";
 import { FiscalModule } from "../fiscal/fiscal.module";
@@ -17,7 +19,7 @@ import { FiscalModule } from "../fiscal/fiscal.module";
     FiscalModule,
   ],
   controllers: [InvoicesController, InvoicesPublicController],
-  providers: [InvoicesService],
-  exports: [InvoicesService],
+  providers: [InvoicesService, InvoiceSequenceService, AnyPermissionsGuard],
+  exports: [InvoicesService, InvoiceSequenceService],
 })
 export class InvoicesModule {}

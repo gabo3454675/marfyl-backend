@@ -219,8 +219,14 @@ export class AuthService {
     };
     if (organizationId != null) payload.organizationId = organizationId;
 
+    const refreshToken = await this.generateRefreshToken(
+      validatedUser.id,
+      organizationId ?? undefined,
+    );
+
     return {
       access_token: this.jwtService.sign(payload),
+      refreshToken,
       user: {
         id: validatedUser.id,
         email: validatedUser.email,
@@ -309,8 +315,14 @@ export class AuthService {
     };
     if (organizationId != null) payload.organizationId = organizationId;
 
+    const refreshToken = await this.generateRefreshToken(
+      user.id,
+      organizationId ?? undefined,
+    );
+
     return {
       access_token: this.jwtService.sign(payload),
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -350,14 +362,31 @@ export class AuthService {
     });
     if (!org) throw new BadRequestException("Organización no encontrada");
 
+    // Revocar todos los refresh tokens activos del usuario para esta sesión
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
     const payload = {
       email: user.email,
       sub: user.id,
       isSuperAdmin,
       organizationId,
     };
+
+    // Generar nuevo refresh token con la nueva organización
+    const refreshToken = await this.generateRefreshToken(
+      userId,
+      organizationId,
+    );
+
     return {
       access_token: this.jwtService.sign(payload),
+      refreshToken,
       organizationId,
     };
   }
@@ -498,6 +527,10 @@ export class AuthService {
 
     return {
       access_token: this.jwtService.sign(payload),
+      refreshToken: await this.generateRefreshToken(
+        validatedUser.id,
+        organizationId ?? undefined,
+      ),
       user: {
         id: validatedUser.id,
         email: validatedUser.email,
@@ -554,6 +587,137 @@ export class AuthService {
       organizationId,
       organizations: orgs,
     };
+  }
+
+  /**
+   * Genera un refresh token para un usuario.
+   * - Crea un token aleatorio de 64 bytes (hex)
+   * - Hashea SHA-256 antes de almacenar (nunca se guarda el plaintext)
+   * - Guarda en tabla RefreshToken con expiración de 7 días
+   * - Opcionalmente guarda la organización activa para preservar el contexto al rotar
+   * - Retorna el token original (no el hash)
+   */
+  async generateRefreshToken(
+    userId: number,
+    organizationId?: number,
+  ): Promise<string> {
+    const rawToken = crypto.randomBytes(64).toString("hex");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+
+    await this.prisma.refreshToken.create({
+      data: {
+        token: tokenHash,
+        userId,
+        organizationId,
+        expiresAt,
+      },
+    });
+
+    return rawToken;
+  }
+
+  /**
+   * Renueva tokens (rotación): valida el refresh token actual,
+   * lo revoca y genera un nuevo par access token + refresh token.
+   * Usa la organización almacenada en el refresh token para preservar el contexto.
+   */
+  async refreshTokens(refreshToken: string): Promise<{
+    access_token: string;
+    refreshToken: string;
+  }> {
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token: tokenHash },
+      include: { user: true },
+    });
+
+    if (!storedToken) {
+      throw new UnauthorizedException("Refresh token inválido");
+    }
+
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException("Refresh token revocado");
+    }
+
+    if (storedToken.expiresAt <= new Date()) {
+      throw new UnauthorizedException("Refresh token expirado");
+    }
+
+    // Revocar el token actual (rotación)
+    await this.prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revokedAt: new Date() },
+    });
+
+    // Usar la organización guardada en el refresh token, o fallback a la primera membresía
+    const user = storedToken.user;
+    const organizationId =
+      storedToken.organizationId ??
+      (
+        await this.prisma.member.findFirst({
+          where: { userId: user.id, status: "ACTIVE" },
+          orderBy: { joinedAt: "asc" },
+          select: { organizationId: true },
+        })
+      )?.organizationId ??
+      undefined;
+
+    const payload: {
+      email: string;
+      sub: number;
+      isSuperAdmin: boolean;
+      organizationId?: number;
+    } = {
+      email: user.email,
+      sub: user.id,
+      isSuperAdmin: user.isSuperAdmin ?? false,
+    };
+    if (organizationId != null) payload.organizationId = organizationId;
+
+    const newAccessToken = this.jwtService.sign(payload);
+    const newRefreshToken = await this.generateRefreshToken(
+      user.id,
+      organizationId,
+    );
+
+    return {
+      access_token: newAccessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
+
+  /**
+   * Revoca un refresh token (logout).
+   * Marca revokedAt con la fecha actual.
+   */
+  async revokeRefreshToken(refreshToken: string): Promise<void> {
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token: tokenHash },
+    });
+
+    if (!storedToken || storedToken.revokedAt) {
+      // Token ya revocado o no existe — no revelar información
+      return;
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revokedAt: new Date() },
+    });
   }
 
   /**

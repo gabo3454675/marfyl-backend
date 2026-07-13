@@ -23,7 +23,9 @@ import { VoidInvoiceDto, AdjustAmountDto } from "./dto/void-invoice.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { AnyPermissionsGuard } from "@/common/guards/any-permissions.guard";
 import { Permissions } from "@/common/decorators/permissions.decorator";
+import { AnyPermissions } from "@/common/decorators/any-permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 
@@ -36,7 +38,8 @@ export class InvoicesController {
   ) {}
 
   @Post()
-  @Permissions("canManageInvoices")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canManageInvoices", "canAccessPOS")
   async create(
     @Body() createInvoiceDto: CreateInvoiceDto,
     @ActiveOrganization() organizationId: number,

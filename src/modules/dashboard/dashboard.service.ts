@@ -19,10 +19,85 @@ import type {
   StrategyInsightDto,
 } from "./dto/dashboard-strategy.dto";
 import { Prisma } from "@prisma/client";
+import {
+  productCostUsd,
+  productSaleUsd,
+  safeExchangeRate,
+} from "@/common/helpers/currency.helper";
 
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
+
+  /** Facturas POS/operativas (excluye importaciones históricas FastReport). */
+  private operationalPaidWhere(organizationId: number, extra?: object) {
+    return {
+      organizationId,
+      status: "PAID" as const,
+      isLegacyImport: { not: true },
+      ...extra,
+    };
+  }
+
+  /**
+   * Ganancia neta estimada en USD vía agregación SQL.
+   * Solo ventas operativas; costPrice del catálogo siempre en USD.
+   */
+  private async aggregateNetProfitUsd(
+    organizationId: number,
+    from: Date,
+    to: Date | undefined,
+  ): Promise<number> {
+    const dateToFilter = to
+      ? Prisma.sql`AND i."issueDate" <= ${to}`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ profit: Prisma.Decimal | null }>
+    >`
+      SELECT COALESCE(SUM(
+        (ii."unitPrice"::numeric * ii.quantity)
+        - (p."costPrice"::numeric * ii.quantity)
+      ), 0) AS profit
+      FROM invoice_items ii
+      INNER JOIN invoices i ON i.id = ii."invoiceId"
+      INNER JOIN products p ON p.id = ii."productId"
+      WHERE i."organizationId" = ${organizationId}
+        AND i.status = 'PAID'
+        AND COALESCE(i."isLegacyImport", false) = false
+        AND i."issueDate" >= ${from}
+        ${dateToFilter}
+    `;
+
+    return Math.round(Number(rows[0]?.profit ?? 0) * 100) / 100;
+  }
+
+  /** Costo de reposición del mes (USD) para punto de equilibrio — solo ventas operativas. */
+  private async aggregateReplacementCostUsd(
+    organizationId: number,
+    from: Date,
+    to?: Date,
+  ): Promise<number> {
+    const dateToFilter = to
+      ? Prisma.sql`AND i."issueDate" <= ${to}`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ cost: Prisma.Decimal | null }>
+    >`
+      SELECT COALESCE(SUM(p."costPrice"::numeric * ii.quantity), 0) AS cost
+      FROM invoice_items ii
+      INNER JOIN invoices i ON i.id = ii."invoiceId"
+      INNER JOIN products p ON p.id = ii."productId"
+      WHERE i."organizationId" = ${organizationId}
+        AND i.status = 'PAID'
+        AND COALESCE(i."isLegacyImport", false) = false
+        AND i."issueDate" >= ${from}
+        ${dateToFilter}
+    `;
+
+    return Number(rows[0]?.cost ?? 0);
+  }
 
   /**
    * Facturas pendientes (top 5) para widgets del dashboard.
@@ -116,19 +191,15 @@ export class DashboardService {
       // Suma de ventas del día (solo facturas pagadas)
       const [invoicesToday, invoicesYesterday] = await Promise.all([
         this.prisma.invoice.aggregate({
-          where: {
-            organizationId,
-            createdAt: { gte: today, lt: tomorrow },
-            status: "PAID",
-          },
+          where: this.operationalPaidWhere(organizationId, {
+            issueDate: { gte: today, lt: tomorrow },
+          }),
           _sum: { totalAmount: true },
         }),
         this.prisma.invoice.aggregate({
-          where: {
-            organizationId,
-            createdAt: { gte: yesterday, lt: today },
-            status: "PAID",
-          },
+          where: this.operationalPaidWhere(organizationId, {
+            issueDate: { gte: yesterday, lt: today },
+          }),
           _sum: { totalAmount: true },
         }),
       ]);
@@ -158,13 +229,9 @@ export class DashboardService {
 
       // Últimas 5 facturas
       const recentInvoices = await this.prisma.invoice.findMany({
-        where: {
-          organizationId, // OBLIGATORIO: Filtro por organización para aislamiento multi-tenant
-        },
+        where: this.operationalPaidWhere(organizationId),
         take: 5,
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { issueDate: "desc" },
         include: {
           customer: {
             select: {
@@ -203,7 +270,7 @@ export class DashboardService {
       where: { id: organizationId },
       select: { exchangeRate: true },
     });
-    const rate = org?.exchangeRate ?? 1;
+    const rate = safeExchangeRate(Number(org?.exchangeRate ?? 1));
 
     const now = new Date();
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -226,13 +293,14 @@ export class DashboardService {
     const dailySalesRaw = await this.prisma.$queryRaw<
       Array<{ date: string; total: Prisma.Decimal }>
     >`
-      SELECT DATE("createdAt") as date, SUM("totalAmount") as total
+      SELECT DATE("issueDate") as date, SUM("totalAmount") as total
       FROM "invoices"
       WHERE "organizationId" = ${organizationId}
         AND status = 'PAID'
-        AND "createdAt" >= ${firstDayLastMonth}
-        AND "createdAt" <= ${lastDayLastMonth}
-      GROUP BY DATE("createdAt")
+        AND COALESCE("isLegacyImport", false) = false
+        AND "issueDate" >= ${firstDayLastMonth}
+        AND "issueDate" <= ${lastDayLastMonth}
+      GROUP BY DATE("issueDate")
       ORDER BY date
     `;
 
@@ -258,66 +326,53 @@ export class DashboardService {
       d.setDate(d.getDate() + 1);
     }
 
-    // Top 5 productos por margen (ganancia neta): (unitPrice - costPrice) * quantity
-    // Limitado a 1000 items para evitar memory issues con datasets grandes
-    const itemsWithProduct = await this.prisma.invoiceItem.findMany({
-      where: {
-        invoice: {
-          organizationId,
-          status: "PAID",
-          createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
-        },
-      },
-      include: {
-        product: { select: { id: true, name: true, costPrice: true } },
-      },
-      take: 1000,
-    });
+    // Top 5 productos por margen (SQL agregado, sin límite arbitrario de filas)
+    const topMarginRaw = await this.prisma.$queryRaw<
+      Array<{
+        product_id: number;
+        product_name: string;
+        margin: Prisma.Decimal;
+      }>
+    >`
+      SELECT
+        p.id AS product_id,
+        p.name AS product_name,
+        COALESCE(SUM(
+          (ii."unitPrice"::numeric * ii.quantity)
+          - (p."costPrice"::numeric * ii.quantity)
+        ), 0) AS margin
+      FROM invoice_items ii
+      INNER JOIN invoices i ON i.id = ii."invoiceId"
+      INNER JOIN products p ON p.id = ii."productId"
+      WHERE i."organizationId" = ${organizationId}
+        AND i.status = 'PAID'
+        AND COALESCE(i."isLegacyImport", false) = false
+        AND i."issueDate" >= ${firstDayLastMonth}
+        AND i."issueDate" <= ${lastDayLastMonth}
+      GROUP BY p.id, p.name
+      ORDER BY margin DESC
+      LIMIT 5
+    `;
 
-    const marginByProduct = new Map<number, { name: string; margin: number }>();
-    for (const item of itemsWithProduct) {
-      const cost = Number(item.product.costPrice);
-      const revenue = Number(item.unitPrice);
-      const margin = (revenue - cost) * item.quantity;
-      const existing = marginByProduct.get(item.productId);
-      if (existing) {
-        existing.margin += margin;
-      } else {
-        marginByProduct.set(item.productId, {
-          name: item.product.name,
-          margin,
-        });
-      }
-    }
-
-    const topProductsByMargin: TopProductMarginDto[] = Array.from(
-      marginByProduct.entries(),
-    )
-      .map(([productId, { name, margin }]) => ({
-        productId,
-        productName: name,
-        margin,
-      }))
-      .sort((a, b) => b.margin - a.margin)
-      .slice(0, 5);
+    const topProductsByMargin: TopProductMarginDto[] = topMarginRaw.map((row) => ({
+      productId: row.product_id,
+      productName: row.product_name,
+      margin: Math.round(Number(row.margin) * 100) / 100,
+    }));
 
     // KPIs: ticket promedio (mes actual), crecimiento mensual - OPTIMIZADO con aggregations
     const [invoicesThisMonthAgg, invoicesLastMonthAgg] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: {
-          organizationId,
-          status: "PAID",
-          createdAt: { gte: firstDayThisMonth },
-        },
+        where: this.operationalPaidWhere(organizationId, {
+          issueDate: { gte: firstDayThisMonth },
+        }),
         _sum: { totalAmount: true },
         _count: { id: true },
       }),
       this.prisma.invoice.aggregate({
-        where: {
-          organizationId,
-          status: "PAID",
-          createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
-        },
+        where: this.operationalPaidWhere(organizationId, {
+          issueDate: { gte: firstDayLastMonth, lte: lastDayLastMonth },
+        }),
         _sum: { totalAmount: true },
         _count: { id: true },
       }),
@@ -342,56 +397,30 @@ export class DashboardService {
       daysInLastMonth > 0 ? totalLastMonth / daysInLastMonth : 0;
     const dailySalesGoal = Math.round(avgDailyLastMonth * 1.1 * 100) / 100;
 
-    // Ganancia neta estimada (ingresos - costos de reposición) mes actual y anterior
-    const [itemsThisMonth, itemsLastMonth] = await Promise.all([
-      this.prisma.invoiceItem.findMany({
-        where: {
-          invoice: {
-            organizationId,
-            status: "PAID",
-            createdAt: { gte: firstDayThisMonth },
-          },
-        },
-        include: { product: { select: { costPrice: true } } },
-        take: 2000,
-      }),
-      this.prisma.invoiceItem.findMany({
-        where: {
-          invoice: {
-            organizationId,
-            status: "PAID",
-            createdAt: { gte: firstDayLastMonth, lte: lastDayLastMonth },
-          },
-        },
-        include: { product: { select: { costPrice: true } } },
-        take: 2000,
-      }),
-    ]);
-
-    const calcNetProfit = (
-      items: Array<{ unitPrice: unknown; quantity: number; product: { costPrice: unknown } }>,
-    ) =>
-      items.reduce((sum, item) => {
-        const revenue = Number(item.unitPrice) * item.quantity;
-        const cost = Number(item.product.costPrice) * item.quantity;
-        return sum + (revenue - cost);
-      }, 0);
-
-    const estimatedNetProfit = Math.round(calcNetProfit(itemsThisMonth) * 100) / 100;
-    const estimatedNetProfitPrev =
-      Math.round(calcNetProfit(itemsLastMonth) * 100) / 100;
+    // Ganancia neta estimada (ingresos - costos de reposición en USD), sin importaciones legacy
+    const [estimatedNetProfit, estimatedNetProfitPrev, costThisMonth] =
+      await Promise.all([
+        this.aggregateNetProfitUsd(organizationId, firstDayThisMonth, undefined),
+        this.aggregateNetProfitUsd(
+          organizationId,
+          firstDayLastMonth,
+          lastDayLastMonth,
+        ),
+        this.aggregateReplacementCostUsd(organizationId, firstDayThisMonth),
+      ]);
 
     // Ventas mensuales (últimos 6 meses)
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
     const monthlySalesRaw = await this.prisma.$queryRaw<
       Array<{ month: string; total: Prisma.Decimal }>
     >`
-      SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, SUM("totalAmount") as total
+      SELECT TO_CHAR("issueDate", 'YYYY-MM') as month, SUM("totalAmount") as total
       FROM "invoices"
       WHERE "organizationId" = ${organizationId}
         AND status = 'PAID'
-        AND "createdAt" >= ${sixMonthsAgo}
-      GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
+        AND COALESCE("isLegacyImport", false) = false
+        AND "issueDate" >= ${sixMonthsAgo}
+      GROUP BY TO_CHAR("issueDate", 'YYYY-MM')
       ORDER BY month
     `;
 
@@ -410,15 +439,15 @@ export class DashboardService {
         status: "PAID",
         deletedAt: null,
         date: { gte: firstDayThisMonth },
+        category: {
+          NOT: {
+            name: { contains: "inventario", mode: "insensitive" },
+          },
+        },
       },
       _sum: { amount: true },
     });
     const fixedCosts = Number(expensesAgg._sum.amount ?? 0);
-    // Calcular costo de reposición del mes desde los items
-    const costThisMonth = itemsThisMonth.reduce(
-      (sum, item) => sum + Number(item.product.costPrice) * item.quantity,
-      0,
-    );
     // Margen promedio = (ingresos - costo de reposición) / ingresos
     // Usamos totalThisMonth como proxy de ingresos (incluye IVA, aproximación aceptable)
     const avgMargin =
@@ -443,36 +472,62 @@ export class DashboardService {
     };
   }
 
-  /** Diagnóstico: erosión de margen (costo vs precio venta, margen &lt; 15% en rojo) y antigüedad de deuda por cliente */
-  async getDiagnosis(organizationId: number): Promise<DashboardDiagnosisDto> {
+  /** Productos con erosión de margen (catálogo, precios en USD de referencia). */
+  private async getMarginErosionProducts(
+    organizationId: number,
+    rate: number,
+    limit = 25,
+  ): Promise<MarginErosionProductDto[]> {
     const MARGIN_CRITICAL_PCT = 15;
-    const PAYMENT_TERM_DAYS = 30;
-
-    // --- Erosión de margen: productos con costPrice y salePrice; margen % y flag critical
     const products = await this.prisma.product.findMany({
       where: { organizationId },
-      select: { id: true, name: true, costPrice: true, salePrice: true },
+      select: {
+        id: true,
+        name: true,
+        costPrice: true,
+        salePrice: true,
+        salePriceCurrency: true,
+      },
     });
 
-    const marginErosion: MarginErosionProductDto[] = products
+    return products
       .filter((p) => Number(p.salePrice) > 0)
       .map((p) => {
-        const cost = Number(p.costPrice);
-        const sale = Number(p.salePrice);
-        const marginPct = sale > 0 ? ((sale - cost) / sale) * 100 : 0;
+        const cost = productCostUsd(Number(p.costPrice));
+        const saleUsd = productSaleUsd(
+          Number(p.salePrice),
+          p.salePriceCurrency,
+          rate,
+        );
+        const marginPct =
+          saleUsd > 0 ? ((saleUsd - cost) / saleUsd) * 100 : 0;
         return {
           productId: p.id,
           productName: p.name,
           costPrice: Math.round(cost * 100) / 100,
-          salePrice: Math.round(sale * 100) / 100,
+          salePrice: Math.round(saleUsd * 100) / 100,
           marginPct: Math.round(marginPct * 10) / 10,
           marginCritical: marginPct < MARGIN_CRITICAL_PCT,
         };
       })
-      .sort((a, b) => a.marginPct - b.marginPct) // Más críticos primero
-      .slice(0, 25); // Top 25 para el gráfico
+      .sort((a, b) => a.marginPct - b.marginPct)
+      .slice(0, limit);
+  }
 
-    // --- Antigüedad de deuda: facturas PENDING por cliente, clasificadas en A tiempo / 1-15 / +30
+  /** Diagnóstico: erosión de margen (costo vs precio venta, margen &lt; 15% en rojo) y antigüedad de deuda por cliente */
+  async getDiagnosis(organizationId: number): Promise<DashboardDiagnosisDto> {
+    const PAYMENT_TERM_DAYS = 30;
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const rate = safeExchangeRate(Number(org?.exchangeRate ?? 1));
+
+    const marginErosion = await this.getMarginErosionProducts(
+      organizationId,
+      rate,
+    );
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -557,9 +612,8 @@ export class DashboardService {
     // --- Pareto: clientes con volumen y frecuencia (últimos 12 meses, PAID)
     const invoicesForPareto = await this.prisma.invoice.findMany({
       where: {
-        organizationId,
-        status: "PAID",
-        createdAt: { gte: twelveMonthsAgo },
+        ...this.operationalPaidWhere(organizationId),
+        issueDate: { gte: twelveMonthsAgo },
       },
       select: {
         customerId: true,
@@ -620,15 +674,16 @@ export class DashboardService {
         organizationId,
         status: "PAID",
         deletedAt: null,
-        createdAt: { gte: frictionSince },
+        isLegacyImport: { not: true },
+        issueDate: { gte: frictionSince },
       },
-      select: { createdAt: true, updatedAt: true, markedAsPaidAt: true },
+      select: { createdAt: true, updatedAt: true, markedAsPaidAt: true, issueDate: true },
     });
 
     const timesMs: number[] = [];
     for (const inv of paidInvoices) {
       const paidAt = inv.markedAsPaidAt ?? inv.updatedAt;
-      timesMs.push(paidAt.getTime() - inv.createdAt.getTime());
+      timesMs.push(paidAt.getTime() - inv.issueDate.getTime());
     }
     const avgMs =
       timesMs.length > 0
@@ -643,16 +698,18 @@ export class DashboardService {
       where: {
         organizationId,
         deletedAt: null,
+        isLegacyImport: { not: true },
         status: { in: ["PENDING", "PAID"] },
-        createdAt: { gte: frictionSince },
+        issueDate: { gte: frictionSince },
       },
     });
     const totalPagadas = await this.prisma.invoice.count({
       where: {
         organizationId,
         deletedAt: null,
+        isLegacyImport: { not: true },
         status: "PAID",
-        createdAt: { gte: frictionSince },
+        issueDate: { gte: frictionSince },
       },
     });
 
@@ -681,11 +738,15 @@ export class DashboardService {
     // --- Insights en lenguaje natural
     const insights: StrategyInsightDto[] = [];
 
-    // Productos con margen bajo (erosión)
-    const erosion = await this.getDiagnosis(organizationId);
-    const lowMarginProducts = erosion.marginErosion.filter(
-      (p) => p.marginCritical,
-    );
+    // Productos con margen bajo (erosión) — consulta ligera, sin repetir getDiagnosis completo
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { exchangeRate: true },
+    });
+    const rate = safeExchangeRate(Number(org?.exchangeRate ?? 1));
+    const lowMarginProducts = (
+      await this.getMarginErosionProducts(organizationId, rate, 25)
+    ).filter((p) => p.marginCritical);
     for (const p of lowMarginProducts.slice(0, 3)) {
       insights.push({
         tipo: "producto_margen",

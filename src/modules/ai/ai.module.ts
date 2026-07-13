@@ -6,7 +6,8 @@
  */
 
 import { Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { JwtModule } from "@nestjs/jwt";
 import { PrismaModule } from "@/common/prisma/prisma.module";
 import { ActivityLogModule } from "@/modules/activity-log/activity-log.module";
 import { InvoicesModule } from "@/modules/invoices/invoices.module";
@@ -25,6 +26,15 @@ import { WebSocketService } from "@/services/websocket";
 @Module({
   imports: [
     ConfigModule,
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>("JWT_SECRET"),
+        signOptions: {
+          expiresIn: configService.get<string>("JWT_EXPIRES_IN", "60m"),
+        },
+      }),
+    }),
     PrismaModule,
     ActivityLogModule,
     InvoicesModule,

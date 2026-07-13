@@ -3,6 +3,8 @@ import { CacheTTL } from "@nestjs/cache-manager";
 import { DashboardService } from "./dashboard.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { HttpCacheTenantInterceptor } from "@/common/interceptors/http-cache-tenant.interceptor";
 
@@ -33,6 +35,8 @@ export class DashboardController {
   }
 
   @Get("health")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canViewFinancialCharts")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   async getHealth(@ActiveOrganization() organizationId: number) {
@@ -40,6 +44,8 @@ export class DashboardController {
   }
 
   @Get("diagnosis")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canViewFinancialCharts")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   async getDiagnosis(@ActiveOrganization() organizationId: number) {
@@ -47,6 +53,8 @@ export class DashboardController {
   }
 
   @Get("strategy")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canViewFinancialCharts")
   @UseInterceptors(HttpCacheTenantInterceptor)
   @CacheTTL(60)
   async getStrategy(@ActiveOrganization() organizationId: number) {

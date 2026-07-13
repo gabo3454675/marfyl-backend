@@ -397,6 +397,7 @@ export class ConcertService {
     const holdToken = randomUUID();
     const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
 
+    // Pre-validate: existence and VIP section check (read-only, safe outside transaction)
     const seats = await this.prisma.concertSeat.findMany({
       where: { id: { in: seatIds }, section: { eventId: event.id } },
       include: { section: true },
@@ -411,26 +412,32 @@ export class ConcertService {
           "El Salón VIP no está disponible para venta en línea",
         );
       }
-      if (seat.status === ConcertSeatStatus.SOLD) {
-        throw new ConflictException(
-          `Asiento ${seat.rowLabel}-${seat.seatNumber} ya vendido`,
-        );
-      }
-      if (
-        seat.status === ConcertSeatStatus.HELD &&
-        seat.heldUntil &&
-        seat.heldUntil > new Date() &&
-        seat.holdToken !== existingHoldToken
-      ) {
-        throw new ConflictException(
-          `Asiento ${seat.rowLabel}-${seat.seatNumber} en reserva`,
-        );
-      }
     }
 
-    await this.prisma.concertSeat.updateMany({
-      where: { id: { in: seatIds } },
-      data: { status: ConcertSeatStatus.HELD, heldUntil, holdToken },
+    // Atomic reservation: each seat updated individually only if AVAILABLE.
+    // If a seat is no longer AVAILABLE (sold or held by another request),
+    // updateMany returns count 0 and the transaction rolls back.
+    await this.prisma.$transaction(async (tx) => {
+      for (const seat of seats) {
+        const result = await tx.concertSeat.updateMany({
+          where: { id: seat.id, status: ConcertSeatStatus.AVAILABLE },
+          data: { status: ConcertSeatStatus.HELD, heldUntil, holdToken },
+        });
+        if (result.count === 0) {
+          // Re-read inside the same transaction to provide a descriptive error
+          const current = await tx.concertSeat.findUnique({
+            where: { id: seat.id },
+          });
+          if (current?.status === ConcertSeatStatus.SOLD) {
+            throw new ConflictException(
+              `Asiento ${seat.rowLabel}-${seat.seatNumber} ya vendido`,
+            );
+          }
+          throw new ConflictException(
+            `Asiento ${seat.rowLabel}-${seat.seatNumber} en reserva`,
+          );
+        }
+      }
     });
 
     const totals = this.sumSeatTotals(seats, event);
@@ -496,40 +503,50 @@ export class ConcertService {
     holdToken: string,
     event: Awaited<ReturnType<ConcertService["getEventBySlug"]>>,
   ) {
-    const held = await this.prisma.concertSeat.findMany({
-      where: {
-        holdToken,
-        section: { eventId },
-        status: ConcertSeatStatus.HELD,
-        orderId: null,
-        heldUntil: { gt: new Date() },
-      },
-      include: { section: true },
-    });
-    if (held.length === 0) return null;
-
-    const heldIds = [...held.map((s) => s.id)].sort((a, b) => a - b);
-    const requestedIds = [...seatIds].sort((a, b) => a - b);
-    if (
-      heldIds.length !== requestedIds.length ||
-      !heldIds.every((id, i) => id === requestedIds[i])
-    ) {
-      return null;
-    }
-
     const heldUntil = new Date(Date.now() + CONCERT_HOLD_MINUTES * 60 * 1000);
-    await this.prisma.concertSeat.updateMany({
-      where: { holdToken },
-      data: { heldUntil },
+
+    // Wrap in transaction so the read-and-extend is atomic:
+    // if the hold expires between the find and the update, the transaction
+    // ensures we don't extend a stale state.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const held = await tx.concertSeat.findMany({
+        where: {
+          holdToken,
+          section: { eventId },
+          status: ConcertSeatStatus.HELD,
+          orderId: null,
+          heldUntil: { gt: new Date() },
+        },
+        include: { section: true },
+      });
+      if (held.length === 0) return null;
+
+      const heldIds = [...held.map((s) => s.id)].sort((a, b) => a - b);
+      const requestedIds = [...seatIds].sort((a, b) => a - b);
+      if (
+        heldIds.length !== requestedIds.length ||
+        !heldIds.every((id, i) => id === requestedIds[i])
+      ) {
+        return null;
+      }
+
+      await tx.concertSeat.updateMany({
+        where: { holdToken },
+        data: { heldUntil },
+      });
+
+      return { held, seatIds: requestedIds };
     });
 
-    const totals = this.sumSeatTotals(held, event);
+    if (!result) return null;
+
+    const totals = this.sumSeatTotals(result.held, event);
     const exchangeRate = event.organization.exchangeRate || 1;
 
     return {
       holdToken,
       heldUntil,
-      seatIds: requestedIds,
+      seatIds: result.seatIds,
       holdMinutes: CONCERT_HOLD_MINUTES,
       amountUsd: totals.amountUsd,
       amountUsdBolivares: totals.amountUsdBolivares,

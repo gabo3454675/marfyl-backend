@@ -20,6 +20,7 @@ export type PermissionKey =
   | 'canViewDashboard'
   | 'canViewFinancialCharts'
   | 'canViewReports'
+  | 'canAccessPOS'
   | 'canManageProducts'
   | 'canViewProducts'
   | 'canManageInventory'
@@ -50,6 +51,7 @@ export const ALL_PERMISSIONS: readonly PermissionKey[] = [
   'canViewDashboard',
   'canViewFinancialCharts',
   'canViewReports',
+  'canAccessPOS',
   'canManageProducts',
   'canViewProducts',
   'canManageInventory',
@@ -93,6 +95,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canViewDashboard',
     'canViewFinancialCharts',
     'canViewReports',
+    'canAccessPOS',
     'canManageProducts',
     'canViewProducts',
     'canManageInventory',
@@ -116,6 +119,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canViewDashboard',
     'canViewFinancialCharts',
     'canViewReports',
+    'canAccessPOS',
     'canManageProducts',
     'canViewProducts',
     'canManageInventory',
@@ -138,6 +142,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canViewDashboard',
     'canViewFinancialCharts',
     'canViewReports',
+    'canAccessPOS',
     'canManageProducts',
     'canViewProducts',
     'canManageInventory',
@@ -151,6 +156,7 @@ export const ROLE_PERMISSIONS_MAP = {
 
   SELLER: [
     'canViewDashboard',
+    'canAccessPOS',
     'canViewProducts',
     'canManageCustomers',
     'canManageInvoices',
@@ -166,9 +172,8 @@ export const ROLE_PERMISSIONS_MAP = {
   ] as const,
 
   POS_OPERATOR: [
-    'canViewDashboard',
+    'canAccessPOS',
     'canViewProducts',
-    'canManageInvoices',
     'canManageCierreCaja',
   ] as const,
 

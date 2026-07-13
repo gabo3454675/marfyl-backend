@@ -16,6 +16,7 @@ const PDFDocument = (PDFKit as any).default ?? PDFKit;
 import { TasksService } from "@/modules/tasks/tasks.service";
 import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
 import { FiscalControlNumberService } from "@/modules/fiscal/fiscal-control-number.service";
+import { InvoiceSequenceService } from "./invoice-sequence.service";
 import {
   computeInvoiceTax,
   type LineTaxInput,
@@ -37,6 +38,7 @@ export class InvoicesService {
     private activityLog: ActivityLogService,
     private fiscalEngine: FiscalEngineService,
     private fiscalControlNumber: FiscalControlNumberService,
+    private invoiceSequence: InvoiceSequenceService,
   ) {}
 
   async create(
@@ -126,7 +128,7 @@ export class InvoicesService {
       taxableBase: number;
       ivaLine: number;
     }[] = [];
-    const stockUpdates: ReturnType<PrismaService["product"]["update"]>[] = [];
+    const stockDecrements: { productId: number; quantity: number }[] = [];
 
     for (const item of items) {
       const product = productById.get(item.productId);
@@ -169,7 +171,7 @@ export class InvoicesService {
           product.name,
           "combo",
           productById,
-          stockUpdates,
+          stockDecrements,
         );
       } else if (product.isService) {
         if (compsList) {
@@ -179,7 +181,7 @@ export class InvoicesService {
             product.name,
             "servicio",
             productById,
-            stockUpdates,
+            stockDecrements,
           );
         }
       } else {
@@ -188,12 +190,7 @@ export class InvoicesService {
             `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
           );
         }
-        stockUpdates.push(
-          this.prisma.product.update({
-            where: { id: product.id },
-            data: { stock: { decrement: item.quantity } },
-          }),
-        );
+        stockDecrements.push({ productId: product.id, quantity: item.quantity });
       }
     }
 
@@ -291,9 +288,6 @@ export class InvoicesService {
       ? PaymentStatus.pending_credit
       : PaymentStatus.paid;
 
-    // Número consecutivo por organización (cada rancho/empresa tiene su propia secuencia 1, 2, 3...)
-    const nextConsecutive =
-      (await this.prisma.invoice.count({ where: { organizationId } })) + 1;
     const issueDate = new Date();
     const controlNumber =
       await this.fiscalControlNumber.allocateControlNumber(organizationId);
@@ -307,11 +301,20 @@ export class InvoicesService {
       return "EFECTIVO";
     };
 
-    // Ejecutamos actualización de stock e inserción de factura en una sola transacción "batch"
-    // El array devuelve [resultadoUpdate1, ..., resultadoUpdateN, facturaCreada]; la factura es el último elemento
-    const results = await this.prisma.$transaction([
-      ...stockUpdates,
-      this.prisma.invoice.create({
+    const invoice = await this.prisma.$transaction(async (tx) => {
+      const nextConsecutive = await this.invoiceSequence.allocateNext(
+        organizationId,
+        tx,
+      );
+
+      for (const dec of stockDecrements) {
+        await tx.product.update({
+          where: { id: dec.productId },
+          data: { stock: { decrement: dec.quantity } },
+        });
+      }
+
+      return tx.invoice.create({
         data: {
           companyId,
           organizationId,
@@ -359,13 +362,8 @@ export class InvoicesService {
           paymentLines: true,
           pagos: true,
         },
-      }),
-    ]);
-    const invoice = results[results.length - 1] as {
-      id: number;
-      totalAmount: unknown;
-      customer: { name?: string | null } | null;
-    };
+      });
+    });
 
     if (isCredit && customerId && invoice) {
       const org = await this.prisma.organization.findUnique({
@@ -394,7 +392,7 @@ export class InvoicesService {
 
       await this.tasksService.create(
         {
-          title: `Cobro: Factura #${nextConsecutive} - ${customerName}`,
+          title: `Cobro: Factura #${invoice.consecutiveNumber} - ${customerName}`,
           description: `Monto adeudado: $${Number(invoice.totalAmount).toFixed(2)}. Factura a crédito.`,
           assignedToId: sellerId,
           invoiceId: invoice.id,
@@ -432,7 +430,7 @@ export class InvoicesService {
     parentName: string,
     kind: "combo" | "servicio",
     productById: Map<number, Product>,
-    stockUpdates: ReturnType<PrismaService["product"]["update"]>[],
+    stockDecrements: { productId: number; quantity: number }[],
   ) {
     for (const comp of comps) {
       const child = productById.get(comp.productId);
@@ -449,12 +447,7 @@ export class InvoicesService {
           `Stock insuficiente para "${child.name}" (${kind === "combo" ? "componente del combo" : "incluido en el servicio"}) "${parentName}". Disponible: ${child.stock}, requerido: ${need}`,
         );
       }
-      stockUpdates.push(
-        this.prisma.product.update({
-          where: { id: child.id },
-          data: { stock: { decrement: need } },
-        }),
-      );
+      stockDecrements.push({ productId: child.id, quantity: need });
     }
   }
 

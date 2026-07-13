@@ -40,6 +40,8 @@ import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module
 import { PlanModule } from "./modules/plan/plan.module";
 import { PayrollModule } from "./modules/payroll/payroll.module";
 import { InvoiceUploadModule } from "./modules/invoice-upload/invoice-upload.module";
+import { SalesImportModule } from "./modules/sales-import/sales-import.module";
+import { PurchasesImportModule } from "./modules/purchases-import/purchases-import.module";
 
 @Module({
   imports: [
@@ -84,6 +86,8 @@ import { InvoiceUploadModule } from "./modules/invoice-upload/invoice-upload.mod
     PlanModule,
     PayrollModule,
     InvoiceUploadModule,
+    SalesImportModule,
+    PurchasesImportModule,
     ThrottlerModule.forRoot([
       {
         name: "short",
