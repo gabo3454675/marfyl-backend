@@ -16,8 +16,8 @@ export class FiscalNormsService {
    */
   async syncNormsFromCalendarJson(userId?: number) {
     const data = this.calendar.loadRulesJson();
-    if (!data) {
-      return { synced: false, message: "JSON de reglas no encontrado" };
+    if (!data?.obligations?.length) {
+      return { synced: false, message: "Reglas de calendario fiscal vacías" };
     }
 
     const validFrom = new Date(`${data.version}-01-01T00:00:00.000Z`);

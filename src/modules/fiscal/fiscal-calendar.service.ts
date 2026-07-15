@@ -24,6 +24,83 @@ interface RulesJson {
   obligations: ObligationDef[];
 }
 
+/** Fallback embebido si el JSON no está en el filesystem (p. ej. deploy sin `docs/`). */
+const DEFAULT_FISCAL_CALENDAR_RULES: RulesJson = {
+  version: "2026",
+  terminacionRifIvaOrdinario: {
+    "0": 10,
+    "1": 11,
+    "2": 12,
+    "3": 13,
+    "4": 14,
+    "5": 15,
+    "6": 16,
+    "7": 17,
+    "8": 18,
+    "9": 19,
+  },
+  obligations: [
+    {
+      code: "IVA_ORDINARIO",
+      name: "Declaración y pago IVA (ordinario)",
+      taxpayerTypes: [
+        FiscalTaxpayerType.ORDINARIO,
+        FiscalTaxpayerType.FORMAL,
+      ],
+      periodicity: "MENSUAL",
+      dueMonthOffset: 1,
+      rulesByRifDigit: true,
+    },
+    {
+      code: "IVA_ESPECIAL",
+      name: "Declaración y pago IVA (contribuyente especial)",
+      taxpayerTypes: [FiscalTaxpayerType.ESPECIAL],
+      periodicity: "QUINCENAL",
+      dueMonthOffset: 0,
+      rules: [
+        { rifDigitMin: 0, rifDigitMax: 1, dueDayOfMonth: 18 },
+        { rifDigitMin: 2, rifDigitMax: 3, dueDayOfMonth: 19 },
+        { rifDigitMin: 4, rifDigitMax: 5, dueDayOfMonth: 20 },
+        { rifDigitMin: 6, rifDigitMax: 7, dueDayOfMonth: 21 },
+        { rifDigitMin: 8, rifDigitMax: 9, dueDayOfMonth: 22 },
+      ],
+    },
+    {
+      code: "RETENCIONES_IVA",
+      name: "Declaración de retenciones de IVA",
+      taxpayerTypes: [
+        FiscalTaxpayerType.ORDINARIO,
+        FiscalTaxpayerType.ESPECIAL,
+        FiscalTaxpayerType.FORMAL,
+      ],
+      periodicity: "MENSUAL",
+      dueMonthOffset: 1,
+      requiresWithholdingAgent: true,
+      rulesByRifDigit: true,
+    },
+    {
+      code: "IGTF",
+      name: "IGTF — declaración y pago",
+      taxpayerTypes: [
+        FiscalTaxpayerType.ORDINARIO,
+        FiscalTaxpayerType.ESPECIAL,
+        FiscalTaxpayerType.FORMAL,
+      ],
+      periodicity: "MENSUAL",
+      dueMonthOffset: 1,
+      dueDayOfMonth: 15,
+    },
+    {
+      code: "ISLR_ANTICIPO",
+      name: "Anticipo de ISLR",
+      taxpayerTypes: [FiscalTaxpayerType.ESPECIAL],
+      periodicity: "MENSUAL",
+      dueMonthOffset: 1,
+      rulesByRifDigit: true,
+    },
+  ],
+};
+
 @Injectable()
 export class FiscalCalendarService {
   private readonly logger = new Logger(FiscalCalendarService.name);
@@ -34,6 +111,9 @@ export class FiscalCalendarService {
     const candidates = [
       path.join(process.cwd(), "docs", "FISCAL-CALENDARIO-REGLAS.json"),
       path.join(process.cwd(), "..", "docs", "FISCAL-CALENDARIO-REGLAS.json"),
+      // nest build → dist/modules/fiscal/*.js
+      path.join(__dirname, "assets", "FISCAL-CALENDARIO-REGLAS.json"),
+      path.join(__dirname, "..", "..", "..", "docs", "FISCAL-CALENDARIO-REGLAS.json"),
     ];
     for (const p of candidates) {
       if (fs.existsSync(p)) return p;
@@ -41,17 +121,29 @@ export class FiscalCalendarService {
     return null;
   }
 
-  loadRulesJson(): RulesJson | null {
+  loadRulesJson(): RulesJson {
     const file = this.resolveRulesPath();
-    if (!file) return null;
-    return JSON.parse(fs.readFileSync(file, "utf-8")) as RulesJson;
+    if (!file) {
+      this.logger.debug(
+        "FISCAL-CALENDARIO-REGLAS.json no en disco; usando reglas embebidas 2026",
+      );
+      return DEFAULT_FISCAL_CALENDAR_RULES;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf-8")) as RulesJson;
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo leer FISCAL-CALENDARIO-REGLAS.json (${String(err)}); usando reglas embebidas`,
+      );
+      return DEFAULT_FISCAL_CALENDAR_RULES;
+    }
   }
 
   /** Sincroniza plantillas y reglas desde JSON (reemplaza reglas por codigo de obligacion). */
   async syncSeniatRulesFromJson(force = false) {
     const data = this.loadRulesJson();
-    if (!data) {
-      this.logger.warn("FISCAL-CALENDARIO-REGLAS.json no encontrado");
+    if (!data?.obligations?.length) {
+      this.logger.warn("Reglas de calendario fiscal vacías");
       return { synced: false };
     }
 

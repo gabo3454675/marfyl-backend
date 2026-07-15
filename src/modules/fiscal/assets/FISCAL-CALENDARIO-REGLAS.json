@@ -1,0 +1,65 @@
+{
+  "version": "2026",
+  "source": "SENIAT — calendario de obligaciones (ordinario por terminación RIF; especiales según providencia vigente)",
+  "terminacionRifIvaOrdinario": {
+    "0": 10,
+    "1": 11,
+    "2": 12,
+    "3": 13,
+    "4": 14,
+    "5": 15,
+    "6": 16,
+    "7": 17,
+    "8": 18,
+    "9": 19
+  },
+  "obligations": [
+    {
+      "code": "IVA_ORDINARIO",
+      "name": "Declaración y pago IVA (ordinario)",
+      "taxpayerTypes": ["ORDINARIO", "FORMAL"],
+      "periodicity": "MENSUAL",
+      "dueMonthOffset": 1,
+      "rulesByRifDigit": true
+    },
+    {
+      "code": "IVA_ESPECIAL",
+      "name": "Declaración y pago IVA (contribuyente especial)",
+      "taxpayerTypes": ["ESPECIAL"],
+      "periodicity": "QUINCENAL",
+      "dueMonthOffset": 0,
+      "rules": [
+        { "rifDigitMin": 0, "rifDigitMax": 1, "dueDayOfMonth": 18 },
+        { "rifDigitMin": 2, "rifDigitMax": 3, "dueDayOfMonth": 19 },
+        { "rifDigitMin": 4, "rifDigitMax": 5, "dueDayOfMonth": 20 },
+        { "rifDigitMin": 6, "rifDigitMax": 7, "dueDayOfMonth": 21 },
+        { "rifDigitMin": 8, "rifDigitMax": 9, "dueDayOfMonth": 22 }
+      ]
+    },
+    {
+      "code": "RETENCIONES_IVA",
+      "name": "Declaración de retenciones de IVA",
+      "taxpayerTypes": ["ORDINARIO", "ESPECIAL", "FORMAL"],
+      "periodicity": "MENSUAL",
+      "dueMonthOffset": 1,
+      "requiresWithholdingAgent": true,
+      "rulesByRifDigit": true
+    },
+    {
+      "code": "IGTF",
+      "name": "IGTF — declaración y pago",
+      "taxpayerTypes": ["ORDINARIO", "ESPECIAL", "FORMAL"],
+      "periodicity": "MENSUAL",
+      "dueMonthOffset": 1,
+      "dueDayOfMonth": 15
+    },
+    {
+      "code": "ISLR_ANTICIPO",
+      "name": "Anticipo de ISLR",
+      "taxpayerTypes": ["ESPECIAL"],
+      "periodicity": "MENSUAL",
+      "dueMonthOffset": 1,
+      "rulesByRifDigit": true
+    }
+  ]
+}
