@@ -10,6 +10,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { assertMarfylDatabaseUrl } from "../src/common/database-guard";
 import { SalesImportService } from "../src/modules/sales-import/sales-import.service";
+import { InvoiceSequenceService } from "../src/modules/invoices/invoice-sequence.service";
 import type { PrismaService } from "../src/common/prisma/prisma.service";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
@@ -71,7 +72,11 @@ async function main() {
   }
 
   const prisma = new PrismaClient();
-  const service = new SalesImportService(prisma as unknown as PrismaService);
+  const prismaSvc = prisma as unknown as PrismaService;
+  const service = new SalesImportService(
+    prismaSvc,
+    new InvoiceSequenceService(prismaSvc),
+  );
 
   try {
     const org = await prisma.organization.findFirst({

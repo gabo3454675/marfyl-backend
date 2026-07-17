@@ -83,13 +83,26 @@ export class SalesImportService {
     return code.trim().replace(/\s+/g, "").toUpperCase();
   }
 
+  private stripLeadingZeros(code: string): string {
+    const stripped = code.replace(/^0+/, "");
+    return stripped || code;
+  }
+
   private buildProductLookups(products: ProductRow[]) {
     const bySku = new Map<string, ProductRow>();
     const byBarcode = new Map<string, ProductRow>();
     const byName = new Map<string, ProductRow>();
     for (const p of products) {
-      if (p.sku) bySku.set(this.normalizeCode(p.sku), p);
-      if (p.barcode) byBarcode.set(this.normalizeCode(p.barcode), p);
+      if (p.sku) {
+        const skuKey = this.normalizeCode(p.sku);
+        bySku.set(skuKey, p);
+        bySku.set(this.stripLeadingZeros(skuKey), p);
+      }
+      if (p.barcode) {
+        const bcKey = this.normalizeCode(p.barcode);
+        byBarcode.set(bcKey, p);
+        byBarcode.set(this.stripLeadingZeros(bcKey), p);
+      }
       byName.set(p.name.trim().toUpperCase(), p);
     }
     return { bySku, byBarcode, byName };
@@ -101,12 +114,17 @@ export class SalesImportService {
     lookups: ReturnType<SalesImportService["buildProductLookups"]>,
   ): { product?: ProductRow; matchBy?: "sku" | "barcode" | "name" } {
     const key = this.normalizeCode(code);
-    if (lookups.bySku.has(key)) return { product: lookups.bySku.get(key), matchBy: "sku" };
-    if (lookups.byBarcode.has(key)) return { product: lookups.byBarcode.get(key), matchBy: "barcode" };
+    const stripped = this.stripLeadingZeros(key);
 
-    const stripped = key.replace(/^0+/, "");
-    if (stripped && lookups.bySku.has(stripped)) {
+    if (lookups.bySku.has(key)) return { product: lookups.bySku.get(key), matchBy: "sku" };
+    if (lookups.bySku.has(stripped)) {
       return { product: lookups.bySku.get(stripped), matchBy: "sku" };
+    }
+    if (lookups.byBarcode.has(key)) {
+      return { product: lookups.byBarcode.get(key), matchBy: "barcode" };
+    }
+    if (lookups.byBarcode.has(stripped)) {
+      return { product: lookups.byBarcode.get(stripped), matchBy: "barcode" };
     }
 
     const nameKey = description.trim().toUpperCase();

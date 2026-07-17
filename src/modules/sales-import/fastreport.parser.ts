@@ -202,51 +202,58 @@ export function parseProductosReport(xml: string, sourceFile: string): ParsedSal
     }
 
     const c1 = get(cells, 1);
-    if (
-      c1 &&
-      !DATE_RE.test(c1) &&
-      c1 !== "Codigo" &&
-      c1 !== "Documento" &&
-      !DOC_RE.test(c1) &&
-      !isSkuCode(c1) &&
-      c1.length > 2
-    ) {
-      currentProductName = c1.trim();
-    }
-    if (c1 && isSkuCode(c1)) {
-      currentProductCode = c1.replace(/\s/g, "");
+
+    if (c1 === "Totales") {
+      inDetailSection = false;
+      pendingLine = null;
+      continue;
     }
 
+    // Cabecera de detalle por producto: a partir de aquí c1 son nº de documento.
     if (get(cells, 1) === "Documento" && getAny(cells, [8, 12]) === "Tipo") {
       inDetailSection = true;
       pendingLine = null;
       continue;
     }
 
+    const rowFecha = getAny(cells, [6, 17, 19]);
+    const looksLikeDocLine = DATE_RE.test(rowFecha);
+
+    // Nombre del producto (nuevo bloque). SKUs internos también matchean DOC_RE,
+    // por eso NO usamos DOC_RE aquí; la fecha discrimina líneas de factura.
+    if (
+      c1 &&
+      !looksLikeDocLine &&
+      !DATE_RE.test(c1) &&
+      c1 !== "Codigo" &&
+      c1 !== "Documento" &&
+      c1 !== "Totales" &&
+      !isSkuCode(c1) &&
+      c1.length > 2
+    ) {
+      currentProductName = c1.trim();
+      inDetailSection = false;
+      pendingLine = null;
+    }
+
+    // Código de producto: fila con SKU/EAN sin fecha de venta.
+    // Evita pisar el SKU con el nº de documento (00009840, etc.).
+    if (c1 && isSkuCode(c1) && !looksLikeDocLine && !inDetailSection) {
+      currentProductCode = c1.replace(/\s/g, "");
+    }
+
     if (!inDetailSection || !currentProductCode) continue;
 
     const doc = get(cells, 1).trim();
-    const fecha = getAny(cells, [6, 17, 19]);
+    const fecha = rowFecha;
     if (DOC_RE.test(doc) && DATE_RE.test(fecha)) {
       const tipo = getAny(cells, [12, 8]) || "FAC";
       const cliente = getAny(cells, [20, 21]);
-      const qty = parseNumAny(cells, [30, 35, 38]);
-      const inlineTotal = parseNumAny(cells, [55, 67, 68, 69, 60]);
-      if (qty == null || qty <= 0) continue;
-
+      // Col 30 = No./Doc (no cantidad). Cantidad real: 35/36/38.
+      const qty = parseNumAny(cells, [35, 36, 38, 43]);
+      // Precio Total suele estar en 68; 55 es a menudo precio unitario.
+      const inlineTotal = parseNumAny(cells, [68, 69, 67, 60]);
       const legacyKey = buildLegacyKey(tipo || "FAC", doc);
-      if (inlineTotal != null && inlineTotal > 0) {
-        pendingLine = {
-          legacyKey,
-          documentType: tipo || "FAC",
-          documentNumber: doc,
-          saleDate: fecha,
-          customer: cliente || "CLIENTE NATURAL CONTADO",
-          quantity: qty,
-        };
-        flushPending(inlineTotal);
-        continue;
-      }
 
       pendingLine = {
         legacyKey,
@@ -254,14 +261,30 @@ export function parseProductosReport(xml: string, sourceFile: string): ParsedSal
         documentNumber: doc,
         saleDate: fecha,
         customer: cliente || "CLIENTE NATURAL CONTADO",
-        quantity: qty,
+        quantity: qty != null && qty > 0 ? qty : 0,
       };
+
+      if (
+        pendingLine.quantity > 0 &&
+        inlineTotal != null &&
+        inlineTotal > 0
+      ) {
+        flushPending(inlineTotal);
+      }
       continue;
     }
 
     if (pendingLine) {
-      const lineTotal = parseNumAny(cells, [55, 67, 68, 69, 60, 36]);
-      if (lineTotal != null && lineTotal > 0) {
+      const qtyOnDetail = parseNumAny(cells, [35, 36, 38, 43]);
+      if (qtyOnDetail != null && qtyOnDetail > 0) {
+        pendingLine.quantity = qtyOnDetail;
+      }
+      const lineTotal = parseNumAny(cells, [68, 69, 67, 60]);
+      if (
+        pendingLine.quantity > 0 &&
+        lineTotal != null &&
+        lineTotal > 0
+      ) {
         flushPending(lineTotal);
       }
     }

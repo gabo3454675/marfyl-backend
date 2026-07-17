@@ -599,13 +599,14 @@ export class InvoicesService {
     const invoices = await this.prisma.invoice.findMany({
       where: {
         organizationId: orgId,
+        deletedAt: null,
         createdAt: {
           gte: startOfRange,
           lte: endOfRange,
         },
       },
       include: {
-        items: { include: { product: true } },
+        items: { include: { product: { select: { id: true, name: true, costPrice: true } } } },
         customer: true,
         paymentLines: true,
       },
@@ -658,17 +659,30 @@ export class InvoicesService {
   }
 
   /**
-   * Agrupa facturas por día: total ventas y total por método de pago.
-   * Sin IVA/IGTF: solo cobro real (multimoneda).
+   * Agrupa facturas por día con métricas de resumen (estilo reporte POS):
+   * ventas brutas/neto, IVA, IGTF, contado/crédito, costo, utilidad y monedas.
    */
   private buildDailySummary(
     invoices: Array<{
       totalAmount: unknown;
       paymentMethod: string;
+      paymentStatus?: string;
+      ivaAmount?: unknown;
+      igtfAmount?: unknown;
+      baseExempt?: unknown;
+      baseGeneral?: unknown;
+      baseReduced?: unknown;
+      montoUsd?: unknown;
+      montoBs?: unknown;
       paymentLines?: Array<{
         method: string;
         amount: unknown;
         currency: string;
+      }>;
+      items?: Array<{
+        quantity: number;
+        subtotal: unknown;
+        product?: { costPrice?: unknown } | null;
       }>;
       createdAt: Date;
     }>,
@@ -676,39 +690,117 @@ export class InvoicesService {
     date: string;
     totalSales: number;
     byPaymentMethod: Record<string, number>;
+    invoiceCount: number;
+    grossSales: number;
+    taxAmount: number;
+    igtfAmount: number;
+    netSales: number;
+    cashTotal: number;
+    creditTotal: number;
+    totalCost: number;
+    totalProfit: number;
+    profitPercent: number;
+    byCurrency: Record<string, number>;
   }> {
-    const byDate = new Map<
-      string,
-      { totalSales: number; byPaymentMethod: Record<string, number> }
-    >();
+    type DayAgg = {
+      totalSales: number;
+      byPaymentMethod: Record<string, number>;
+      invoiceCount: number;
+      taxAmount: number;
+      igtfAmount: number;
+      cashTotal: number;
+      creditTotal: number;
+      totalCost: number;
+      byCurrency: Record<string, number>;
+    };
+
+    const byDate = new Map<string, DayAgg>();
+    const round2 = (n: number) => Math.round(n * 100) / 100;
 
     for (const inv of invoices) {
       const total = this.toNum(inv.totalAmount);
       const dateKey = new Date(inv.createdAt).toISOString().slice(0, 10);
       if (!byDate.has(dateKey)) {
-        byDate.set(dateKey, { totalSales: 0, byPaymentMethod: {} });
+        byDate.set(dateKey, {
+          totalSales: 0,
+          byPaymentMethod: {},
+          invoiceCount: 0,
+          taxAmount: 0,
+          igtfAmount: 0,
+          cashTotal: 0,
+          creditTotal: 0,
+          totalCost: 0,
+          byCurrency: {},
+        });
       }
       const day = byDate.get(dateKey)!;
       day.totalSales += total;
+      day.invoiceCount += 1;
+      day.taxAmount += this.toNum(inv.ivaAmount);
+      day.igtfAmount += this.toNum(inv.igtfAmount);
+
+      const isCredit =
+        String(inv.paymentMethod || "").toUpperCase() === "CREDIT" ||
+        String(inv.paymentStatus || "").toLowerCase() === "pending_credit";
+      if (isCredit) day.creditTotal += total;
+      else day.cashTotal += total;
+
+      for (const item of inv.items ?? []) {
+        const unitCost = this.toNum(item.product?.costPrice);
+        day.totalCost += unitCost * (item.quantity || 0);
+      }
+
       if (inv.paymentLines && inv.paymentLines.length > 0) {
         for (const line of inv.paymentLines) {
           const key = `${line.method}_${line.currency}`;
-          day.byPaymentMethod[key] =
-            (day.byPaymentMethod[key] ?? 0) + this.toNum(line.amount);
+          const amt = this.toNum(line.amount);
+          day.byPaymentMethod[key] = (day.byPaymentMethod[key] ?? 0) + amt;
+          const cur = String(line.currency || "USD").toUpperCase();
+          day.byCurrency[cur] = (day.byCurrency[cur] ?? 0) + amt;
         }
       } else {
         const method = (inv.paymentMethod || "CASH").toUpperCase();
         day.byPaymentMethod[method] =
           (day.byPaymentMethod[method] ?? 0) + total;
+        const usd = this.toNum(inv.montoUsd);
+        const bs = this.toNum(inv.montoBs);
+        if (usd > 0) day.byCurrency.USD = (day.byCurrency.USD ?? 0) + usd;
+        if (bs > 0) day.byCurrency.VES = (day.byCurrency.VES ?? 0) + bs;
+        if (usd <= 0 && bs <= 0) {
+          day.byCurrency.USD = (day.byCurrency.USD ?? 0) + total;
+        }
       }
     }
 
     return Array.from(byDate.entries())
-      .map(([date, data]) => ({
-        date,
-        totalSales: Math.round(data.totalSales * 100) / 100,
-        byPaymentMethod: data.byPaymentMethod,
-      }))
+      .map(([date, data]) => {
+        const netSales = round2(data.totalSales);
+        const taxAmount = round2(data.taxAmount);
+        const igtfAmount = round2(data.igtfAmount);
+        const grossSales = round2(Math.max(0, netSales - taxAmount - igtfAmount));
+        const totalCost = round2(data.totalCost);
+        const totalProfit = round2(grossSales - totalCost);
+        const profitPercent =
+          totalCost > 0 ? round2((totalProfit / totalCost) * 100) : 0;
+        return {
+          date,
+          totalSales: netSales,
+          byPaymentMethod: data.byPaymentMethod,
+          invoiceCount: data.invoiceCount,
+          grossSales,
+          taxAmount,
+          igtfAmount,
+          netSales,
+          cashTotal: round2(data.cashTotal),
+          creditTotal: round2(data.creditTotal),
+          totalCost,
+          totalProfit,
+          profitPercent,
+          byCurrency: Object.fromEntries(
+            Object.entries(data.byCurrency).map(([k, v]) => [k, round2(v)]),
+          ),
+        };
+      })
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 
