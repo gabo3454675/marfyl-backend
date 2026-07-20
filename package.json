@@ -35,6 +35,7 @@
     "import:inventory": "tsx prisma/import-inventory-bulk.ts",
     "import:monddy-sales": "tsx scripts/import-monddy-sales.ts",
     "reconcile:monddy-week": "tsx scripts/reconcile-monddy-week-jul13-19.ts",
+    "reconcile:monddy-week-8-12": "tsx scripts/reconcile-monddy-week-jul8-12.ts",
     "cuadre:monddy-caja-inv": "tsx scripts/apply-monddy-cuadre-caja-inventario.ts",
     "import:monddy-purchases": "tsx scripts/import-monddy-purchases.ts",
     "sync:exchange-rates": "tsx scripts/sync-exchange-rates.ts",

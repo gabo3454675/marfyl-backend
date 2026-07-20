@@ -25,9 +25,8 @@ export class DolarApiService {
 
   async fetchQuote(kind?: DolarApiRateKind): Promise<DolarApiVenezuelaQuote> {
     const path = kind ?? this.rateKind;
-    // Fuente oficial MARFYL: Euro BCV (no /v1/dolares).
-    // En Venezuela esta cotización se usa como factor de conversión USD ↔ Bs.
-    const url = `${this.baseUrl}/v1/euros/${path}`;
+    // Fuente oficial MARFYL: Dólar BCV (/v1/dolares).
+    const url = `${this.baseUrl}/v1/dolares/${path}`;
 
     try {
       const res = await fetch(url, {
@@ -47,21 +46,21 @@ export class DolarApiService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`DolarApi falló (${url}): ${message}`);
       throw new ServiceUnavailableException(
-        "No se pudo obtener la tasa BCV (Euro) desde DolarApi. Intenta más tarde.",
+        "No se pudo obtener la tasa BCV (dólar) desde DolarApi. Intenta más tarde.",
       );
     }
   }
 
   /**
    * Factor de conversión VES por 1 USD usado en MARFYL.
-   * Cotización: Euro BCV (promedio, fallback venta/compra).
+   * Cotización: Dólar BCV (promedio, fallback venta/compra).
    */
   resolveUsdVesRate(quote: DolarApiVenezuelaQuote): number {
     const candidate = quote.promedio ?? quote.venta ?? quote.compra;
     const rate = Number(candidate);
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new ServiceUnavailableException(
-        "DolarApi devolvió una cotización Euro BCV inválida.",
+        "DolarApi devolvió una cotización Dólar BCV inválida.",
       );
     }
     return Math.round(rate * 10_000) / 10_000;
@@ -70,8 +69,11 @@ export class DolarApiService {
   getSourceLabel(quote: DolarApiVenezuelaQuote): string {
     const name = quote.nombre?.trim();
     if (name) {
-      return name.toLowerCase().includes("euro") ? `BCV ${name}` : `BCV Euro (${name})`;
+      return name.toLowerCase().includes("dólar") ||
+        name.toLowerCase().includes("dolar")
+        ? `BCV ${name}`
+        : `BCV Dólar (${name})`;
     }
-    return "BCV Euro (DolarApi)";
+    return "BCV Dólar (DolarApi)";
   }
 }

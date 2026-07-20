@@ -16,7 +16,7 @@ async function fetchQuote() {
     (process.env.DOLAR_API_RATE_KIND || "oficial").toLowerCase() === "paralelo"
       ? "paralelo"
       : "oficial";
-  const res = await fetch(`${base}/v1/euros/${kind}`, {
+  const res = await fetch(`${base}/v1/dolares/${kind}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`DolarApi HTTP ${res.status}`);
@@ -65,13 +65,13 @@ async function main() {
         }),
       ]);
       console.log(
-        `✅ ${org.nombre}: ${org.exchangeRate ?? "—"} → ${rate} Bs/USD (Euro BCV)`,
+        `✅ ${org.nombre}: ${org.exchangeRate ?? "—"} → ${rate} Bs/USD (Dólar BCV)`,
       );
       updated += 1;
     }
 
     console.log(
-      `\n🎉 Euro BCV ${quote.nombre}: ${rate} Bs/USD (${quote.fechaActualizacion})`,
+      `\n🎉 Dólar BCV ${quote.nombre}: ${rate} Bs/USD (${quote.fechaActualizacion})`,
     );
     console.log(`   ${updated}/${orgs.length} organizaciones actualizadas`);
   } finally {
