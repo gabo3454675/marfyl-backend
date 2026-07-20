@@ -113,9 +113,9 @@ export class InvoicesController {
   /**
    * Reporte diario de licores: cerveza light/negra en tobos (12) y cajas (3 tobos),
    * whisky y otros por unidad. Query: day=YYYY-MM-DD (default: ayer Caracas).
+   * Sin @Permissions estricto (igual que history): basta con sesión + tenant.
    */
   @Get("liquor-sales")
-  @Permissions("canManageInvoices")
   async getLiquorSales(
     @ActiveOrganization() organizationId: number,
     @Query("day") day?: string,
