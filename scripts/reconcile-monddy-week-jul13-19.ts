@@ -302,7 +302,7 @@ async function main() {
     });
     if (!org) throw new Error("Monddy no encontrada");
     console.log(
-      `Org: ${org.nombre} | modo: ${APPLY ? "APPLY" : "PREVIEW"} | tasa Euro BCV: ${org.exchangeRate}`,
+      `Org: ${org.nombre} | modo: ${APPLY ? "APPLY" : "PREVIEW"} | tasa Dólar BCV: ${org.exchangeRate}`,
     );
 
     console.log("\n=== 1) Corrección totales Excel 15/07 (header neto) ===");
