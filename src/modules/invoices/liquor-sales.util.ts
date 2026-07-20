@@ -10,6 +10,15 @@ export type LiquorBucket =
   | "whisky"
   | "otros_licores";
 
+/** Marca / estilo de cerveza (se lee del nombre del producto, no de description). */
+export type BeerStyle =
+  | "polar_light"
+  | "polar_pilsen"
+  | "solera_light"
+  | "solera_classic"
+  | "heineken"
+  | "otras_cervezas";
+
 export function packFromBottles(bottles: number) {
   const fullTobos = Math.floor(bottles / BOTTLES_PER_TOBO);
   const looseBottles = bottles % BOTTLES_PER_TOBO;
@@ -93,9 +102,51 @@ export function classifyLiquorProduct(name: string): LiquorBucket | null {
   return null;
 }
 
+/**
+ * Tipo/marca de cerveza a partir del nombre comercial.
+ * `description` en Monddy suele ser empaque ("CAJA SOLO PARA LLEVAR"), no el tipo.
+ */
+export function classifyBeerStyle(name: string): BeerStyle | null {
+  const n = norm(name);
+  if (!n || isExcluded(n) || !isBeer(n)) return null;
+
+  if (/\bHEINEKEN\b/.test(n)) return "heineken";
+
+  if (/\bSOLERA\b/.test(n)) {
+    if (/\bLIGHT\b/.test(n) || /\bAZUL\b/.test(n)) return "solera_light";
+    return "solera_classic"; // verde / classic
+  }
+
+  if (/\bPOLAR\b/.test(n) || (/\bPILSEN\b/.test(n) && !/\bSOLERA\b/.test(n))) {
+    if (/\bLIGHT\b/.test(n)) return "polar_light";
+    return "polar_pilsen";
+  }
+
+  if (/\bLIGHT\b/.test(n)) return "polar_light"; // "BOTELLA RETORNABLE LIGHT"
+  return "otras_cervezas";
+}
+
 export const LIQUOR_BUCKET_LABELS: Record<LiquorBucket, string> = {
   cerveza_light: "Cerveza light",
   cerveza_negra: "Cerveza negra / pilsen",
   whisky: "Whisky",
   otros_licores: "Otros licores",
 };
+
+export const BEER_STYLE_LABELS: Record<BeerStyle, string> = {
+  polar_light: "Polar Light",
+  polar_pilsen: "Polar Pilsen",
+  solera_light: "Solera Light (azul)",
+  solera_classic: "Solera Classic (verde)",
+  heineken: "Heineken",
+  otras_cervezas: "Otras cervezas",
+};
+
+export const BEER_STYLE_ORDER: BeerStyle[] = [
+  "polar_pilsen",
+  "polar_light",
+  "solera_classic",
+  "solera_light",
+  "heineken",
+  "otras_cervezas",
+];

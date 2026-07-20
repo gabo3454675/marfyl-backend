@@ -1,12 +1,16 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import {
+  BEER_STYLE_LABELS,
+  BEER_STYLE_ORDER,
   BOTTLES_PER_CASE,
   BOTTLES_PER_TOBO,
   LIQUOR_BUCKET_LABELS,
   TOBOS_PER_CASE,
+  classifyBeerStyle,
   classifyLiquorProduct,
   packFromBottles,
+  type BeerStyle,
   type LiquorBucket,
 } from "./liquor-sales.util";
 
@@ -149,12 +153,17 @@ export class LiquorSalesService {
       quantity: number;
       usd: number;
       bucket: LiquorBucket;
+      beerStyle: BeerStyle | null;
     };
 
     const byProduct = new Map<number, Line>();
     for (const item of rows) {
       const bucket = classifyLiquorProduct(item.name);
       if (!bucket) continue;
+      const beerStyle =
+        bucket === "cerveza_light" || bucket === "cerveza_negra"
+          ? classifyBeerStyle(item.name)
+          : null;
       const prev = byProduct.get(item.productId);
       if (prev) {
         prev.quantity += item.quantity;
@@ -167,12 +176,43 @@ export class LiquorSalesService {
           quantity: item.quantity,
           usd: item.usd,
           bucket,
+          beerStyle,
         });
       }
     }
 
     const lines = [...byProduct.values()].sort(
       (a, b) => b.quantity - a.quantity,
+    );
+
+    const styleMap = new Map<
+      BeerStyle,
+      { bottles: number; usd: number; products: Line[] }
+    >();
+    for (const line of lines) {
+      if (!line.beerStyle) continue;
+      const cur = styleMap.get(line.beerStyle) ?? {
+        bottles: 0,
+        usd: 0,
+        products: [],
+      };
+      cur.bottles += line.quantity;
+      cur.usd += line.usd;
+      cur.products.push(line);
+      styleMap.set(line.beerStyle, cur);
+    }
+    const beerByStyle = BEER_STYLE_ORDER.filter((k) => styleMap.has(k)).map(
+      (key) => {
+        const cur = styleMap.get(key)!;
+        return {
+          key,
+          label: BEER_STYLE_LABELS[key],
+          bottles: cur.bottles,
+          usd: Math.round(cur.usd * 100) / 100,
+          pack: packFromBottles(cur.bottles),
+          products: cur.products,
+        };
+      },
     );
 
     const emptyPack = packFromBottles(0);
@@ -253,6 +293,7 @@ export class LiquorSalesService {
         ...beerPack,
         light: buckets.cerveza_light,
         negra: buckets.cerveza_negra,
+        byStyle: beerByStyle,
       },
       whisky: buckets.whisky,
       otros: buckets.otros_licores,
@@ -264,6 +305,7 @@ export class LiquorSalesService {
             ? packFromBottles(l.quantity)
             : null,
         bucketLabel: LIQUOR_BUCKET_LABELS[l.bucket],
+        beerStyleLabel: l.beerStyle ? BEER_STYLE_LABELS[l.beerStyle] : null,
       })),
     };
   }
