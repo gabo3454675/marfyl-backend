@@ -65,13 +65,13 @@ async function main() {
         }),
       ]);
       console.log(
-        `✅ ${org.nombre}: ${org.exchangeRate ?? "—"} → ${rate} Bs/USD`,
+        `✅ ${org.nombre}: ${org.exchangeRate ?? "—"} → ${rate} Bs/USD (Euro BCV)`,
       );
       updated += 1;
     }
 
     console.log(
-      `\n🎉 BCV ${quote.nombre}: ${rate} Bs/USD (${quote.fechaActualizacion})`,
+      `\n🎉 Euro BCV ${quote.nombre}: ${rate} Bs/USD (${quote.fechaActualizacion})`,
     );
     console.log(`   ${updated}/${orgs.length} organizaciones actualizadas`);
   } finally {

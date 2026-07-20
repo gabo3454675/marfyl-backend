@@ -19,6 +19,8 @@ const DEFAULT_FILES = [
   "/home/gabdev/Descargas/Reporte General de Ventas 08_17_2026.xls",
   "/home/gabdev/Descargas/Reporte General de Ventas 09_17_2026.xls",
   "/home/gabdev/Descargas/Reporte General  de Productos Vendidos fin de semana 10 al 12.xls",
+  "/home/gabdev/Descargas/FACTURAS/Reporte General  de Productos Vendidos_14_07_26.xls",
+  "/home/gabdev/Descargas/FACTURAS/Reporte General  de Productos Vendidos_15_07_26.xls",
 ];
 
 const MONDDY_ORG_ID = 2;

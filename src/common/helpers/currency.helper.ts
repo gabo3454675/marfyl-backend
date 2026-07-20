@@ -1,6 +1,7 @@
 /**
  * Helpers de conversión de moneda para el servidor.
- * USD es la moneda de referencia del sistema; VES se convierte con la tasa BCV/Paralelo.
+ * USD es la moneda de referencia del sistema; VES se convierte con la tasa Euro BCV
+ * (Organization.exchangeRate, sincronizada desde DolarApi /v1/euros).
  * El IVA 16% debe calcularse sobre montos ya convertidos a BS.
  */
 

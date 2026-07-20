@@ -34,6 +34,7 @@
     "assign:pos-operator": "tsx prisma/assign-pos-operator.ts",
     "import:inventory": "tsx prisma/import-inventory-bulk.ts",
     "import:monddy-sales": "tsx scripts/import-monddy-sales.ts",
+    "reconcile:monddy-week": "tsx scripts/reconcile-monddy-week-jul13-19.ts",
     "import:monddy-purchases": "tsx scripts/import-monddy-purchases.ts",
     "sync:exchange-rates": "tsx scripts/sync-exchange-rates.ts",
     "ingest:fiscal-knowledge": "tsx scripts/fiscal-knowledge/ingest-fiscal-knowledge.ts",

@@ -25,6 +25,8 @@ export class DolarApiService {
 
   async fetchQuote(kind?: DolarApiRateKind): Promise<DolarApiVenezuelaQuote> {
     const path = kind ?? this.rateKind;
+    // Fuente oficial MARFYL: Euro BCV (no /v1/dolares).
+    // En Venezuela esta cotización se usa como factor de conversión USD ↔ Bs.
     const url = `${this.baseUrl}/v1/euros/${path}`;
 
     try {
@@ -45,24 +47,31 @@ export class DolarApiService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`DolarApi falló (${url}): ${message}`);
       throw new ServiceUnavailableException(
-        "No se pudo obtener la tasa BCV desde DolarApi. Intenta más tarde o ingresa la tasa manualmente.",
+        "No se pudo obtener la tasa BCV (Euro) desde DolarApi. Intenta más tarde.",
       );
     }
   }
 
-  /** Tasa USD/VES a usar en MARFYL (promedio BCV, fallback venta/compra). */
+  /**
+   * Factor de conversión VES por 1 USD usado en MARFYL.
+   * Cotización: Euro BCV (promedio, fallback venta/compra).
+   */
   resolveUsdVesRate(quote: DolarApiVenezuelaQuote): number {
     const candidate = quote.promedio ?? quote.venta ?? quote.compra;
     const rate = Number(candidate);
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new ServiceUnavailableException(
-        "DolarApi devolvió una cotización inválida.",
+        "DolarApi devolvió una cotización Euro BCV inválida.",
       );
     }
     return Math.round(rate * 10_000) / 10_000;
   }
 
   getSourceLabel(quote: DolarApiVenezuelaQuote): string {
-    return quote.nombre?.trim() || "BCV (DolarApi)";
+    const name = quote.nombre?.trim();
+    if (name) {
+      return name.toLowerCase().includes("euro") ? `BCV ${name}` : `BCV Euro (${name})`;
+    }
+    return "BCV Euro (DolarApi)";
   }
 }
