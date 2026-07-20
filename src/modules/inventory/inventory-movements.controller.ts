@@ -2,13 +2,16 @@ import { Controller, Post, Get, UseGuards, Body, Query } from "@nestjs/common";
 import { InventoryMovementsService } from "./inventory-movements.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import { PermissionsGuard } from "@/common/guards/permissions.guard";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { CreateMovementDto } from "./dto/create-movement.dto";
+import { CreateAdjustmentDto } from "./dto/create-adjustment.dto";
 import { MovementType } from "@prisma/client";
 
 @Controller("inventory/movements")
-@UseGuards(JwtAuthGuard, OrganizationGuard)
+@UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class InventoryMovementsController {
   constructor(
     private readonly inventoryMovementsService: InventoryMovementsService,
@@ -19,6 +22,7 @@ export class InventoryMovementsController {
    * Descuenta del stock del producto y crea el registro en InventoryMovement.
    */
   @Post()
+  @Permissions("canManageInventory")
   async create(
     @ActiveOrganization() organizationId: number,
     @ActiveUser() user: { id: number },
@@ -28,6 +32,25 @@ export class InventoryMovementsController {
       organizationId,
       userId: user.id,
       dto,
+    });
+  }
+
+  /**
+   * Ajuste de stock sin impacto financiero (sin Invoice / Expense).
+   */
+  @Post("adjust")
+  @Permissions("canManageInventory")
+  async adjust(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+    @Body() dto: CreateAdjustmentDto,
+  ) {
+    return this.inventoryMovementsService.createAdjustment({
+      organizationId,
+      userId: user.id,
+      productId: dto.productId,
+      delta: dto.delta,
+      reason: dto.reason,
     });
   }
 

@@ -201,6 +201,108 @@ export class InventoryMovementsService {
   }
 
   /**
+   * Ajuste de stock (conteo / corrección).
+   * Cambia Product.stock y registra InventoryMovement AJUSTE.
+   * NO crea Invoice ni Expense → no distorsiona ventas ni compras (P&L).
+   * `delta` positivo = entrada; negativo = salida. Stock resultante no puede ser < 0.
+   */
+  async createAdjustment(params: {
+    organizationId: number;
+    userId: number;
+    productId: number;
+    delta: number;
+    reason: string;
+  }) {
+    const { organizationId, userId, productId, delta, reason } = params;
+    if (!Number.isInteger(delta) || delta === 0) {
+      throw new BadRequestException("delta debe ser un entero distinto de 0");
+    }
+    if (!reason?.trim()) {
+      throw new BadRequestException("reason es obligatorio para ajustes");
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId },
+      select: {
+        id: true,
+        name: true,
+        stock: true,
+        costPrice: true,
+        isBundle: true,
+        isService: true,
+      },
+    });
+    if (!product) {
+      throw new NotFoundException(
+        `Producto con id ${productId} no encontrado en esta organización.`,
+      );
+    }
+    if (product.isBundle || product.isService) {
+      throw new BadRequestException(
+        "No se ajusta stock de combos ni servicios.",
+      );
+    }
+
+    const nextStock = product.stock + delta;
+    if (nextStock < 0) {
+      throw new BadRequestException(
+        `Ajuste dejaría stock negativo (actual ${product.stock}, delta ${delta}).`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const movement = await tx.inventoryMovement.create({
+        data: {
+          type: "AJUSTE",
+          quantity: delta,
+          reason: reason.trim(),
+          unitCostAtTransaction: Number(product.costPrice ?? 0),
+          product: { connect: { id: productId } },
+          user: { connect: { id: userId } },
+          tenant: { connect: { id: organizationId } },
+        },
+      });
+      const updated = await tx.product.update({
+        where: { id: productId },
+        data: { stock: nextStock },
+        select: { stock: true },
+      });
+      return { movement, newStock: updated.stock };
+    });
+
+    await this.activityLog.log({
+      organizationId,
+      userId,
+      action: "INVENTORY_ADJUSTMENT",
+      entityType: "inventory_movement",
+      entityId: String(result.movement.id),
+      newValue: {
+        productId,
+        productName: product.name,
+        delta,
+        from: product.stock,
+        to: result.newStock,
+        reason: reason.trim(),
+      },
+      summary: `Ajuste inventario: ${product.name} ${delta > 0 ? "+" : ""}${delta} (${product.stock} → ${result.newStock}). ${reason.trim()}`,
+    });
+
+    return {
+      movement: {
+        id: result.movement.id,
+        type: result.movement.type,
+        quantity: result.movement.quantity,
+        reason: result.movement.reason,
+        productId: result.movement.productId,
+        createdAt: result.movement.createdAt,
+      },
+      productName: product.name,
+      previousStock: product.stock,
+      newStock: result.newStock,
+    };
+  }
+
+  /**
    * Lista los movimientos de inventario de la organización (útil para historial).
    */
   async findByOrganization(

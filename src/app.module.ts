@@ -42,6 +42,7 @@ import { PayrollModule } from "./modules/payroll/payroll.module";
 import { InvoiceUploadModule } from "./modules/invoice-upload/invoice-upload.module";
 import { SalesImportModule } from "./modules/sales-import/sales-import.module";
 import { PurchasesImportModule } from "./modules/purchases-import/purchases-import.module";
+import { CashHoldModule } from "./modules/cash-hold/cash-hold.module";
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { PurchasesImportModule } from "./modules/purchases-import/purchases-impo
     InvoiceUploadModule,
     SalesImportModule,
     PurchasesImportModule,
+    CashHoldModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

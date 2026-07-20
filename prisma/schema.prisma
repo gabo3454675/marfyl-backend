@@ -33,6 +33,7 @@ model User {
   tasksCreated   Task[] @relation("TasksCreated")         // Tareas que creó (admin)
   auditLogs      AuditLog[]                              // Acciones sensibles registradas
   inventoryMovements InventoryMovement[] // Movimientos de inventario realizados
+  cashHoldsCreated   CashHold[]          // Saldos de caja oficina/tienda registrados
   cierresCaja    CierreCaja[]            // Cierres de caja que realizó (cajero)
   activityLogs  ActivityLog[]            // Auditoría: quién cambió precio, eliminó factura, etc.
   fcmTokens     FcmToken[]               // Tokens FCM para notificaciones push (Super Admin)
@@ -143,6 +144,7 @@ model Organization {
   auditLogs        AuditLog[]   // Historial de acciones sensibles
   customerCredits  CustomerCredit[] // Cuentas de crédito por organización
   inventoryMovements InventoryMovement[] // Movimientos de inventario
+  cashHolds          CashHold[]         // Efectivo oficina/tienda (no es venta)
   cierresCaja        CierreCaja[]       // Cierres de caja (X-Report / Z-Report)
   tasasHistoricas    TasaHistorica[]    // Tasas BCV por momento (auditoría)
   activityLogs       ActivityLog[]     // Auditoría de acciones (precio, factura, autoconsumo)
@@ -280,6 +282,42 @@ enum MovementType {
   MERMA_VENCIDO
   MERMA_DANADO
   USO_TALLER
+  /// Corrección de stock / conteo. No crea Invoice ni Expense (no toca P&L).
+  AJUSTE
+}
+
+// ------------------------------------------
+// CAJA OFICINA / TESORERÍA (fuera del POS)
+// Efectivo retenido — NO es ingreso por ventas.
+// ------------------------------------------
+
+enum CashHoldLocation {
+  OFFICE
+  STORE
+}
+
+model CashHold {
+  id             Int              @id @default(autoincrement())
+  organizationId Int
+  location       CashHoldLocation @default(OFFICE)
+  currency       String           @default("USD") // USD | VES
+  amount         Decimal          @db.Decimal(15, 2)
+  asOf           DateTime         // Fecha del conteo / saldo
+  label          String           // Ej. "Caja oficina en divisas"
+  notes          String?
+  /// Idempotencia imports/cuadres (ej. monddy-caja-oficina-2026-07-19)
+  importKey      String?          @unique
+  createdById    Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    User?        @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  @@index([organizationId, location])
+  @@index([asOf])
+  @@map("cash_holds")
 }
 
 // Clasificación para dashboard: merma, muestras, uso operativo
@@ -331,7 +369,7 @@ enum CierreCajaEstado {
 
 model CierreCaja {
   id              Int             @id @default(autoincrement())
-  tenantId        Int             // Blindaje multi-tenant
+  tenantId        Int             // Blindaje multi-tenant — caja de TURNO POS (no oficina)
   userId          Int             // Quién cierra la caja (cajero)
   fechaApertura   DateTime        // Inicio del turno
   fechaCierre     DateTime        @default(now()) // Cierre (Z-Report)
