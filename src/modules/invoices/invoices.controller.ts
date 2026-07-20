@@ -17,6 +17,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Response } from "express";
 import { InvoicesService } from "./invoices.service";
+import { LiquorSalesService } from "./liquor-sales.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { InvoiceHistoryQueryDto } from "./dto/history-query.dto";
 import { VoidInvoiceDto, AdjustAmountDto } from "./dto/void-invoice.dto";
@@ -34,6 +35,7 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 export class InvoicesController {
   constructor(
     private readonly invoicesService: InvoicesService,
+    private readonly liquorSalesService: LiquorSalesService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -106,6 +108,19 @@ export class InvoicesController {
       query.endDate,
       requestedOrgId,
     );
+  }
+
+  /**
+   * Reporte diario de licores: cerveza light/negra en tobos (12) y cajas (3 tobos),
+   * whisky y otros por unidad. Query: day=YYYY-MM-DD (default: ayer Caracas).
+   */
+  @Get("liquor-sales")
+  @Permissions("canManageInvoices")
+  async getLiquorSales(
+    @ActiveOrganization() organizationId: number,
+    @Query("day") day?: string,
+  ) {
+    return this.liquorSalesService.getDailyReport(organizationId, day);
   }
 
   /**
