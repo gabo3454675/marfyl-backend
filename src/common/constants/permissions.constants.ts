@@ -16,6 +16,7 @@ export type PermissionKey =
   | 'canAccessComanda'
   | 'canTakeFloorOrder'
   | 'canViewKitchenQueue'
+  | 'canViewFloorHistory'
   | 'canManageProducts'
   | 'canViewProducts'
   | 'canManageInventory'
@@ -42,6 +43,7 @@ export const ALL_PERMISSIONS: readonly PermissionKey[] = [
   'canAccessComanda',
   'canTakeFloorOrder',
   'canViewKitchenQueue',
+  'canViewFloorHistory',
   'canManageProducts',
   'canViewProducts',
   'canManageInventory',
@@ -80,6 +82,7 @@ const FULL_OPS = [
   'canAccessComanda',
   'canTakeFloorOrder',
   'canViewKitchenQueue',
+  'canViewFloorHistory',
   'canManageProducts',
   'canViewProducts',
   'canManageInventory',
@@ -110,6 +113,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canAccessComanda',
     'canTakeFloorOrder',
     'canViewKitchenQueue',
+    'canViewFloorHistory',
     'canManageProducts',
     'canViewProducts',
     'canManageInventory',
@@ -136,6 +140,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canAccessComanda',
     'canTakeFloorOrder',
     'canViewKitchenQueue',
+    'canViewFloorHistory',
     'canManageProducts',
     'canViewProducts',
     'canManageInventory',
@@ -172,10 +177,11 @@ export const ROLE_PERMISSIONS_MAP = {
     'canManageCierreCaja',
   ] as const,
 
-  /** Anfitrión / pasillero: solo tomar y enviar pedido */
+  /** Anfitrión: toma pedidos + ve su historial */
   WAITER: [
     'canAccessComanda',
     'canTakeFloorOrder',
+    'canViewFloorHistory',
     'canViewProducts',
   ] as const,
 

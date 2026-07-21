@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -17,6 +18,10 @@ import { Permissions } from "@/common/decorators/permissions.decorator";
 import { AnyPermissions } from "@/common/decorators/any-permissions.decorator";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
+import {
+  getPermissionsForRole,
+  type RoleName,
+} from "@/common/constants/permissions.constants";
 import { FloorOrdersService } from "./floor-orders.service";
 import {
   ChargeFloorOrderDto,
@@ -37,8 +42,61 @@ export class FloorOrdersController {
     @ActiveOrganization() organizationId: number,
     @Query("status") status?: string,
     @Query("day") day?: string,
+    @Query("station") station?: string,
   ) {
-    return this.floorOrders.list(organizationId, { status, day });
+    return this.floorOrders.list(organizationId, { status, day, station });
+  }
+
+  /** Supervisión: pedidos pendientes agrupados por quien los tomó */
+  @Get("stats/by-user")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions(
+    "canTakeFloorOrder",
+    "canViewKitchenQueue",
+    "canAccessPOS",
+    "canManageTeam",
+  )
+  pendingByUser(
+    @ActiveOrganization() organizationId: number,
+    @Query("day") day?: string,
+  ) {
+    return this.floorOrders.pendingByUser(organizationId, day);
+  }
+
+  /**
+   * Historial cobrado (auditoría).
+   * Supervisión ve todos; anfitrión solo los suyos.
+   */
+  @Get("history")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canViewFloorHistory")
+  history(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number; isSuperAdmin?: boolean },
+    @Req() req: { activeOrganizationMembership?: { role?: string } },
+    @Query("month") month?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("createdById") createdById?: string,
+  ) {
+    const role = String(
+      req.activeOrganizationMembership?.role || "",
+    ).toUpperCase();
+    const perms = getPermissionsForRole(role as RoleName);
+    const seeAll =
+      !!user.isSuperAdmin ||
+      perms.has("canManageInvoices") ||
+      perms.has("canViewReports") ||
+      perms.has("canManageTeam");
+
+    return this.floorOrders.history(organizationId, {
+      month,
+      from,
+      to,
+      createdById: createdById ? parseInt(createdById, 10) : undefined,
+      viewerUserId: user.id,
+      seeAll,
+    });
   }
 
   @Get(":id")

@@ -138,18 +138,19 @@ export class LiquorSalesService {
 
   /**
    * Asegura snapshots de apertura para productos de licor del día.
-   * - Hoy: congela stock actual si aún no hay snapshot.
-   * - Día pasado: reconstruye opening ≈ stock_actual + vendido_día.
+   * - Sin snapshot: opening ≈ stock_actual + vendido_día (stock ya bajó con las ventas).
+   * - Con snapshot inválido (opening < vendido): repara al mínimo coherente.
    */
   async ensureDaySnapshots(
     organizationId: number,
     day: string,
     soldByProduct: Map<number, { name: string; quantity: number }>,
   ): Promise<Map<number, number>> {
+    const dayDate = new Date(`${day}T00:00:00.000Z`);
     const existing = await this.prisma.liquorDaySnapshot.findMany({
       where: {
         organizationId,
-        day: new Date(`${day}T00:00:00.000Z`),
+        day: dayDate,
       },
     });
     const openingByProduct = new Map<number, number>();
@@ -184,16 +185,23 @@ export class LiquorSalesService {
     }
 
     const missingIds = [...productIds].filter((id) => !openingByProduct.has(id));
-    if (missingIds.length === 0) {
+    const repairIds = [...productIds].filter((id) => {
+      const sold = soldByProduct.get(id)?.quantity ?? 0;
+      const opening = openingByProduct.get(id);
+      return opening !== undefined && sold > opening;
+    });
+
+    const needStockIds = [...new Set([...missingIds, ...repairIds])];
+    if (needStockIds.length === 0) {
       return openingByProduct;
     }
 
     const products = await this.prisma.product.findMany({
-      where: { id: { in: missingIds }, organizationId },
+      where: { id: { in: needStockIds }, organizationId },
       select: { id: true, name: true, stock: true },
     });
+    const productById = new Map(products.map((p) => [p.id, p]));
 
-    const isToday = day === todayCaracas();
     const toCreate: {
       organizationId: number;
       day: Date;
@@ -201,19 +209,17 @@ export class LiquorSalesService {
       openingStock: number;
     }[] = [];
 
-    for (const p of products) {
+    for (const id of missingIds) {
+      const p = productById.get(id);
+      if (!p) continue;
       if (!classifyLiquorProduct(p.name) && !soldByProduct.has(p.id)) continue;
       const sold = soldByProduct.get(p.id)?.quantity ?? 0;
-      // Hoy: stock actual = teórico restante (aún no vendido desde snapshot).
-      // Pasado: opening ≈ stock_actual + vendido_día (reconstrucción).
-      const openingStock = isToday
-        ? Math.max(0, p.stock + sold)
-        : Math.max(0, p.stock + sold);
-      // Para hoy, si ya hubo ventas y no había snapshot, stock ya bajó → stock+sold.
-      // Si no hubo ventas, stock+0 = stock actual. Correcto en ambos casos.
+      // stock actual + vendido = apertura reconstruida (sirve hoy y días pasados).
+      // Como mínimo, nunca menos de lo vendido ese día.
+      const openingStock = Math.max(0, p.stock + sold, sold);
       toCreate.push({
         organizationId,
-        day: new Date(`${day}T00:00:00.000Z`),
+        day: dayDate,
         productId: p.id,
         openingStock,
       });
@@ -225,6 +231,27 @@ export class LiquorSalesService {
         data: toCreate,
         skipDuplicates: true,
       });
+    }
+
+    // Repara snapshots congelados en 0 (u otro valor) cuando ya hay ventas mayores.
+    for (const id of repairIds) {
+      const p = productById.get(id);
+      const sold = soldByProduct.get(id)?.quantity ?? 0;
+      const prev = openingByProduct.get(id) ?? 0;
+      const reconstructed = p
+        ? Math.max(0, p.stock + sold, sold)
+        : Math.max(sold, prev);
+      const openingStock = Math.max(prev, reconstructed, sold);
+      if (openingStock <= prev) continue;
+      await this.prisma.liquorDaySnapshot.updateMany({
+        where: {
+          organizationId,
+          day: dayDate,
+          productId: id,
+        },
+        data: { openingStock },
+      });
+      openingByProduct.set(id, openingStock);
     }
 
     return openingByProduct;
