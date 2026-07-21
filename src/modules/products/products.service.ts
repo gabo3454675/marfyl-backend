@@ -118,7 +118,10 @@ export class ProductsService {
       "- products found:",
       products.length,
     );
-    return products;
+    return products.map((p) => ({
+      ...p,
+      availableStock: Math.max(0, p.stock - (p.reservedStock ?? 0)),
+    }));
   }
 
   /**
@@ -179,6 +182,7 @@ export class ProductsService {
           salePrice: true,
           salePriceCurrency: true,
           stock: true,
+          reservedStock: true,
           minStock: true,
           imageUrl: true,
           isExempt: true,
@@ -198,7 +202,10 @@ export class ProductsService {
     );
 
     return {
-      data,
+      data: data.map((p) => ({
+        ...p,
+        availableStock: Math.max(0, p.stock - (p.reservedStock ?? 0)),
+      })),
       pagination: {
         page,
         limit,

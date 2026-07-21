@@ -40,6 +40,7 @@ model User {
   auditorias    Auditoria[]              // Auditoría SAC (declaraciones fiscales)
   payrollRunsProcessed PayrollRun[]     // Nóminas procesadas por el usuario
   refreshTokens       RefreshToken[]   // Refresh tokens para autenticación
+  floorOrdersCreated  FloorOrder[]     // Comandas creadas por el usuario
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -96,6 +97,8 @@ enum Role {
   SELLER
   WAREHOUSE
   POS_OPERATOR
+  WAITER   // Anfitrión / pasillero: tomar pedido
+  KITCHEN  // Cocina / barra: cola KDS
 }
 
 enum Plan {
@@ -168,6 +171,8 @@ model Organization {
   payrollLines       PayrollLine[]
   invoiceSequence    OrganizationInvoiceSequence?
   salesImportPreviews SalesImportPreviewBatch[]
+  liquorDaySnapshots  LiquorDaySnapshot[]
+  floorOrders         FloorOrder[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -244,6 +249,8 @@ model Product {
   salePrice         Decimal  @default(0) @db.Decimal(10, 2)
   salePriceCurrency String   @default("USD") // Moneda en que se registró el precio: USD o VES (Bolívares)
   stock             Int      @default(0)
+  /// Unidades reservadas por comandas enviadas (aún no cobradas). Disponible = stock - reservedStock
+  reservedStock     Int      @default(0)
   imageUrl          String?
   minStock          Int      @default(5) // Alerta de stock bajo
   isExempt          Boolean  @default(false) // Exento de impuesto (columna EXENTO en plantilla: SI/NO)
@@ -260,6 +267,8 @@ model Product {
   organization  Organization? @relation(fields: [organizationId], references: [id])
   invoiceItems  InvoiceItem[]
   inventoryMovements InventoryMovement[] // Movimientos de inventario del producto
+  liquorDaySnapshots LiquorDaySnapshot[]
+  floorOrderItems    FloorOrderItem[]
 
   @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
   @@index([organizationId]) // Índice para búsquedas rápidas por organización
@@ -284,6 +293,90 @@ enum MovementType {
   USO_TALLER
   /// Corrección de stock / conteo. No crea Invoice ni Expense (no toca P&L).
   AJUSTE
+}
+
+// ------------------------------------------
+// APERTURA DIARIA AUTOMÁTICA DE LICORES
+// Snapshot del stock al inicio del día operativo (Caracas)
+// ------------------------------------------
+
+model LiquorDaySnapshot {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  day            DateTime @db.Date // Día operativo America/Caracas
+  productId      Int
+  openingStock   Int
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, day, productId])
+  @@index([organizationId, day])
+  @@map("liquor_day_snapshots")
+}
+
+// ------------------------------------------
+// COMANDA EN VIVO (piso → cocina/barra → caja)
+// ------------------------------------------
+
+enum FloorOrderStatus {
+  DRAFT
+  SENT
+  IN_PREP
+  READY
+  CHARGED
+  CANCELLED
+}
+
+enum FloorStation {
+  BAR
+  KITCHEN
+  OTHER
+}
+
+model FloorOrder {
+  id                Int              @id @default(autoincrement())
+  organizationId    Int
+  tableLabel        String           // Mesa / zona (texto libre)
+  customerName      String?          // Nombre del cliente (piso)
+  customerId        Int?             // Cliente del catálogo (opcional)
+  status            FloorOrderStatus @default(DRAFT)
+  createdById       Int
+  chargedInvoiceId  Int?             @unique
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  sentAt            DateTime?
+  chargedAt         DateTime?
+  cancelledAt       DateTime?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  chargedInvoice Invoice?        @relation(fields: [chargedInvoiceId], references: [id])
+  customer       Customer?       @relation(fields: [customerId], references: [id])
+  items          FloorOrderItem[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@map("floor_orders")
+}
+
+model FloorOrderItem {
+  id           Int          @id @default(autoincrement())
+  floorOrderId Int
+  productId    Int
+  quantity     Int
+  unitPrice    Decimal      @db.Decimal(10, 2)
+  notes        String?
+  station      FloorStation @default(OTHER)
+
+  floorOrder FloorOrder @relation(fields: [floorOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@index([floorOrderId])
+  @@index([productId])
+  @@map("floor_order_items")
 }
 
 // ------------------------------------------
@@ -431,6 +524,7 @@ model Customer {
   organization  Organization? @relation(fields: [organizationId], references: [id])
   invoices      Invoice[]
   customerCredit CustomerCredit? // Cuenta de crédito (maestro)
+  floorOrders   FloorOrder[]
 
   @@index([companyId])
   @@index([organizationId])
@@ -607,6 +701,7 @@ model Invoice {
   tasaHistoricaId    Int?
   tasaHistorica      TasaHistorica?   @relation("InvoiceTasa", fields: [tasaHistoricaId], references: [id])
   libroVentaLine     LibroVentaLine?
+  floorOrderCharged  FloorOrder?
 
   @@index([companyId])
   @@index([organizationId])

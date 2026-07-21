@@ -463,6 +463,15 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Emit a named event to the organization room (comanda, etc.)
+   */
+  emitToOrg(organizationId: number, event: string, payload: unknown): void {
+    if (!this.io) return;
+    const roomId = `${ROOM_PREFIX}${organizationId}`;
+    this.io.to(roomId).emit(event, payload);
+  }
+
+  /**
    * Get room info
    */
   getRoomInfo(roomId: string): ChatRoom | undefined {

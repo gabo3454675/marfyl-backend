@@ -28,6 +28,20 @@ import {
   InvoiceStatus,
   FiscalDocumentType,
 } from "@prisma/client";
+import { LiquorSalesService } from "./liquor-sales.service";
+
+export type CreateInvoiceOptions = {
+  /** Al cobrar comanda: liberar reservedStock en la misma transacción del descuento */
+  releaseReserved?: { productId: number; quantity: number }[];
+};
+
+function availableUnits(
+  product: { stock: number; reservedStock?: number | null },
+  releaseQty = 0,
+): number {
+  const reserved = Math.max(0, Number(product.reservedStock ?? 0) - releaseQty);
+  return Math.max(0, product.stock - reserved);
+}
 
 @Injectable()
 export class InvoicesService {
@@ -39,12 +53,14 @@ export class InvoicesService {
     private fiscalEngine: FiscalEngineService,
     private fiscalControlNumber: FiscalControlNumberService,
     private invoiceSequence: InvoiceSequenceService,
+    private liquorSales: LiquorSalesService,
   ) {}
 
   async create(
     createInvoiceDto: CreateInvoiceDto,
     organizationId: number,
     sellerId: number,
+    options?: CreateInvoiceOptions,
   ) {
     const {
       items,
@@ -118,6 +134,19 @@ export class InvoicesService {
       throw new NotFoundException("Uno o más productos no fueron encontrados");
     }
 
+    const releaseMap = new Map<number, number>();
+    for (const r of options?.releaseReserved ?? []) {
+      releaseMap.set(
+        r.productId,
+        (releaseMap.get(r.productId) ?? 0) + r.quantity,
+      );
+    }
+
+    // Apertura automática de licores (snapshot) antes de descontar stock
+    await this.liquorSales.ensureOpeningBeforeSale(organizationId, [
+      ...allIdSet,
+    ]);
+
     const taxLineInputs: LineTaxInput[] = [];
     const invoiceItemsData: {
       productId: number;
@@ -172,6 +201,7 @@ export class InvoicesService {
           "combo",
           productById,
           stockDecrements,
+          releaseMap,
         );
       } else if (product.isService) {
         if (compsList) {
@@ -182,12 +212,17 @@ export class InvoicesService {
             "servicio",
             productById,
             stockDecrements,
+            releaseMap,
           );
         }
       } else {
-        if (product.stock < item.quantity) {
+        const avail = availableUnits(
+          product,
+          releaseMap.get(product.id) ?? 0,
+        );
+        if (avail < item.quantity) {
           throw new BadRequestException(
-            `Stock insuficiente para ${product.name}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`,
+            `Stock insuficiente para ${product.name}. Disponible: ${avail}, Solicitado: ${item.quantity}`,
           );
         }
         stockDecrements.push({ productId: product.id, quantity: item.quantity });
@@ -307,10 +342,21 @@ export class InvoicesService {
         tx,
       );
 
+      const releaseLeft = new Map(releaseMap);
       for (const dec of stockDecrements) {
+        const pending = releaseLeft.get(dec.productId) ?? 0;
+        const releaseQty = Math.min(pending, dec.quantity);
+        if (releaseQty > 0) {
+          releaseLeft.set(dec.productId, pending - releaseQty);
+        }
         await tx.product.update({
           where: { id: dec.productId },
-          data: { stock: { decrement: dec.quantity } },
+          data: {
+            stock: { decrement: dec.quantity },
+            ...(releaseQty > 0
+              ? { reservedStock: { decrement: releaseQty } }
+              : {}),
+          },
         });
       }
 
@@ -431,6 +477,7 @@ export class InvoicesService {
     kind: "combo" | "servicio",
     productById: Map<number, Product>,
     stockDecrements: { productId: number; quantity: number }[],
+    releaseMap: Map<number, number> = new Map(),
   ) {
     for (const comp of comps) {
       const child = productById.get(comp.productId);
@@ -442,9 +489,10 @@ export class InvoicesService {
         );
       }
       const need = lineQty * (comp.quantity ?? 1);
-      if (child.stock < need) {
+      const avail = availableUnits(child, releaseMap.get(child.id) ?? 0);
+      if (avail < need) {
         throw new BadRequestException(
-          `Stock insuficiente para "${child.name}" (${kind === "combo" ? "componente del combo" : "incluido en el servicio"}) "${parentName}". Disponible: ${child.stock}, requerido: ${need}`,
+          `Stock insuficiente para "${child.name}" (${kind === "combo" ? "componente del combo" : "incluido en el servicio"}) "${parentName}". Disponible: ${avail}, requerido: ${need}`,
         );
       }
       stockDecrements.push({ productId: child.id, quantity: need });

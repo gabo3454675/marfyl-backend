@@ -1,0 +1,8 @@
+DO $$ BEGIN
+  ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'WAITER';
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'KITCHEN';
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;

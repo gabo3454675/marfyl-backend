@@ -13,6 +13,9 @@ export const ROLES = {
   MANAGER: "MANAGER",
   SELLER: "SELLER",
   WAREHOUSE: "WAREHOUSE",
+  POS_OPERATOR: "POS_OPERATOR",
+  WAITER: "WAITER",
+  KITCHEN: "KITCHEN",
 } as const;
 
 export type RoleKey = keyof typeof ROLES;
@@ -28,6 +31,9 @@ export const ROLE_ORDER: Record<string, number> = {
   [ROLES.FISCAL]: 3,
   [ROLES.MANAGER]: 3,
   [ROLES.SELLER]: 2,
+  [ROLES.POS_OPERATOR]: 2,
+  [ROLES.WAITER]: 2,
+  [ROLES.KITCHEN]: 2,
   [ROLES.WAREHOUSE]: 1,
 };
 

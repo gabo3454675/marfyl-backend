@@ -43,6 +43,7 @@ import { InvoiceUploadModule } from "./modules/invoice-upload/invoice-upload.mod
 import { SalesImportModule } from "./modules/sales-import/sales-import.module";
 import { PurchasesImportModule } from "./modules/purchases-import/purchases-import.module";
 import { CashHoldModule } from "./modules/cash-hold/cash-hold.module";
+import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { CashHoldModule } from "./modules/cash-hold/cash-hold.module";
     SalesImportModule,
     PurchasesImportModule,
     CashHoldModule,
+    FloorOrdersModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

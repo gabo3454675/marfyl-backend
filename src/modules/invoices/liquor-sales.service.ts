@@ -14,6 +14,15 @@ import {
   type LiquorBucket,
 } from "./liquor-sales.util";
 
+function todayCaracas(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function yesterdayCaracas(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Caracas",
@@ -127,6 +136,139 @@ export class LiquorSalesService {
     return rows[0]?.day ?? null;
   }
 
+  /**
+   * Asegura snapshots de apertura para productos de licor del día.
+   * - Hoy: congela stock actual si aún no hay snapshot.
+   * - Día pasado: reconstruye opening ≈ stock_actual + vendido_día.
+   */
+  async ensureDaySnapshots(
+    organizationId: number,
+    day: string,
+    soldByProduct: Map<number, { name: string; quantity: number }>,
+  ): Promise<Map<number, number>> {
+    const existing = await this.prisma.liquorDaySnapshot.findMany({
+      where: {
+        organizationId,
+        day: new Date(`${day}T00:00:00.000Z`),
+      },
+    });
+    const openingByProduct = new Map<number, number>();
+    for (const s of existing) {
+      openingByProduct.set(s.productId, s.openingStock);
+    }
+
+    const productIds = new Set<number>([
+      ...openingByProduct.keys(),
+      ...soldByProduct.keys(),
+    ]);
+
+    // Productos licor activos de la org (para apertura del día actual sin ventas aún)
+    if (day === todayCaracas()) {
+      const active = await this.prisma.product.findMany({
+        where: {
+          organizationId,
+          isActive: true,
+          isBundle: false,
+          isService: false,
+        },
+        select: { id: true, name: true, stock: true },
+      });
+      for (const p of active) {
+        if (classifyLiquorProduct(p.name)) {
+          productIds.add(p.id);
+          if (!soldByProduct.has(p.id)) {
+            soldByProduct.set(p.id, { name: p.name, quantity: 0 });
+          }
+        }
+      }
+    }
+
+    const missingIds = [...productIds].filter((id) => !openingByProduct.has(id));
+    if (missingIds.length === 0) {
+      return openingByProduct;
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: missingIds }, organizationId },
+      select: { id: true, name: true, stock: true },
+    });
+
+    const isToday = day === todayCaracas();
+    const toCreate: {
+      organizationId: number;
+      day: Date;
+      productId: number;
+      openingStock: number;
+    }[] = [];
+
+    for (const p of products) {
+      if (!classifyLiquorProduct(p.name) && !soldByProduct.has(p.id)) continue;
+      const sold = soldByProduct.get(p.id)?.quantity ?? 0;
+      // Hoy: stock actual = teórico restante (aún no vendido desde snapshot).
+      // Pasado: opening ≈ stock_actual + vendido_día (reconstrucción).
+      const openingStock = isToday
+        ? Math.max(0, p.stock + sold)
+        : Math.max(0, p.stock + sold);
+      // Para hoy, si ya hubo ventas y no había snapshot, stock ya bajó → stock+sold.
+      // Si no hubo ventas, stock+0 = stock actual. Correcto en ambos casos.
+      toCreate.push({
+        organizationId,
+        day: new Date(`${day}T00:00:00.000Z`),
+        productId: p.id,
+        openingStock,
+      });
+      openingByProduct.set(p.id, openingStock);
+    }
+
+    if (toCreate.length > 0) {
+      await this.prisma.liquorDaySnapshot.createMany({
+        data: toCreate,
+        skipDuplicates: true,
+      });
+    }
+
+    return openingByProduct;
+  }
+
+  /**
+   * Hook previo a descontar stock en factura PAID del día: congela apertura si falta.
+   */
+  async ensureOpeningBeforeSale(
+    organizationId: number,
+    productIds: number[],
+  ): Promise<void> {
+    if (productIds.length === 0) return;
+    const day = todayCaracas();
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, organizationId },
+      select: { id: true, name: true, stock: true },
+    });
+    const liquor = products.filter((p) => classifyLiquorProduct(p.name));
+    if (liquor.length === 0) return;
+
+    const existing = await this.prisma.liquorDaySnapshot.findMany({
+      where: {
+        organizationId,
+        day: new Date(`${day}T00:00:00.000Z`),
+        productId: { in: liquor.map((p) => p.id) },
+      },
+      select: { productId: true },
+    });
+    const have = new Set(existing.map((e) => e.productId));
+    const missing = liquor.filter((p) => !have.has(p.id));
+    if (missing.length === 0) return;
+
+    await this.prisma.liquorDaySnapshot.createMany({
+      data: missing.map((p) => ({
+        organizationId,
+        day: new Date(`${day}T00:00:00.000Z`),
+        productId: p.id,
+        openingStock: Math.max(0, p.stock),
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   async getDailyReport(organizationId: number, day?: string) {
     const requestedDay =
       day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : yesterdayCaracas();
@@ -135,7 +277,6 @@ export class LiquorSalesService {
     let usedFallback = false;
     let rows = await this.loadDayRows(organizationId, reportDay);
 
-    // Si el día pedido no tiene ítems clasificables, caer al último día con licores.
     const classifiedProbe = rows.some((r) => classifyLiquorProduct(r.name));
     if (!classifiedProbe) {
       const latest = await this.findLatestLiquorDay(organizationId);
@@ -154,50 +295,116 @@ export class LiquorSalesService {
       usd: number;
       bucket: LiquorBucket;
       beerStyle: BeerStyle | null;
+      opening: number;
+      remainingTheoretical: number;
     };
 
-    const byProduct = new Map<number, Line>();
+    const soldMap = new Map<number, { name: string; quantity: number }>();
     for (const item of rows) {
-      const bucket = classifyLiquorProduct(item.name);
-      if (!bucket) continue;
+      if (!classifyLiquorProduct(item.name)) continue;
+      const prev = soldMap.get(item.productId);
+      if (prev) prev.quantity += item.quantity;
+      else soldMap.set(item.productId, { name: item.name, quantity: item.quantity });
+    }
+
+    const openingByProduct = await this.ensureDaySnapshots(
+      organizationId,
+      reportDay,
+      soldMap,
+    );
+
+    // Cargar productos con snapshot aunque no vendieron (aparecen en detalle)
+    const snapshotProducts = await this.prisma.product.findMany({
+      where: {
+        organizationId,
+        id: { in: [...openingByProduct.keys()] },
+      },
+      select: { id: true, sku: true, name: true },
+    });
+    const productMeta = new Map(
+      snapshotProducts.map((p) => [p.id, p] as const),
+    );
+
+    const byProduct = new Map<number, Line>();
+
+    const upsertLine = (
+      productId: number,
+      sku: string | null,
+      name: string,
+      quantity: number,
+      usd: number,
+    ) => {
+      const bucket = classifyLiquorProduct(name);
+      if (!bucket) return;
       const beerStyle =
         bucket === "cerveza_light" || bucket === "cerveza_negra"
-          ? classifyBeerStyle(item.name)
+          ? classifyBeerStyle(name)
           : null;
-      const prev = byProduct.get(item.productId);
+      const opening = openingByProduct.get(productId) ?? quantity;
+      const prev = byProduct.get(productId);
       if (prev) {
-        prev.quantity += item.quantity;
-        prev.usd += item.usd;
+        prev.quantity += quantity;
+        prev.usd += usd;
+        prev.remainingTheoretical = Math.max(0, prev.opening - prev.quantity);
       } else {
-        byProduct.set(item.productId, {
-          productId: item.productId,
-          sku: item.sku,
-          name: item.name,
-          quantity: item.quantity,
-          usd: item.usd,
+        byProduct.set(productId, {
+          productId,
+          sku,
+          name,
+          quantity,
+          usd,
           bucket,
           beerStyle,
+          opening,
+          remainingTheoretical: Math.max(0, opening - quantity),
         });
+      }
+    };
+
+    for (const item of rows) {
+      upsertLine(item.productId, item.sku, item.name, item.quantity, item.usd);
+    }
+
+    // Productos con apertura y 0 ventas
+    for (const [productId, opening] of openingByProduct) {
+      if (byProduct.has(productId)) continue;
+      const meta = productMeta.get(productId);
+      if (!meta) continue;
+      upsertLine(meta.id, meta.sku, meta.name, 0, 0);
+      const line = byProduct.get(productId);
+      if (line) {
+        line.opening = opening;
+        line.remainingTheoretical = Math.max(0, opening);
       }
     }
 
     const lines = [...byProduct.values()].sort(
-      (a, b) => b.quantity - a.quantity,
+      (a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name),
     );
 
     const styleMap = new Map<
       BeerStyle,
-      { bottles: number; usd: number; products: Line[] }
+      {
+        bottles: number;
+        usd: number;
+        opening: number;
+        remaining: number;
+        products: Line[];
+      }
     >();
     for (const line of lines) {
       if (!line.beerStyle) continue;
       const cur = styleMap.get(line.beerStyle) ?? {
         bottles: 0,
         usd: 0,
+        opening: 0,
+        remaining: 0,
         products: [],
       };
       cur.bottles += line.quantity;
       cur.usd += line.usd;
+      cur.opening += line.opening;
+      cur.remaining += line.remainingTheoretical;
       cur.products.push(line);
       styleMap.set(line.beerStyle, cur);
     }
@@ -209,30 +416,40 @@ export class LiquorSalesService {
           label: BEER_STYLE_LABELS[key],
           bottles: cur.bottles,
           usd: Math.round(cur.usd * 100) / 100,
+          opening: cur.opening,
+          remainingTheoretical: cur.remaining,
           pack: packFromBottles(cur.bottles),
+          packOpening: packFromBottles(cur.opening),
+          packRemaining: packFromBottles(cur.remaining),
           products: cur.products,
         };
       },
     );
 
     const emptyPack = packFromBottles(0);
-    const buckets: Record<
-      LiquorBucket,
-      {
-        key: LiquorBucket;
-        label: string;
-        bottles: number;
-        usd: number;
-        pack: ReturnType<typeof packFromBottles>;
-        products: Line[];
-      }
-    > = {
+    type BucketBlock = {
+      key: LiquorBucket;
+      label: string;
+      bottles: number;
+      usd: number;
+      opening: number;
+      remainingTheoretical: number;
+      pack: ReturnType<typeof packFromBottles>;
+      packOpening: ReturnType<typeof packFromBottles>;
+      packRemaining: ReturnType<typeof packFromBottles>;
+      products: Line[];
+    };
+    const buckets: Record<LiquorBucket, BucketBlock> = {
       cerveza_light: {
         key: "cerveza_light",
         label: LIQUOR_BUCKET_LABELS.cerveza_light,
         bottles: 0,
         usd: 0,
+        opening: 0,
+        remainingTheoretical: 0,
         pack: emptyPack,
+        packOpening: emptyPack,
+        packRemaining: emptyPack,
         products: [],
       },
       cerveza_negra: {
@@ -240,7 +457,11 @@ export class LiquorSalesService {
         label: LIQUOR_BUCKET_LABELS.cerveza_negra,
         bottles: 0,
         usd: 0,
+        opening: 0,
+        remainingTheoretical: 0,
         pack: emptyPack,
+        packOpening: emptyPack,
+        packRemaining: emptyPack,
         products: [],
       },
       whisky: {
@@ -248,7 +469,11 @@ export class LiquorSalesService {
         label: LIQUOR_BUCKET_LABELS.whisky,
         bottles: 0,
         usd: 0,
+        opening: 0,
+        remainingTheoretical: 0,
         pack: emptyPack,
+        packOpening: emptyPack,
+        packRemaining: emptyPack,
         products: [],
       },
       otros_licores: {
@@ -256,7 +481,11 @@ export class LiquorSalesService {
         label: LIQUOR_BUCKET_LABELS.otros_licores,
         bottles: 0,
         usd: 0,
+        opening: 0,
+        remainingTheoretical: 0,
         pack: emptyPack,
+        packOpening: emptyPack,
+        packRemaining: emptyPack,
         products: [],
       },
     };
@@ -265,16 +494,26 @@ export class LiquorSalesService {
       const b = buckets[line.bucket];
       b.bottles += line.quantity;
       b.usd += line.usd;
+      b.opening += line.opening;
+      b.remainingTheoretical += line.remainingTheoretical;
       b.products.push(line);
     }
 
     for (const key of Object.keys(buckets) as LiquorBucket[]) {
-      buckets[key].pack = packFromBottles(buckets[key].bottles);
-      buckets[key].usd = Math.round(buckets[key].usd * 100) / 100;
+      const b = buckets[key];
+      b.pack = packFromBottles(b.bottles);
+      b.packOpening = packFromBottles(b.opening);
+      b.packRemaining = packFromBottles(b.remainingTheoretical);
+      b.usd = Math.round(b.usd * 100) / 100;
     }
 
     const beerBottles =
       buckets.cerveza_light.bottles + buckets.cerveza_negra.bottles;
+    const beerOpening =
+      buckets.cerveza_light.opening + buckets.cerveza_negra.opening;
+    const beerRemaining =
+      buckets.cerveza_light.remainingTheoretical +
+      buckets.cerveza_negra.remainingTheoretical;
     const beerPack = packFromBottles(beerBottles);
 
     return {
@@ -282,15 +521,20 @@ export class LiquorSalesService {
       requestedDay,
       usedFallback,
       organizationId,
+      openingMode: "automatic" as const,
       rules: {
         bottlesPerTobo: BOTTLES_PER_TOBO,
         tobosPerCase: TOBOS_PER_CASE,
         bottlesPerCase: BOTTLES_PER_CASE,
-        note: "1 tobo = 12 botellas. 3 tobos = 1 caja de cerveza. Whisky y otros licores van por unidad.",
+        note: "1 tobo = 12 botellas. 3 tobos = 1 caja de cerveza. Whisky y otros licores van por unidad. Apertura automática al inicio del día.",
       },
       beer: {
         bottles: beerBottles,
+        opening: beerOpening,
+        remainingTheoretical: beerRemaining,
         ...beerPack,
+        packOpening: packFromBottles(beerOpening),
+        packRemaining: packFromBottles(beerRemaining),
         light: buckets.cerveza_light,
         negra: buckets.cerveza_negra,
         byStyle: beerByStyle,
@@ -303,6 +547,14 @@ export class LiquorSalesService {
         pack:
           l.bucket === "cerveza_light" || l.bucket === "cerveza_negra"
             ? packFromBottles(l.quantity)
+            : null,
+        packOpening:
+          l.bucket === "cerveza_light" || l.bucket === "cerveza_negra"
+            ? packFromBottles(l.opening)
+            : null,
+        packRemaining:
+          l.bucket === "cerveza_light" || l.bucket === "cerveza_negra"
+            ? packFromBottles(l.remainingTheoretical)
             : null,
         bucketLabel: LIQUOR_BUCKET_LABELS[l.bucket],
         beerStyleLabel: l.beerStyle ? BEER_STYLE_LABELS[l.beerStyle] : null,
