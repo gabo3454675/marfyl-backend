@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import {
   FloorOrderStatus,
+  FloorPaymentMode,
   FloorStation,
   Prisma,
 } from "@prisma/client";
@@ -16,6 +17,7 @@ import {
   ChargeFloorOrderDto,
   CreateFloorOrderDto,
 } from "./dto/floor-order.dto";
+import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 
 function todayCaracas(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -361,15 +363,58 @@ export class FloorOrdersService {
     }
     const byId = new Map(products.map((p) => [p.id, p]));
 
+    // --- Resolución de cliente por cédula (cuenta abierta) ---
+    let resolvedCustomerId = dto.customerId ?? null;
+    let resolvedCustomerName = dto.customerName?.trim() || null;
+
+    if (dto.paymentMode === "CUENTA_ABIERTA") {
+      if (dto.customerTaxId) {
+        // Buscar cliente por cédula
+        const customer = await this.findCustomerByTaxId(
+          organizationId,
+          dto.customerTaxId,
+        );
+        if (!customer) {
+          throw new BadRequestException(
+            "Cliente no encontrado. Regístrelo primero con la cédula proporcionada.",
+          );
+        }
+        resolvedCustomerId = customer.id;
+        resolvedCustomerName = customer.name;
+      } else if (resolvedCustomerId) {
+        // Se proporcionó customerId directamente — buscar nombre del cliente
+        const customer = await this.prisma.customer.findUnique({
+          where: { id: resolvedCustomerId },
+          select: { name: true },
+        });
+        if (customer) {
+          resolvedCustomerName = customer.name;
+        }
+      } else {
+        throw new BadRequestException(
+          "Para cuenta abierta se requiere identificar al cliente (cédula o ID).",
+        );
+      }
+    }
+
+    const paymentMode = dto.paymentMode === "CUENTA_ABIERTA"
+      ? FloorPaymentMode.CUENTA_ABIERTA
+      : FloorPaymentMode.INMEDIATO;
+
+    const isOpen = paymentMode === FloorPaymentMode.CUENTA_ABIERTA;
+
     const order = await this.prisma.floorOrder.create({
       data: {
         organizationId,
         tableLabel: dto.tableLabel.trim(),
-        customerName: dto.customerName?.trim() || null,
-        customerId: dto.customerId ?? null,
+        zone: dto.zone?.trim() || "",
+        customerName: resolvedCustomerName,
+        customerId: resolvedCustomerId,
         notes: dto.notes?.trim() || null,
         createdById: userId,
         status: FloorOrderStatus.DRAFT,
+        paymentMode,
+        isOpen,
         items: {
           create: dto.items.map((item) => {
             const p = byId.get(item.productId)!;
@@ -583,6 +628,12 @@ export class FloorOrdersService {
     if (order.chargedInvoiceId) {
       throw new BadRequestException("Esta comanda ya fue cobrada");
     }
+    // Bloquear cobro individual de órdenes en cuenta abierta activa
+    if (order.paymentMode === "CUENTA_ABIERTA" && order.isOpen) {
+      throw new BadRequestException(
+        "Esta orden pertenece a una cuenta abierta. Use el cobro masivo desde el POS.",
+      );
+    }
 
     const releaseReserved = order.items.map((i) => ({
       productId: i.productId,
@@ -624,5 +675,302 @@ export class FloorOrdersService {
 
     this.emit(organizationId, "comanda:updated", updated);
     return { order: updated, invoice };
+  }
+
+  /**
+   * Buscar cliente por cédula (taxId) en la organización.
+   * Retorna null si no existe.
+   */
+  async findCustomerByTaxId(organizationId: number, taxId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        organizationId,
+        taxId: taxId.trim(),
+      },
+      select: {
+        id: true,
+        name: true,
+        taxId: true,
+        phone: true,
+        email: true,
+      },
+    });
+    return customer || null;
+  }
+
+  /**
+   * Registro rápido de cliente desde la comanda.
+   * Crea un Customer con los datos proporcionados.
+   */
+  async quickRegisterCustomer(
+    organizationId: number,
+    dto: { taxId: string; phone: string; firstName: string; lastName: string },
+  ) {
+    // Verificar si ya existe un cliente con esta cédula en la organización
+    const existing = await this.findCustomerByTaxId(organizationId, dto.taxId);
+    if (existing) {
+      return existing;
+    }
+
+    // Obtener companyId de la organización
+    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+
+    const name = `${dto.firstName} ${dto.lastName}`.trim();
+
+    return this.prisma.customer.create({
+      data: {
+        name,
+        taxId: dto.taxId.trim(),
+        phone: dto.phone.trim(),
+        companyId,
+        organizationId,
+      },
+      select: {
+        id: true,
+        name: true,
+        taxId: true,
+        phone: true,
+      },
+    });
+  }
+
+  /**
+   * Cobra TODAS las órdenes abiertas de un cliente en una sola factura.
+   * Usa optimistic locking (sentinel chargedInvoiceId = -1) para prevenir race conditions.
+   *
+   * Fase 1: Obtener órdenes elegibles (solo SENT/IN_PREP/READY que reservaron stock)
+   * Fase 2: Reclamar órdenes atómicamente con updateMany condicional
+   * Fase 3: Crear factura (maneja su propia transacción interna)
+   * Fase 4: Finalizar órdenes con invoice ID real
+   * Fase 5: Rollback si falla la factura
+   */
+  async chargeCustomerOpenTab(
+    organizationId: number,
+    userId: number,
+    customerId: number,
+    dto: { paymentMethod?: string; payments?: { method: string; amount: number; currency: string }[]; notes?: string },
+  ) {
+    // FASE 1: Obtener órdenes elegibles
+    // Solo órdenes activas que reservaron stock: SENT, IN_PREP, READY
+    // Excluye DRAFT (nunca reservaron stock), CHARGED y CANCELLED
+    const activeStatuses = [
+      FloorOrderStatus.SENT,
+      FloorOrderStatus.IN_PREP,
+      FloorOrderStatus.READY,
+    ];
+
+    const orders = await this.prisma.floorOrder.findMany({
+      where: {
+        organizationId,
+        customerId,
+        paymentMode: "CUENTA_ABIERTA",
+        isOpen: true,
+        status: { in: activeStatuses },
+        chargedInvoiceId: null,
+      },
+      include: { items: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!orders.length) {
+      throw new BadRequestException("No hay órdenes abiertas para este cliente");
+    }
+
+    const orderIds = orders.map((o) => o.id);
+
+    // FASE 2: Reclamar órdenes atómicamente con updateMany condicional
+    // Si otra transacción ya las cobró (chargedInvoiceId != null), count será 0 y lanzamos error
+    const claimed = await this.prisma.floorOrder.updateMany({
+      where: {
+        id: { in: orderIds },
+        // Condiciones de seguridad: solo actualizar si siguen abiertas y sin cobrar
+        isOpen: true,
+        chargedInvoiceId: null,
+        status: { in: activeStatuses },
+      },
+      data: {
+        // Marcamos con chargedInvoiceId = -1 como centinela: "en proceso de cobro"
+        chargedInvoiceId: -1,
+      },
+    });
+
+    // Verificar que se reclamaron TODAS las órdenes
+    if (claimed.count !== orders.length) {
+      // Hacer rollback parcial: liberar las que sí se marcaron
+      await this.prisma.floorOrder.updateMany({
+        where: { id: { in: orderIds }, chargedInvoiceId: -1 },
+        data: { chargedInvoiceId: null },
+      });
+      throw new BadRequestException(
+        `Solo se pudieron reclamar ${claimed.count} de ${orders.length} órdenes. Otra persona puede estar cobrando esta cuenta.`,
+      );
+    }
+
+    // FASE 3: Preparar datos para la factura
+    const allItems: { productId: number; quantity: number }[] = [];
+    const releaseReserved: { productId: number; quantity: number }[] = [];
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        allItems.push({ productId: item.productId, quantity: item.quantity });
+        releaseReserved.push({ productId: item.productId, quantity: item.quantity });
+      }
+    }
+
+    const orderIdsStr = orders.map((o) => `#${o.id}`).join(", ");
+    const customerName = orders[0]?.customerName || `cliente #${customerId}`;
+    const notes =
+      dto.notes?.trim() ||
+      `Cuenta abierta ${customerName} — Órdenes ${orderIdsStr}`;
+
+    // FASE 4: Crear factura (maneja su propia transacción interna)
+    let invoice;
+    try {
+      invoice = await this.invoices.create(
+        {
+          customerId,
+          items: allItems,
+          paymentMethod: dto.paymentMethod,
+          payments: dto.payments?.map(p => ({
+            method: p.method as "CASH_USD" | "CASH_BS" | "PAGO_MOVIL" | "ZELLE" | "CARD" | "CREDIT",
+            amount: p.amount,
+            currency: p.currency as "USD" | "VES",
+          })),
+          notes,
+        },
+        organizationId,
+        userId,
+        { releaseReserved },
+      );
+    } catch (error) {
+      // Rollback: si falla la factura, revertir el reclamo (devolver chargedInvoiceId a null)
+      await this.prisma.floorOrder.updateMany({
+        where: { id: { in: orderIds }, chargedInvoiceId: -1 },
+        data: { chargedInvoiceId: null },
+      });
+      throw error;
+    }
+
+    // FASE 5: Finalizar órdenes como cobradas con el invoice ID real
+    await this.prisma.floorOrder.updateMany({
+      where: { id: { in: orderIds }, chargedInvoiceId: -1 },
+      data: {
+        status: FloorOrderStatus.CHARGED,
+        chargedInvoiceId: invoice.id,
+        chargedAt: new Date(),
+        isOpen: false,
+      },
+    });
+
+    // FASE 6: Emitir eventos WebSocket para cada orden actualizada
+    for (const order of orders) {
+      this.emit(organizationId, "comanda:updated", {
+        ...order,
+        status: FloorOrderStatus.CHARGED,
+        chargedInvoiceId: invoice.id,
+        isOpen: false,
+      });
+    }
+
+    // FASE 7: Retornar resultado
+    const updatedOrders = await this.prisma.floorOrder.findMany({
+      where: { id: { in: orderIds } },
+      include: ORDER_INCLUDE,
+    });
+
+    return { orders: updatedOrders, invoice };
+  }
+
+  /**
+   * Lista todos los clientes con cuentas abiertas activas, agrupados.
+   * Retorna: [{ customerId, customerName, totalUsd, ordersCount, orders: [...] }]
+   */
+  async openTabs(organizationId: number) {
+    const orders = await this.prisma.floorOrder.findMany({
+      where: {
+        organizationId,
+        paymentMode: "CUENTA_ABIERTA",
+        isOpen: true,
+        status: { notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED] },
+      },
+      include: {
+        items: {
+          include: { product: { select: { id: true, name: true } } },
+        },
+        createdBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Agrupar por customerId
+    const grouped = new Map<number, {
+      customerId: number;
+      customerName: string;
+      totalUsd: number;
+      ordersCount: number;
+      orders: typeof orders;
+    }>();
+
+    for (const order of orders) {
+      const key = order.customerId ?? 0;
+      const orderTotal = order.items.reduce(
+        (sum, item) => sum + Number(item.unitPrice) * item.quantity,
+        0,
+      );
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          customerId: order.customerId ?? 0,
+          customerName: order.customerName || "Sin nombre",
+          totalUsd: 0,
+          ordersCount: 0,
+          orders: [],
+        });
+      }
+
+      const group = grouped.get(key)!;
+      group.totalUsd += orderTotal;
+      group.ordersCount += 1;
+      group.orders.push(order);
+    }
+
+    return Array.from(grouped.values());
+  }
+
+  /**
+   * Detalle de todas las órdenes abiertas de un cliente específico.
+   */
+  async customerOpenOrders(organizationId: number, customerId: number) {
+    const orders = await this.prisma.floorOrder.findMany({
+      where: {
+        organizationId,
+        customerId,
+        paymentMode: "CUENTA_ABIERTA",
+        isOpen: true,
+        status: { notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED] },
+      },
+      include: {
+        items: {
+          include: { product: { select: { id: true, name: true } } },
+        },
+        createdBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const totalUsd = orders.reduce((sum, order) => {
+      const orderTotal = order.items.reduce(
+        (itemSum, item) => itemSum + Number(item.unitPrice) * item.quantity,
+        0,
+      );
+      return sum + orderTotal;
+    }, 0);
+
+    return {
+      customerId,
+      totalUsd,
+      ordersCount: orders.length,
+      orders,
+    };
   }
 }

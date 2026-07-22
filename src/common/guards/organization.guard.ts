@@ -26,6 +26,47 @@ export class OrganizationGuard implements CanActivate {
       throw new ForbiddenException("Usuario no autenticado");
     }
 
+    // Agente interno: tenant viene de X-Organization-Id (ya en user.organizationId).
+    // No exige membresía JWT; sí exige que la organización exista.
+    if (user.isInternalAgent === true) {
+      const organizationId = user.organizationId ?? user.tenantId;
+      if (organizationId == null || organizationId <= 0) {
+        throw new BadRequestException(
+          "X-Organization-Id debe ser un entero positivo (no se permite 0)",
+        );
+      }
+
+      const organization = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+      });
+      if (!organization) {
+        throw new NotFoundException(
+          `La organización con ID ${organizationId} no existe`,
+        );
+      }
+
+      request.activeOrganizationId = organizationId;
+      request.activeOrganization = organization;
+      // Rol sintético con acceso total de permisos (agente trusted vía AGENT_SECRET).
+      request.activeOrganizationMembership = {
+        id: -1,
+        userId: user.id,
+        organizationId,
+        role: "SUPER_ADMIN",
+        status: "ACTIVE",
+        joinedAt: new Date(),
+        organization,
+      } as typeof request.activeOrganizationMembership;
+
+      await this.billing.assertOrganizationBillingActive(organizationId, {
+        slug: organization.slug,
+        billingExempt: organization.billingExempt,
+        plan: organization.plan,
+      });
+
+      return true;
+    }
+
     const previewUser = buildDevPreviewUser();
     if (isDevPreviewAuthEnabled() && user.id === previewUser.id) {
       const organizationId =

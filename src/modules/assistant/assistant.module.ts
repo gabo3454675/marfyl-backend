@@ -16,6 +16,7 @@ import { AssistantService } from "./assistant.service";
 import { AssistantToolsService } from "./assistant-tools.service";
 import { AssistantSecurityService } from "./assistant-security.service";
 import { AssistantLocalFallbackService } from "./assistant-local-fallback.service";
+import { AgentProxyService } from "./agent-proxy.service";
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AssistantLocalFallbackService } from "./assistant-local-fallback.servic
   controllers: [AssistantController],
   providers: [
     AssistantService,
+    AgentProxyService,
     AssistantToolsService,
     AssistantSecurityService,
     AssistantLocalFallbackService,

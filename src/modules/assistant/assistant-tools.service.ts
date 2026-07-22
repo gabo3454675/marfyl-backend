@@ -25,6 +25,10 @@ export interface AssistantToolContext {
   organizationId: number;
   userId: number;
   orgName?: string;
+  /** Rol en la org activa — se reenvía al agente Python (`user_role`). */
+  userRole?: string;
+  /** Header Authorization del usuario (opcional) para forward al agente. */
+  authorization?: string;
   pendingSwitch?: AssistantSwitchPayload;
 }
 

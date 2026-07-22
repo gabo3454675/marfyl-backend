@@ -24,8 +24,10 @@ import {
 } from "@/common/constants/permissions.constants";
 import { FloorOrdersService } from "./floor-orders.service";
 import {
+  ChargeCustomerOpenTabDto,
   ChargeFloorOrderDto,
   CreateFloorOrderDto,
+  QuickRegisterCustomerDto,
   UpdateFloorOrderStatusDto,
 } from "./dto/floor-order.dto";
 
@@ -97,6 +99,65 @@ export class FloorOrdersController {
       viewerUserId: user.id,
       seeAll,
     });
+  }
+
+  /** Lista de clientes con cuentas abiertas activas (para POS) */
+  @Get("open-tabs")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canAccessPOS", "canTakeFloorOrder")
+  openTabs(@ActiveOrganization() organizationId: number) {
+    return this.floorOrders.openTabs(organizationId);
+  }
+
+  /** Detalle de órdenes abiertas de un cliente específico */
+  @Get("open-by-customer/:customerId")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canAccessPOS", "canTakeFloorOrder")
+  customerOpenOrders(
+    @ActiveOrganization() organizationId: number,
+    @Param("customerId", ParseIntPipe) customerId: number,
+  ) {
+    return this.floorOrders.customerOpenOrders(organizationId, customerId);
+  }
+
+  /** Buscar cliente por cédula (para comanda) */
+  @Get("customer-by-taxid/:taxId")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canTakeFloorOrder", "canAccessPOS")
+  findCustomerByTaxId(
+    @ActiveOrganization() organizationId: number,
+    @Param("taxId") taxId: string,
+  ) {
+    return this.floorOrders.findCustomerByTaxId(organizationId, taxId);
+  }
+
+  /** Registro rápido de cliente desde comanda (sin permiso canManageCustomers) */
+  @Post("quick-register-customer")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canTakeFloorOrder")
+  quickRegisterCustomer(
+    @ActiveOrganization() organizationId: number,
+    @Body() dto: QuickRegisterCustomerDto,
+  ) {
+    return this.floorOrders.quickRegisterCustomer(organizationId, dto);
+  }
+
+  /** Cobra todas las órdenes abiertas de un cliente en una sola factura */
+  @Post("charge-customer/:customerId")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canAccessPOS")
+  chargeCustomerOpenTab(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+    @Param("customerId", ParseIntPipe) customerId: number,
+    @Body() dto: ChargeCustomerOpenTabDto,
+  ) {
+    return this.floorOrders.chargeCustomerOpenTab(
+      organizationId,
+      user.id,
+      customerId,
+      dto,
+    );
   }
 
   @Get(":id")

@@ -7,6 +7,7 @@ import {
   DEV_PREVIEW_TOKEN,
   isDevPreviewAuthEnabled,
 } from "../dev-preview";
+import { tryAuthenticateInternalAgent } from "../internal-agent-auth";
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard("jwt") {
@@ -24,8 +25,14 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
       return true;
     }
 
+    const request = context.switchToHttp().getRequest();
+
+    // Agente Python (service-to-service): X-Internal-Secret + X-Organization-Id
+    if (tryAuthenticateInternalAgent(request)) {
+      return true;
+    }
+
     if (isDevPreviewAuthEnabled()) {
-      const request = context.switchToHttp().getRequest();
       const auth = (
         request.headers?.authorization as string | undefined
       )?.trim();

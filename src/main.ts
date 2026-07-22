@@ -78,7 +78,7 @@ async function bootstrap() {
   const port = configService.get<number>("PORT", 3001);
   const frontendUrl = configService.get<string>(
     "FRONTEND_URL",
-    "http://localhost:3002",
+    "http://localhost:3001",
   );
   const nodeEnv = configService.get<string>("NODE_ENV", "development");
 

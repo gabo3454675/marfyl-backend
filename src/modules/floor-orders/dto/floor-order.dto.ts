@@ -41,6 +41,33 @@ export class CreateFloorOrderDto {
 
   @IsOptional()
   @IsString()
+  zone?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(["INMEDIATO", "CUENTA_ABIERTA"])
+  paymentMode?: "INMEDIATO" | "CUENTA_ABIERTA";
+
+  /** Cédula del cliente para buscar o crear (requerido para CUENTA_ABIERTA) */
+  @IsOptional()
+  @IsString()
+  customerTaxId?: string;
+
+  /** Para auto-registro rápido de cliente */
+  @IsOptional()
+  @IsString()
+  customerPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  customerFirstName?: string;
+
+  @IsOptional()
+  @IsString()
+  customerLastName?: string;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
 
   @IsArray()
@@ -102,4 +129,40 @@ export class ChargeFloorOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+}
+
+export class ChargeCustomerOpenTabDto {
+  // customerId viene del path param, no del body
+
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChargeFloorOrderPaymentDto)
+  payments?: ChargeFloorOrderPaymentDto[];
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class QuickRegisterCustomerDto {
+  @IsString()
+  @IsNotEmpty()
+  taxId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phone: string;
+
+  @IsString()
+  @IsNotEmpty()
+  firstName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  lastName: string;
 }

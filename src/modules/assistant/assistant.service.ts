@@ -18,6 +18,7 @@ import {
   AssistantToolsService,
 } from "./assistant-tools.service";
 import { AssistantLocalFallbackService } from "./assistant-local-fallback.service";
+import { AgentProxyService } from "./agent-proxy.service";
 import {
   buildGroqAssistantTools,
   MARFYL_SYSTEM_INSTRUCTION,
@@ -44,6 +45,13 @@ type ToolCallAccum = {
   arguments: string;
 };
 
+/**
+ * Asistente Marfyl.
+ *
+ * Por defecto (USE_PYTHON_AGENT=false): Groq + tools locales.
+ * Con USE_PYTHON_AGENT=true: reenvía a agent-marfyl vía AgentProxyService.
+ * Si Python falla y PYTHON_AGENT_FALLBACK=true, cae a Groq; si no, error claro.
+ */
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
@@ -53,15 +61,71 @@ export class AssistantService {
     private readonly config: ConfigService,
     private readonly toolsService: AssistantToolsService,
     private readonly localFallback: AssistantLocalFallbackService,
+    private readonly agentProxy: AgentProxyService,
   ) {
     this.modelName =
       this.config.get<string>("GROQ_MODEL")?.trim() || DEFAULT_MODEL;
   }
 
   async chat(dto: AssistantChatDto, context: AssistantToolContext) {
+    if (this.agentProxy.isEnabled()) {
+      try {
+        const result = await this.agentProxy.chat(dto, context);
+        return {
+          reply: result.reply,
+          model: result.model,
+          ...(context.pendingSwitch
+            ? { switchOrganization: context.pendingSwitch }
+            : {}),
+        };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!this.agentProxy.isFallbackEnabled()) {
+          throw new ServiceUnavailableException(msg);
+        }
+        this.logger.warn(
+          `Python agent falló; fallback Groq (chat): ${msg}`,
+        );
+      }
+    }
+
+    return this.aggregateGroqChat(dto, context);
+  }
+
+  async *chatStream(
+    dto: AssistantChatDto,
+    context: AssistantToolContext,
+  ): AsyncGenerator<AssistantStreamEvent> {
+    if (this.agentProxy.isEnabled()) {
+      let proxyError: string | null = null;
+      for await (const event of this.agentProxy.chatStream(dto, context)) {
+        if (event.type === "error") {
+          proxyError = event.message;
+          break;
+        }
+        yield event;
+      }
+      if (!proxyError) return;
+
+      if (!this.agentProxy.isFallbackEnabled()) {
+        yield { type: "error", message: proxyError };
+        return;
+      }
+      this.logger.warn(
+        `Python agent falló; fallback Groq (stream): ${proxyError}`,
+      );
+    }
+
+    yield* this.chatStreamGroq(dto, context);
+  }
+
+  private async aggregateGroqChat(
+    dto: AssistantChatDto,
+    context: AssistantToolContext,
+  ) {
     let reply = "";
     let model = this.modelName;
-    for await (const event of this.chatStream(dto, context)) {
+    for await (const event of this.chatStreamGroq(dto, context)) {
       if (event.type === "delta") reply += event.text;
       if (event.type === "done") {
         reply = event.reply;
@@ -80,7 +144,7 @@ export class AssistantService {
     };
   }
 
-  async *chatStream(
+  private async *chatStreamGroq(
     dto: AssistantChatDto,
     context: AssistantToolContext,
   ): AsyncGenerator<AssistantStreamEvent> {

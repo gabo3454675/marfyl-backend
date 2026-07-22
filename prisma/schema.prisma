@@ -336,6 +336,11 @@ enum FloorStation {
   OTHER
 }
 
+enum FloorPaymentMode {
+  INMEDIATO
+  CUENTA_ABIERTA
+}
+
 model FloorOrder {
   id                Int              @id @default(autoincrement())
   organizationId    Int
@@ -351,6 +356,9 @@ model FloorOrder {
   sentAt            DateTime?
   chargedAt         DateTime?
   cancelledAt       DateTime?
+  zone              String           @default("")    // Zona del local (texto libre)
+  paymentMode       FloorPaymentMode @default(INMEDIATO)
+  isOpen            Boolean          @default(false) // true = cuenta abierta activa
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy      User            @relation(fields: [createdById], references: [id])
@@ -360,6 +368,7 @@ model FloorOrder {
 
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
+  @@index([organizationId, paymentMode, isOpen])
   @@map("floor_orders")
 }
 
