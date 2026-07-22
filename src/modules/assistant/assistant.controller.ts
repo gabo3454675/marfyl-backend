@@ -5,50 +5,46 @@ import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { AssistantService } from "./assistant.service";
 import { AssistantChatDto } from "./dto/chat.dto";
 
+type AssistantRequest = {
+  user?: { sub?: number; id?: number };
+  activeOrganization?: { id?: number; nombre?: string };
+  activeOrganizationId?: number;
+  activeOrganizationMembership?: { role?: string };
+  headers?: { authorization?: string };
+};
+
 @Controller("assistant")
 @UseGuards(JwtAuthGuard, OrganizationGuard)
 export class AssistantController {
   constructor(private readonly assistant: AssistantService) {}
 
-  private buildContext(
-    req: {
-      user?: { sub?: number; id?: number };
-      activeOrganization?: { id?: number; nombre?: string };
-      activeOrganizationId?: number;
-    },
-  ) {
+  private buildContext(req: AssistantRequest) {
     const organizationId =
       req.activeOrganizationId ?? req.activeOrganization?.id;
     const userId = req.user?.sub ?? req.user?.id ?? 0;
+    const userRole = req.activeOrganizationMembership?.role;
+    const authorization =
+      typeof req.headers?.authorization === "string"
+        ? req.headers.authorization
+        : undefined;
     return {
       organizationId: Number(organizationId),
       userId: Number(userId),
       orgName: req.activeOrganization?.nombre,
+      userRole: userRole ? String(userRole) : undefined,
+      authorization,
     };
   }
 
   @Post("chat")
-  async chat(
-    @Body() dto: AssistantChatDto,
-    @Req()
-    req: {
-      user?: { sub?: number; id?: number };
-      activeOrganization?: { id?: number; nombre?: string };
-      activeOrganizationId?: number;
-    },
-  ) {
+  async chat(@Body() dto: AssistantChatDto, @Req() req: AssistantRequest) {
     return this.assistant.chat(dto, this.buildContext(req));
   }
 
   @Post("chat/stream")
   async chatStream(
     @Body() dto: AssistantChatDto,
-    @Req()
-    req: {
-      user?: { sub?: number; id?: number };
-      activeOrganization?: { id?: number; nombre?: string };
-      activeOrganizationId?: number;
-    },
+    @Req() req: AssistantRequest,
     @Res() res: Response,
   ) {
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
