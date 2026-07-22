@@ -1,7 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { DolarApiService } from "./dolar-api.service";
-import type { DolarApiVenezuelaQuote } from "./dolar-api.types";
+import type {
+  DolarApiCurrency,
+  DolarApiVenezuelaQuote,
+} from "./dolar-api.types";
 
 export interface ExchangeRateSyncResult {
   organizationId: number;
@@ -12,6 +15,11 @@ export interface ExchangeRateSyncResult {
   quote: DolarApiVenezuelaQuote;
   rateUpdatedAt: Date | null;
   rateUpdatedBy: string | null;
+  euroExchangeRate: number;
+  previousEuroRate: number | null;
+  euroSource: string;
+  euroQuote: DolarApiVenezuelaQuote;
+  euroRateUpdatedAt: Date | null;
 }
 
 @Injectable()
@@ -23,11 +31,12 @@ export class ExchangeRateSyncService {
     private readonly dolarApi: DolarApiService,
   ) {}
 
-  async fetchQuotePreview() {
-    const quote = await this.dolarApi.fetchQuote();
+  async fetchQuotePreview(currency: DolarApiCurrency = "USD") {
+    const quote = await this.dolarApi.fetchQuote(currency);
     return {
-      exchangeRate: this.dolarApi.resolveUsdVesRate(quote),
-      source: this.dolarApi.getSourceLabel(quote),
+      currency,
+      exchangeRate: this.dolarApi.resolveRate(currency, quote),
+      source: this.dolarApi.getSourceLabel(currency, quote),
       quote,
       provider: "DolarApi.com",
       providerRepo: "https://github.com/enzonotario/esjs-dolar-api",
@@ -37,21 +46,36 @@ export class ExchangeRateSyncService {
   async syncOrganization(
     organizationId: number,
     actorUserId?: number | null,
+    providedQuotes?: {
+      usd: DolarApiVenezuelaQuote;
+      eur: DolarApiVenezuelaQuote;
+    },
   ): Promise<ExchangeRateSyncResult> {
-    const quote = await this.dolarApi.fetchQuote();
-    const newRate = this.dolarApi.resolveUsdVesRate(quote);
-    const source = this.dolarApi.getSourceLabel(quote);
+    const [quote, euroQuote] = providedQuotes
+      ? [providedQuotes.usd, providedQuotes.eur]
+      : await Promise.all([
+          this.dolarApi.fetchQuote("USD"),
+          this.dolarApi.fetchQuote("EUR"),
+        ]);
+    const newRate = this.dolarApi.resolveRate("USD", quote);
+    const newEuroRate = this.dolarApi.resolveRate("EUR", euroQuote);
+    const source = this.dolarApi.getSourceLabel("USD", quote);
+    const euroSource = this.dolarApi.getSourceLabel("EUR", euroQuote);
 
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { exchangeRate: true, currencyCode: true },
+      select: { exchangeRate: true, euroExchangeRate: true, currencyCode: true },
     });
 
     const previousRate = org?.exchangeRate ?? null;
     const changed =
       previousRate == null || Math.abs(previousRate - newRate) >= 0.0001;
+    const previousEuroRate = org?.euroExchangeRate ?? null;
+    const euroChanged =
+      previousEuroRate == null ||
+      Math.abs(previousEuroRate - newEuroRate) >= 0.0001;
 
-    if (!changed) {
+    if (!changed && !euroChanged) {
       return {
         organizationId,
         updated: false,
@@ -61,6 +85,11 @@ export class ExchangeRateSyncService {
         quote,
         rateUpdatedAt: null,
         rateUpdatedBy: null,
+        euroExchangeRate: previousEuroRate ?? newEuroRate,
+        previousEuroRate,
+        euroSource,
+        euroQuote,
+        euroRateUpdatedAt: null,
       };
     }
 
@@ -80,20 +109,40 @@ export class ExchangeRateSyncService {
       this.prisma.organization.update({
         where: { id: organizationId },
         data: {
-          exchangeRate: newRate,
-          rateUpdatedAt: now,
+          ...(changed && { exchangeRate: newRate, rateUpdatedAt: now }),
+          ...(euroChanged && {
+            euroExchangeRate: newEuroRate,
+            euroRateUpdatedAt: now,
+          }),
         },
       }),
-      this.prisma.tasaHistorica.create({
-        data: {
-          organizationId,
-          rate: newRate,
-          source: source.includes("Paralelo") ? "PARALELO" : "BCV",
-          effectiveAt: now,
-        },
-      }),
-      ...(actorUserId
+      ...(changed
         ? [
+            this.prisma.tasaHistorica.create({
+              data: {
+                organizationId,
+                rate: newRate,
+                source: source.includes("Paralelo") ? "PARALELO" : "BCV",
+                effectiveAt: now,
+              },
+            }),
+          ]
+        : []),
+      ...(euroChanged
+        ? [
+            this.prisma.tasaEuroHistorica.create({
+              data: {
+                organizationId,
+                rate: newEuroRate,
+                source: "BCV_EUR",
+                effectiveAt: now,
+              },
+            }),
+          ]
+        : []),
+      ...(actorUserId
+        ? changed || euroChanged
+          ? [
             this.prisma.auditLog.create({
               data: {
                 organizationId,
@@ -105,35 +154,43 @@ export class ExchangeRateSyncService {
                   previousRate != null
                     ? {
                         exchangeRate: previousRate,
+                        euroExchangeRate: previousEuroRate,
                         currencyCode: org?.currencyCode ?? "USD",
                       }
                     : undefined,
                 newValue: {
-                  exchangeRate: newRate,
+                  ...(changed && { exchangeRate: newRate }),
+                  ...(euroChanged && { euroExchangeRate: newEuroRate }),
                   currencyCode: org?.currencyCode ?? "USD",
                   source: "DolarApi",
                 },
                 actorEmail: rateUpdatedBy,
-                targetSummary: `Tasa BCV: ${previousRate ?? "—"} → ${newRate} (${source})`,
+                targetSummary: `Tasas: USD ${previousRate ?? "—"} → ${newRate}; EUR ${previousEuroRate ?? "—"} → ${newEuroRate}`,
               },
             }),
           ]
+          : []
         : []),
     ]);
 
     this.logger.log(
-      `Org ${organizationId}: tasa ${previousRate ?? "—"} → ${newRate} (${source})`,
+      `Org ${organizationId}: USD ${previousRate ?? "—"} → ${newRate}; EUR ${previousEuroRate ?? "—"} → ${newEuroRate}`,
     );
 
     return {
       organizationId,
-      updated: true,
+      updated: changed || euroChanged,
       exchangeRate: newRate,
       previousRate,
       source,
       quote,
-      rateUpdatedAt: now,
-      rateUpdatedBy,
+      rateUpdatedAt: changed ? now : null,
+      rateUpdatedBy: changed ? rateUpdatedBy : null,
+      euroExchangeRate: newEuroRate,
+      previousEuroRate,
+      euroSource,
+      euroQuote,
+      euroRateUpdatedAt: euroChanged ? now : null,
     };
   }
 
@@ -141,107 +198,52 @@ export class ExchangeRateSyncService {
     quote: DolarApiVenezuelaQuote;
     exchangeRate: number;
     source: string;
+    euroQuote: DolarApiVenezuelaQuote;
+    euroExchangeRate: number;
+    euroSource: string;
     results: ExchangeRateSyncResult[];
   }> {
-    const quote = await this.dolarApi.fetchQuote();
-    const exchangeRate = this.dolarApi.resolveUsdVesRate(quote);
-    const source = this.dolarApi.getSourceLabel(quote);
+    const [quote, euroQuote] = await Promise.all([
+      this.dolarApi.fetchQuote("USD"),
+      this.dolarApi.fetchQuote("EUR"),
+    ]);
+    const exchangeRate = this.dolarApi.resolveRate("USD", quote);
+    const euroExchangeRate = this.dolarApi.resolveRate("EUR", euroQuote);
+    const source = this.dolarApi.getSourceLabel("USD", quote);
+    const euroSource = this.dolarApi.getSourceLabel("EUR", euroQuote);
 
     const systemActor = await this.prisma.user.findFirst({
       where: { isSuperAdmin: true, isActive: true },
-      select: { id: true, email: true },
+      select: { id: true },
       orderBy: { id: "asc" },
     });
-
     const orgs = await this.prisma.organization.findMany({
       where: { deletedAt: null },
-      select: { id: true, exchangeRate: true, currencyCode: true },
+      select: { id: true },
     });
-
-    const now = new Date();
     const results: ExchangeRateSyncResult[] = [];
 
     for (const org of orgs) {
-      const previousRate = org.exchangeRate ?? null;
-      const changed =
-        previousRate == null || Math.abs(previousRate - exchangeRate) >= 0.0001;
-
-      if (!changed) {
-        results.push({
-          organizationId: org.id,
-          updated: false,
-          exchangeRate: previousRate ?? exchangeRate,
-          previousRate,
-          source,
-          quote,
-          rateUpdatedAt: null,
-          rateUpdatedBy: null,
-        });
-        continue;
-      }
-
-      await this.prisma.$transaction([
-        this.prisma.organization.update({
-          where: { id: org.id },
-          data: {
-            exchangeRate,
-            rateUpdatedAt: now,
-          },
+      results.push(
+        await this.syncOrganization(org.id, systemActor?.id ?? null, {
+          usd: quote,
+          eur: euroQuote,
         }),
-        this.prisma.tasaHistorica.create({
-          data: {
-            organizationId: org.id,
-            rate: exchangeRate,
-            source: source.includes("Paralelo") ? "PARALELO" : "BCV",
-            effectiveAt: now,
-          },
-        }),
-        ...(systemActor
-          ? [
-              this.prisma.auditLog.create({
-                data: {
-                  organizationId: org.id,
-                  userId: systemActor.id,
-                  action: "CURRENCY_UPDATE",
-                  entityType: "organization",
-                  entityId: String(org.id),
-                  oldValue:
-                    previousRate != null
-                      ? {
-                          exchangeRate: previousRate,
-                          currencyCode: org.currencyCode ?? "USD",
-                        }
-                      : undefined,
-                  newValue: {
-                    exchangeRate,
-                    currencyCode: org.currencyCode ?? "USD",
-                    source: "DolarApi",
-                  },
-                  actorEmail: "DolarApi BCV (automático)",
-                  targetSummary: `Tasa BCV: ${previousRate ?? "—"} → ${exchangeRate} (${source})`,
-                },
-              }),
-            ]
-          : []),
-      ]);
-
-      results.push({
-        organizationId: org.id,
-        updated: true,
-        exchangeRate,
-        previousRate,
-        source,
-        quote,
-        rateUpdatedAt: now,
-        rateUpdatedBy: "DolarApi BCV (automático)",
-      });
+      );
     }
 
-    const updatedCount = results.filter((r) => r.updated).length;
+    const updatedCount = results.filter((result) => result.updated).length;
     this.logger.log(
-      `Sincronización BCV: ${updatedCount}/${orgs.length} orgs actualizadas → ${exchangeRate} (${source})`,
+      `Sincronización BCV: ${updatedCount}/${orgs.length} orgs actualizadas → USD ${exchangeRate}; EUR ${euroExchangeRate}`,
     );
-
-    return { quote, exchangeRate, source, results };
+    return {
+      quote,
+      exchangeRate,
+      source,
+      euroQuote,
+      euroExchangeRate,
+      euroSource,
+      results,
+    };
   }
 }

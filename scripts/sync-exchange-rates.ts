@@ -1,5 +1,5 @@
 /**
- * Sincroniza tasa BCV para todas las organizaciones vía DolarApi.
+ * Sincroniza tasas BCV USD/VES y EUR/VES para todas las organizaciones vía DolarApi.
  * Uso: pnpm sync:exchange-rates
  *
  * API: https://ve.dolarapi.com (https://github.com/enzonotario/esjs-dolar-api)
@@ -9,14 +9,16 @@ import { assertMarfylDatabaseUrl } from "../src/common/database-guard";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
-async function fetchQuote() {
+async function fetchQuote(currency: "USD" | "EUR") {
   const base =
     process.env.DOLAR_API_VE_BASE_URL?.trim() || "https://ve.dolarapi.com";
   const kind =
     (process.env.DOLAR_API_RATE_KIND || "oficial").toLowerCase() === "paralelo"
       ? "paralelo"
       : "oficial";
-  const res = await fetch(`${base}/v1/dolares/${kind}`, {
+  const endpoint =
+    currency === "USD" ? `/v1/dolares/${kind}` : "/v1/euros/oficial";
+  const res = await fetch(`${base}${endpoint}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`DolarApi HTTP ${res.status}`);
@@ -32,46 +34,58 @@ async function fetchQuote() {
 async function main() {
   const prisma = new PrismaClient();
   try {
-    const quote = await fetchQuote();
-    const rate = Math.round(
-      (quote.promedio ?? quote.venta ?? quote.compra ?? 0) * 10_000,
+    const [quote, euroQuote] = await Promise.all([
+      fetchQuote("USD"),
+      fetchQuote("EUR"),
+    ]);
+    const resolveRate = (candidate: typeof quote) => Math.round(
+      (candidate.promedio ?? candidate.venta ?? candidate.compra ?? 0) * 10_000,
     ) / 10_000;
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new Error("Cotización inválida desde DolarApi");
+    const rate = resolveRate(quote);
+    const euroRate = resolveRate(euroQuote);
+    if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(euroRate) || euroRate <= 0) {
+      throw new Error("Cotización USD o EUR inválida desde DolarApi");
     }
 
     const orgs = await prisma.organization.findMany({
       where: { deletedAt: null },
-      select: { id: true, nombre: true, exchangeRate: true },
+      select: { id: true, nombre: true, exchangeRate: true, euroExchangeRate: true },
     });
 
     const now = new Date();
     let updated = 0;
 
     for (const org of orgs) {
-      if (Math.abs((org.exchangeRate ?? 0) - rate) < 0.0001) continue;
+      const usdChanged = Math.abs((org.exchangeRate ?? 0) - rate) >= 0.0001;
+      const euroChanged = Math.abs((org.euroExchangeRate ?? 0) - euroRate) >= 0.0001;
+      if (!usdChanged && !euroChanged) continue;
       await prisma.$transaction([
         prisma.organization.update({
           where: { id: org.id },
-          data: { exchangeRate: rate, rateUpdatedAt: now },
-        }),
-        prisma.tasaHistorica.create({
           data: {
-            organizationId: org.id,
-            rate,
-            source: "BCV",
-            effectiveAt: now,
+            ...(usdChanged && { exchangeRate: rate, rateUpdatedAt: now }),
+            ...(euroChanged && { euroExchangeRate: euroRate, euroRateUpdatedAt: now }),
           },
         }),
+        ...(usdChanged
+          ? [prisma.tasaHistorica.create({
+              data: { organizationId: org.id, rate, source: "BCV", effectiveAt: now },
+            })]
+          : []),
+        ...(euroChanged
+          ? [prisma.tasaEuroHistorica.create({
+              data: { organizationId: org.id, rate: euroRate, source: "BCV_EUR", effectiveAt: now },
+            })]
+          : []),
       ]);
       console.log(
-        `✅ ${org.nombre}: ${org.exchangeRate ?? "—"} → ${rate} Bs/USD (Dólar BCV)`,
+        `✅ ${org.nombre}: USD ${org.exchangeRate ?? "—"} → ${rate}; EUR ${org.euroExchangeRate ?? "—"} → ${euroRate} Bs`,
       );
       updated += 1;
     }
 
     console.log(
-      `\n🎉 Dólar BCV ${quote.nombre}: ${rate} Bs/USD (${quote.fechaActualizacion})`,
+      `\n🎉 USD ${quote.nombre}: ${rate} Bs/USD · EUR ${euroQuote.nombre}: ${euroRate} Bs/EUR`,
     );
     console.log(`   ${updated}/${orgs.length} organizaciones actualizadas`);
   } finally {

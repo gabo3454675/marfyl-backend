@@ -1,16 +1,63 @@
 import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import type {
+  DolarApiCurrency,
   DolarApiRateKind,
+  DolarApiRateStrategy,
   DolarApiVenezuelaQuote,
 } from "./dolar-api.types";
+
+function resolvePositiveRate(
+  quote: DolarApiVenezuelaQuote,
+  displayName: string,
+): number {
+  const candidate = quote.promedio ?? quote.venta ?? quote.compra;
+  const rate = Number(candidate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new ServiceUnavailableException(
+      `DolarApi devolvió una cotización ${displayName} inválida.`,
+    );
+  }
+  return Math.round(rate * 10_000) / 10_000;
+}
+
+function sourceLabel(
+  quote: DolarApiVenezuelaQuote,
+  currency: DolarApiCurrency,
+): string {
+  const name = quote.nombre?.trim();
+  if (name) return `BCV ${currency} (${name})`;
+  return `BCV ${currency} (DolarApi)`;
+}
+
+const USD_BCV_STRATEGY: DolarApiRateStrategy = {
+  currency: "USD",
+  endpoint: "/v1/dolares/oficial",
+  displayName: "Dólar BCV",
+  resolveRate: (quote) => resolvePositiveRate(quote, "Dólar BCV"),
+  getSourceLabel: (quote) => sourceLabel(quote, "USD"),
+};
+
+const EUR_BCV_STRATEGY: DolarApiRateStrategy = {
+  currency: "EUR",
+  endpoint: "/v1/euros/oficial",
+  displayName: "Euro BCV",
+  resolveRate: (quote) => resolvePositiveRate(quote, "Euro BCV"),
+  getSourceLabel: (quote) => sourceLabel(quote, "EUR"),
+};
 
 /**
  * Cliente para DolarApi Venezuela (https://ve.dolarapi.com).
  * Proyecto open source: https://github.com/enzonotario/esjs-dolar-api
+ *
+ * Cada moneda usa una estrategia con endpoint, validación y fuente propios.
  */
 @Injectable()
 export class DolarApiService {
   private readonly logger = new Logger(DolarApiService.name);
+  private readonly strategies: Record<DolarApiCurrency, DolarApiRateStrategy> = {
+    USD: USD_BCV_STRATEGY,
+    EUR: EUR_BCV_STRATEGY,
+  };
 
   private get baseUrl(): string {
     return (
@@ -23,10 +70,20 @@ export class DolarApiService {
     return raw === "paralelo" ? "paralelo" : "oficial";
   }
 
-  async fetchQuote(kind?: DolarApiRateKind): Promise<DolarApiVenezuelaQuote> {
-    const path = kind ?? this.rateKind;
-    // Fuente oficial MARFYL: Dólar BCV (/v1/dolares).
-    const url = `${this.baseUrl}/v1/dolares/${path}`;
+  getStrategy(currency: DolarApiCurrency): DolarApiRateStrategy {
+    return this.strategies[currency];
+  }
+
+  async fetchQuote(
+    currency: DolarApiCurrency = "USD",
+    kind?: DolarApiRateKind,
+  ): Promise<DolarApiVenezuelaQuote> {
+    const strategy = this.getStrategy(currency);
+    const endpoint =
+      currency === "USD"
+        ? `/v1/dolares/${kind ?? this.rateKind}`
+        : strategy.endpoint;
+    const url = `${this.baseUrl}${endpoint}`;
 
     try {
       const res = await fetch(url, {
@@ -46,34 +103,22 @@ export class DolarApiService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`DolarApi falló (${url}): ${message}`);
       throw new ServiceUnavailableException(
-        "No se pudo obtener la tasa BCV (dólar) desde DolarApi. Intenta más tarde.",
+        `No se pudo obtener la tasa ${strategy.displayName} desde DolarApi. Intenta más tarde.`,
       );
     }
   }
 
-  /**
-   * Factor de conversión VES por 1 USD usado en MARFYL.
-   * Cotización: Dólar BCV (promedio, fallback venta/compra).
-   */
-  resolveUsdVesRate(quote: DolarApiVenezuelaQuote): number {
-    const candidate = quote.promedio ?? quote.venta ?? quote.compra;
-    const rate = Number(candidate);
-    if (!Number.isFinite(rate) || rate <= 0) {
-      throw new ServiceUnavailableException(
-        "DolarApi devolvió una cotización Dólar BCV inválida.",
-      );
-    }
-    return Math.round(rate * 10_000) / 10_000;
+  resolveRate(
+    currency: DolarApiCurrency,
+    quote: DolarApiVenezuelaQuote,
+  ): number {
+    return this.getStrategy(currency).resolveRate(quote);
   }
 
-  getSourceLabel(quote: DolarApiVenezuelaQuote): string {
-    const name = quote.nombre?.trim();
-    if (name) {
-      return name.toLowerCase().includes("dólar") ||
-        name.toLowerCase().includes("dolar")
-        ? `BCV ${name}`
-        : `BCV Dólar (${name})`;
-    }
-    return "BCV Dólar (DolarApi)";
+  getSourceLabel(
+    currency: DolarApiCurrency,
+    quote: DolarApiVenezuelaQuote,
+  ): string {
+    return this.getStrategy(currency).getSourceLabel(quote);
   }
 }

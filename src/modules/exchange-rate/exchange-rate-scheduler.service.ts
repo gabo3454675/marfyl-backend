@@ -15,16 +15,16 @@ export class ExchangeRateSchedulerService implements OnModuleInit {
 
   async onModuleInit() {
     if (!this.autoSyncEnabled) {
-      this.logger.log("Sync BCV automático desactivado (EXCHANGE_RATE_AUTO_SYNC=false)");
+      this.logger.log("Sync de tasas BCV automático desactivado (EXCHANGE_RATE_AUTO_SYNC=false)");
       return;
     }
 
-    this.logger.log("Sync BCV automático activo — actualizando al arrancar…");
+    this.logger.log("Sync USD y EUR BCV automático activo — actualizando al arrancar…");
     try {
       await this.sync.syncAllOrganizations();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Sync BCV al arrancar falló: ${message}`);
+      this.logger.warn(`Sync de tasas al arrancar falló: ${message}`);
     }
   }
 
@@ -35,12 +35,12 @@ export class ExchangeRateSchedulerService implements OnModuleInit {
   async scheduledBcvSync() {
     if (!this.autoSyncEnabled) return;
 
-    this.logger.log("Cron: sincronización automática tasa BCV");
+    this.logger.log("Cron: sincronización automática tasas USD y EUR BCV");
     try {
       await this.sync.syncAllOrganizations();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Cron BCV falló: ${message}`);
+      this.logger.error(`Cron de tasas BCV falló: ${message}`);
     }
   }
 }

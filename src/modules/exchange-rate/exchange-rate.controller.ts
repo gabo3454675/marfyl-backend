@@ -16,10 +16,17 @@ export class ExchangeRateController {
   @Get("bcv-quote")
   @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
   getBcvQuote() {
-    return this.sync.fetchQuotePreview();
+    return this.sync.fetchQuotePreview("USD");
   }
 
-  /** Sincroniza la tasa Dólar BCV de la organización activa desde DolarApi. */
+  /** Cotización Euro BCV actual desde DolarApi (sin guardar). */
+  @Get("euro-quote")
+  @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
+  getEuroQuote() {
+    return this.sync.fetchQuotePreview("EUR");
+  }
+
+  /** Sincroniza las tasas USD/BCV y EUR/BCV de la organización activa. */
   @Post("sync-bcv")
   @Roles("SUPER_ADMIN", "ADMIN")
   async syncBcvForOrganization(
@@ -30,8 +37,8 @@ export class ExchangeRateController {
     return {
       ...result,
       message: result.updated
-        ? `Tasa Dólar BCV actualizada a ${result.exchangeRate} Bs por USD (${result.source})`
-        : "La tasa Dólar BCV ya estaba al día; no hubo cambios.",
+        ? `Tasas actualizadas: USD ${result.exchangeRate} y EUR ${result.euroExchangeRate} Bs.`
+        : "Las tasas USD y EUR ya estaban al día; no hubo cambios.",
     };
   }
 

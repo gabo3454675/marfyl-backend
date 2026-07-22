@@ -9,3 +9,12 @@ export interface DolarApiVenezuelaQuote {
 }
 
 export type DolarApiRateKind = "oficial" | "paralelo";
+export type DolarApiCurrency = "USD" | "EUR";
+
+export interface DolarApiRateStrategy {
+  readonly currency: DolarApiCurrency;
+  readonly endpoint: string;
+  readonly displayName: string;
+  resolveRate(quote: DolarApiVenezuelaQuote): number;
+  getSourceLabel(quote: DolarApiVenezuelaQuote): string;
+}

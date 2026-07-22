@@ -46,6 +46,8 @@ export class TenantsService {
         currencySymbol: true,
         exchangeRate: true,
         rateUpdatedAt: true,
+        euroExchangeRate: true,
+        euroRateUpdatedAt: true,
         billingExempt: true,
         concertModuleEnabled: true,
       },
@@ -59,6 +61,8 @@ export class TenantsService {
       currencySymbol: o.currencySymbol ?? "$",
       exchangeRate: o.exchangeRate ?? 1,
       rateUpdatedAt: o.rateUpdatedAt ?? null,
+      euroExchangeRate: o.euroExchangeRate ?? null,
+      euroRateUpdatedAt: o.euroRateUpdatedAt ?? null,
       billingExempt: o.billingExempt,
       concertModuleEnabled: o.concertModuleEnabled,
     }));
@@ -85,6 +89,8 @@ export class TenantsService {
         currencySymbol: true,
         exchangeRate: true,
         rateUpdatedAt: true,
+        euroExchangeRate: true,
+        euroRateUpdatedAt: true,
         billingExempt: true,
         concertModuleEnabled: true,
         deletedAt: true,
@@ -104,6 +110,8 @@ export class TenantsService {
       currencySymbol: organization.currencySymbol ?? "$",
       exchangeRate: organization.exchangeRate ?? 1,
       rateUpdatedAt: organization.rateUpdatedAt ?? null,
+      euroExchangeRate: organization.euroExchangeRate ?? null,
+      euroRateUpdatedAt: organization.euroRateUpdatedAt ?? null,
       billingExempt: organization.billingExempt,
       concertModuleEnabled: organization.concertModuleEnabled,
       // Campos legacy vacíos (compatibilidad hacia atrás con consumidores que aún leen currency, address, taxId, logoUrl):
@@ -855,6 +863,43 @@ export class TenantsService {
       source: t.source,
       effectiveAt: t.effectiveAt,
       createdAt: t.createdAt,
+    }));
+  }
+
+  /** Histórico informativo EUR/VES; no participa en facturas ni cierres. */
+  async getTasasEuroHistorial(
+    organizationId: number,
+    opts?: { desde?: string; hasta?: string; limit?: number },
+  ) {
+    const limit = Math.min(opts?.limit ?? 200, 500);
+    const where: {
+      organizationId: number;
+      effectiveAt?: { gte?: Date; lte?: Date };
+    } = { organizationId };
+    if (opts?.desde || opts?.hasta) {
+      where.effectiveAt = {};
+      if (opts.desde) where.effectiveAt.gte = new Date(opts.desde);
+      if (opts.hasta) {
+        const h = new Date(opts.hasta);
+        h.setHours(23, 59, 59, 999);
+        where.effectiveAt.lte = h;
+      }
+    }
+    const list = await this.prisma.tasaEuroHistorica.findMany({
+      where,
+      orderBy: { effectiveAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        rate: true,
+        source: true,
+        effectiveAt: true,
+        createdAt: true,
+      },
+    });
+    return list.map((rate) => ({
+      ...rate,
+      rate: Number(rate.rate),
     }));
   }
 

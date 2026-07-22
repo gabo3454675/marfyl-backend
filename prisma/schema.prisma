@@ -126,6 +126,8 @@ model Organization {
   currencySymbol  String          @default("$")  // Símbolo para facturas y POS
   exchangeRate    Float           @default(1.0) // Tasa BCV/Paralelo (USD/VES) para conversión
   rateUpdatedAt   DateTime?       // Última actualización de la tasa (para tarea "Actualizar Tasa del Día")
+  euroExchangeRate Float?         // Tasa informativa EUR/VES; no afecta conversiones contables
+  euroRateUpdatedAt DateTime?     // Última actualización de la tasa EUR/VES
   taxId               String?         // RIF emisor (organización)
   legalName           String?         // Razón social fiscal
   isSpecialTaxpayer   Boolean         @default(false)
@@ -150,6 +152,7 @@ model Organization {
   cashHolds          CashHold[]         // Efectivo oficina/tienda (no es venta)
   cierresCaja        CierreCaja[]       // Cierres de caja (X-Report / Z-Report)
   tasasHistoricas    TasaHistorica[]    // Tasas BCV por momento (auditoría)
+  tasasEuroHistoricas TasaEuroHistorica[] // Tasas EUR/VES informativas por momento
   activityLogs       ActivityLog[]     // Auditoría de acciones (precio, factura, autoconsumo)
   pagos              Pago[]            // Pagos por factura (tesorería, blindaje)
   expensePayments    ExpensePayment[]
@@ -1029,6 +1032,23 @@ model TasaHistorica {
   @@index([organizationId])
   @@index([effectiveAt])
   @@map("tasas_historicas")
+}
+
+/// Histórico informativo EUR/VES. Se mantiene separado de TasaHistorica,
+/// que respalda facturas y cierres calculados exclusivamente con USD/VES.
+model TasaEuroHistorica {
+  id             Int       @id @default(autoincrement())
+  organizationId Int
+  rate           Decimal   @db.Decimal(12, 4)
+  source         String    @default("BCV_EUR")
+  effectiveAt    DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([effectiveAt])
+  @@map("tasas_euro_historicas")
 }
 
 // ------------------------------------------

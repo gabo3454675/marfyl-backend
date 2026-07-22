@@ -143,6 +143,24 @@ export class TenantsController {
     });
   }
 
+  /** Histórico informativo de tasas Euro BCV. */
+  @Get("organization/tasas-euro-historicas")
+  @UseGuards(OrganizationGuard, RolesGuard)
+  @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
+  async getTasasEuroHistorial(
+    @ActiveOrganization() organizationId: number,
+    @Query("desde") desde?: string,
+    @Query("hasta") hasta?: string,
+    @Query("limit") limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.tenantsService.getTasasEuroHistorial(organizationId, {
+      desde,
+      hasta,
+      limit: limitNum,
+    });
+  }
+
   /**
    * Reporte Ganancia/Pérdida por Diferencial Cambiario. Query: desde, hasta (YYYY-MM-DD).
    */
