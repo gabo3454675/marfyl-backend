@@ -385,6 +385,18 @@ export class FloorOrdersService {
 
   async listTables(organizationId: number) {
     await this.assertTableAccountsEnabled(organizationId);
+    const existing = await this.prisma.floorTable.count({ where: { organizationId } });
+    if (existing === 0) {
+      await this.prisma.floorTable.createMany({
+        data: [1, 2, 3, 4].map((number) => ({
+          organizationId,
+          label: `Mesa ${number}`,
+          zone: "Salón principal",
+          sortOrder: number,
+        })),
+        skipDuplicates: true,
+      });
+    }
     const tables = await this.prisma.floorTable.findMany({
       where: { organizationId, isActive: true },
       orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
