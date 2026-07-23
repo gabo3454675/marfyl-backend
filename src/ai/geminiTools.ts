@@ -54,7 +54,7 @@ const getDashboardSummarySchema: FunctionDeclaration = {
 const getHealthMetricsSchema: FunctionDeclaration = {
   name: "get_health_metrics",
   description:
-    "Obtiene métricas de salud del negocio: gráfico de ventas del último mes, productos top por margen, ticket promedio, y crecimiento mensual.",
+    "Obtiene métricas de salud del negocio: ticket promedio, crecimiento mensual, meta diaria y ganancia neta estimada.",
   parameters: {
     type: SchemaType.OBJECT,
     properties: {},
