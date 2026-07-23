@@ -33,8 +33,38 @@ export class PrismaService
     this.databaseUrl = databaseUrl;
     // Extiende el mismo cliente inyectado para evitar mezclar instancias.
     // Mezclar clientes puede invalidar transacciones interactivas en ejecución.
-    const extended = this.$extends(tenantIsolationExtension) as PrismaClient;
-    Object.assign(this, extended);
+    //
+    // FIX: Usamos un Proxy en lugar de Object.assign porque Object.assign
+    // copia el estado interno del cliente extendido (incluyendo la config
+    // del datasource), corrompiendo la URL de conexión y causando
+    // "InvalidDatasourceError: the URL must start with prisma://".
+    // El Proxy delega el acceso a propiedades al cliente extendido sin
+    // copiar su estado interno, preservando la configuración del super().
+    const extended = this.$extends(tenantIsolationExtension);
+    const self = this;
+    // Conjunto de métodos de conexión que siempre deben ir al cliente base
+    // de PrismaClient (super()), NO al extended client. El extended client
+    // de Prisma 5.22.0 usa internamente la capa Accelerate que requiere
+    // una URL con protocolo `prisma://`, lo que causa P6001 cuando la URL
+    // es `postgresql://` (Neon, Supabase, etc.).
+    const BASE_CLIENT_METHODS = new Set(["$connect", "$disconnect"]);
+    return new Proxy(this, {
+      get(_target, prop, _receiver) {
+        // Métodos de conexión → cliente base (PrismaClient.prototype)
+        if (typeof prop === "string" && BASE_CLIENT_METHODS.has(prop)) {
+          const method = Reflect.get(PrismaClient.prototype, prop);
+          return method ? method.bind(self) : undefined;
+        }
+        // Propiedades own de PrismaService (dbAvailable, logger, databaseUrl)
+        if (Object.prototype.hasOwnProperty.call(self, prop)) {
+          const value = Reflect.get(self, prop, self);
+          return typeof value === "function" ? value.bind(self) : value;
+        }
+        // Todo lo demás (modelos, $transaction, $queryRaw, etc.)
+        // → cliente extendido con tenant isolation
+        return Reflect.get(extended, prop, extended);
+      },
+    });
 
     // Diagnóstico condicional solo en desarrollo, sin exponer datos sensibles
     if (process.env.NODE_ENV === "development") {

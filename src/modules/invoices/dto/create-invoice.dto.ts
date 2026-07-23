@@ -19,6 +19,11 @@ export class CreateInvoiceItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  variantId?: number;
 }
 
 const PAYMENT_METHODS = [

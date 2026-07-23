@@ -20,6 +20,8 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
+import { CreateVariantDto } from "./dto/create-variant.dto";
+import { UpdateVariantDto } from "./dto/update-variant.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { PermissionsGuard } from "@/common/guards/permissions.guard";
@@ -133,6 +135,48 @@ export class ProductsController {
     @ActiveOrganization() organizationId: number,
   ) {
     return this.productsService.remove(id, organizationId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // VARIANTES DE PRODUCTO
+  // ---------------------------------------------------------------------------
+
+  @Get(":id/variants")
+  @Permissions("canViewProducts")
+  findVariants(
+    @Param("id", ParseIntPipe) id: number,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.findVariantsByProduct(id, organizationId);
+  }
+
+  @Post(":id/variants")
+  @Permissions("canManageProducts")
+  createVariant(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() createVariantDto: CreateVariantDto,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.createVariant(id, createVariantDto, organizationId);
+  }
+
+  @Patch("/variants/:variantId")
+  @Permissions("canManageProducts")
+  updateVariant(
+    @Param("variantId", ParseIntPipe) variantId: number,
+    @Body() updateVariantDto: UpdateVariantDto,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.updateVariant(variantId, updateVariantDto, organizationId);
+  }
+
+  @Delete("/variants/:variantId")
+  @Permissions("canManageProducts")
+  deleteVariant(
+    @Param("variantId", ParseIntPipe) variantId: number,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    return this.productsService.deleteVariant(variantId, organizationId);
   }
 
   @Post("upload-excel")

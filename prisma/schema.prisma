@@ -269,6 +269,7 @@ model Product {
   inventoryMovements InventoryMovement[] // Movimientos de inventario del producto
   liquorDaySnapshots LiquorDaySnapshot[]
   floorOrderItems    FloorOrderItem[]
+  variants       ProductVariant[]
 
   @@index([companyId]) // Índice para búsquedas rápidas por empresa (legacy)
   @@index([organizationId]) // Índice para búsquedas rápidas por organización
@@ -430,6 +431,15 @@ enum ConsumptionReason {
 }
 
 // ------------------------------------------
+// VARIANTES DE PRODUCTO (múltiples precios por producto)
+// ------------------------------------------
+
+enum VariantStockBehavior {
+  DEDUCT    // Descuenta unitQuantity del stock base
+  NO_DEDUCT // No descuenta stock (servicios, eventos)
+}
+
+// ------------------------------------------
 // MOVIMIENTOS DE INVENTARIO
 // ------------------------------------------
 
@@ -439,6 +449,7 @@ model InventoryMovement {
   quantity              Int                // Cantidad (positiva o negativa según el tipo)
   reason                String?           // Detalles opcionales del movimiento
   productId             Int                // Producto afectado
+  variantId             Int?               // Opcional: variante que generó el movimiento
   userId                Int                // Responsable del movimiento
   tenantId              Int                // Organización (Multi-Tenant)
   unitCostAtTransaction Decimal?           @db.Decimal(10, 2) // Costo unitario al momento (trazabilidad)
@@ -447,17 +458,47 @@ model InventoryMovement {
   updatedAt             DateTime           @updatedAt
 
   product    Product      @relation(fields: [productId], references: [id])
+  variant    ProductVariant? @relation(fields: [variantId], references: [id])
   user       User         @relation(fields: [userId], references: [id])
   tenant     Organization @relation(fields: [tenantId], references: [id])
   expense    Expense?     @relation("MovementExpense") // Doble asiento: gasto asociado
 
   @@index([productId])
+  @@index([variantId])
   @@index([userId])
   @@index([tenantId])
   @@index([type])
   @@index([consumptionReason])
   @@index([createdAt])
   @@map("inventory_movements")
+}
+
+// ------------------------------------------
+// VARIANTE DE PRODUCTO (múltiples precios por producto)
+// ------------------------------------------
+
+model ProductVariant {
+  id            Int      @id @default(autoincrement())
+  productId     Int
+  name          String   // "BOTELLA SOLA", "TOBO NORMAL", "SERVICIO EVENTO", etc.
+  salePrice     Decimal  @db.Decimal(10, 2) // Precio de venta de esta variante
+  unitQuantity  Int      @default(1) // Unidades base que representa (1, 12, 36...)
+  stockBehavior VariantStockBehavior @default(DEDUCT) // Si descuenta stock
+  inheritCost   Boolean  @default(true) // true = hereda costo del Product.costPrice
+  customCost    Decimal? @db.Decimal(10, 2) // Costo propio (solo si inheritCost = false)
+  isDefault     Boolean  @default(false) // Variante preseleccionada en POS
+  sortOrder     Int      @default(0) // Orden de visualización
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  invoiceItems       InvoiceItem[]
+  inventoryMovements InventoryMovement[]
+
+  @@unique([productId, name])
+  @@index([productId])
+  @@map("product_variants")
 }
 
 // ------------------------------------------
@@ -756,6 +797,7 @@ model InvoiceItem {
   id        Int     @id @default(autoincrement())
   invoiceId Int
   productId Int
+  variantId Int?    // Opcional: variante vendida (retrocompatibilidad)
   quantity  Int
   unitPrice Decimal @db.Decimal(10, 2)
   subtotal  Decimal @db.Decimal(10, 2)
@@ -765,9 +807,11 @@ model InvoiceItem {
 
   invoice Invoice @relation(fields: [invoiceId], references: [id])
   product Product @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
 
   @@index([invoiceId])
   @@index([productId])
+  @@index([variantId])
   @@map("invoice_items")
 }
 
