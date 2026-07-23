@@ -27,6 +27,10 @@ export class FloorOrderItemDto {
 }
 
 export class CreateFloorOrderDto {
+  @IsOptional()
+  @IsInt()
+  tableId?: number;
+
   @IsString()
   @IsNotEmpty()
   tableLabel: string;

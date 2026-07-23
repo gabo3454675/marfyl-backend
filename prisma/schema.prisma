@@ -41,6 +41,8 @@ model User {
   payrollRunsProcessed PayrollRun[]     // Nóminas procesadas por el usuario
   refreshTokens       RefreshToken[]   // Refresh tokens para autenticación
   floorOrdersCreated  FloorOrder[]     // Comandas creadas por el usuario
+  floorTableAccountsOpened FloorTableAccount[] @relation("FloorTableAccountOpenedBy")
+  floorTablePaymentsRecorded FloorTablePayment[] @relation("FloorTablePaymentRecordedBy")
 
   @@index([isSuperAdmin])
   @@map("users")
@@ -167,6 +169,8 @@ model Organization {
   fiscalComplianceAlerts FiscalComplianceAlert[]
   fiscalAuditLogs    FiscalAuditLog[]
   fiscalSyncRuns     FiscalSyncRun[]
+  floorTables        FloorTable[]
+  floorTableAccounts FloorTableAccount[]
   declaracionesIva   Declaracion_IVA[]
   concertEvents      ConcertEvent[]
   payrollProfiles    PayrollProfile[]
@@ -344,6 +348,76 @@ enum FloorPaymentMode {
   CUENTA_ABIERTA
 }
 
+enum FloorTableAccountStatus {
+  OPEN
+  CLOSED
+}
+
+model FloorTable {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  label          String
+  zone           String   @default("")
+  sortOrder      Int      @default(0)
+  capacity       Int?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       FloorOrder[]
+  accounts     FloorTableAccount[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId, isActive, sortOrder])
+  @@map("floor_tables")
+}
+
+model FloorTableAccount {
+  id               Int                     @id @default(autoincrement())
+  organizationId   Int
+  tableId          Int
+  customerId       Int?
+  customerName     String?
+  status           FloorTableAccountStatus @default(OPEN)
+  openKey          String?                 @unique // `${tableId}:OPEN`; null al cerrar
+  openedById       Int
+  closedInvoiceId  Int?                    @unique
+  openedAt         DateTime                @default(now())
+  closedAt         DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  table        FloorTable           @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  customer     Customer?            @relation(fields: [customerId], references: [id])
+  openedBy     User                 @relation("FloorTableAccountOpenedBy", fields: [openedById], references: [id])
+  closedInvoice Invoice?            @relation("FloorTableAccountInvoice", fields: [closedInvoiceId], references: [id])
+  orders       FloorOrder[]
+  payments     FloorTablePayment[]
+
+  @@index([organizationId, status])
+  @@index([tableId, status])
+  @@map("floor_table_accounts")
+}
+
+model FloorTablePayment {
+  id          Int      @id @default(autoincrement())
+  accountId   Int
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @default("USD")
+  method      String
+  notes       String?
+  recordedById Int
+  createdAt   DateTime @default(now())
+
+  account    FloorTableAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recordedBy User              @relation("FloorTablePaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([accountId, createdAt])
+  @@map("floor_table_payments")
+}
+
 model FloorOrder {
   id                Int              @id @default(autoincrement())
   organizationId    Int
@@ -362,16 +436,22 @@ model FloorOrder {
   zone              String           @default("")    // Zona del local (texto libre)
   paymentMode       FloorPaymentMode @default(INMEDIATO)
   isOpen            Boolean          @default(false) // true = cuenta abierta activa
+  tableId           Int?
+  tableAccountId    Int?
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy      User            @relation(fields: [createdById], references: [id])
   chargedInvoice Invoice?        @relation(fields: [chargedInvoiceId], references: [id])
   customer       Customer?       @relation(fields: [customerId], references: [id])
+  table          FloorTable?     @relation(fields: [tableId], references: [id])
+  tableAccount   FloorTableAccount? @relation(fields: [tableAccountId], references: [id])
   items          FloorOrderItem[]
 
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@index([organizationId, paymentMode, isOpen])
+  @@index([tableId, status])
+  @@index([tableAccountId])
   @@map("floor_orders")
 }
 
@@ -578,6 +658,7 @@ model Customer {
   invoices      Invoice[]
   customerCredit CustomerCredit? // Cuenta de crédito (maestro)
   floorOrders   FloorOrder[]
+  floorTableAccounts FloorTableAccount[]
 
   @@index([companyId])
   @@index([organizationId])
@@ -738,6 +819,7 @@ model Invoice {
   legacyImportKey     String?   // ej. FAC-00009605 — idempotencia importación POS
   importSource        String?   // fastreport
   isLegacyImport      Boolean   @default(false)
+  closedFloorTableAccount FloorTableAccount? @relation("FloorTableAccountInvoice")
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

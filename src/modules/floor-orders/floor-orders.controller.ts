@@ -142,6 +142,48 @@ export class FloorOrdersController {
     return this.floorOrders.quickRegisterCustomer(organizationId, dto);
   }
 
+  /** Mesas habilitadas y cuenta abierta resumida (solo organizaciones de piso). */
+  @Get("tables")
+  @UseGuards(AnyPermissionsGuard)
+  @AnyPermissions("canTakeFloorOrder", "canAccessPOS", "canManageTeam")
+  tables(@ActiveOrganization() organizationId: number) {
+    return this.floorOrders.listTables(organizationId);
+  }
+
+  @Post("tables")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canTakeFloorOrder")
+  createTable(
+    @ActiveOrganization() organizationId: number,
+    @Body() body: { label: string; zone?: string },
+  ) {
+    return this.floorOrders.createTable(organizationId, body.label, body.zone);
+  }
+
+  @Post("tables/accounts/:accountId/payments")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canAccessPOS")
+  recordTablePayment(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+    @Param("accountId", ParseIntPipe) accountId: number,
+    @Body() body: { amount: number; method: string; currency?: string; notes?: string },
+  ) {
+    return this.floorOrders.recordTablePayment(organizationId, user.id, accountId, body);
+  }
+
+  @Post("tables/accounts/:accountId/close")
+  @UseGuards(PermissionsGuard)
+  @Permissions("canAccessPOS")
+  closeTableAccount(
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+    @Param("accountId", ParseIntPipe) accountId: number,
+    @Body() body: { payments?: { method: string; amount: number; currency: string }[]; notes?: string },
+  ) {
+    return this.floorOrders.closeTableAccount(organizationId, user.id, accountId, body);
+  }
+
   /** Cobra todas las órdenes abiertas de un cliente en una sola factura */
   @Post("charge-customer/:customerId")
   @UseGuards(PermissionsGuard)

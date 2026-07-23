@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import {
   FloorOrderStatus,
+  FloorTableAccountStatus,
   FloorPaymentMode,
   FloorStation,
   Prisma,
@@ -104,6 +105,16 @@ export class FloorOrdersService {
     private readonly ws: WebSocketService,
   ) {}
 
+  private async assertTableAccountsEnabled(organizationId: number) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true },
+    });
+    if (!["monddy", "el-rancho-de-german"].includes(organization?.slug ?? "")) {
+      throw new BadRequestException("La gestión de mesas aún no está habilitada para esta organización.");
+    }
+  }
+
   private emit(organizationId: number, event: string, order: unknown) {
     try {
       this.ws.emitToOrg(organizationId, event, order);
@@ -168,19 +179,33 @@ export class FloorOrdersService {
     }));
   }
 
-  /**
-   * Pendientes abiertos agrupados por quien tomó el pedido (supervisión).
-   */
+  /** Trazabilidad diaria por anfitrión: tomado, pendiente, cobrado y cancelado. */
   async pendingByUser(organizationId: number, day?: string) {
-    const orders = await this.list(organizationId, { day });
+    const resolvedDay =
+      day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : todayCaracas();
+    const from = new Date(`${resolvedDay}T04:00:00.000Z`);
+    const to = new Date(from.getTime() + 24 * 60 * 60 * 1000);
+    const orders = await this.prisma.floorOrder.findMany({
+      where: { organizationId, createdAt: { gte: from, lt: to } },
+      include: {
+        items: true,
+        createdBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
     type Acc = {
       userId: number;
       fullName: string;
+      taken: number;
       pending: number;
       sent: number;
       inPrep: number;
       ready: number;
-      totalUsd: number;
+      charged: number;
+      cancelled: number;
+      totalTakenUsd: number;
+      chargedUsd: number;
+      pendingUsd: number;
     };
     const map = new Map<number, Acc>();
     for (const o of orders) {
@@ -189,26 +214,43 @@ export class FloorOrdersService {
       const cur = map.get(userId) ?? {
         userId,
         fullName,
+        taken: 0,
         pending: 0,
         sent: 0,
         inPrep: 0,
         ready: 0,
-        totalUsd: 0,
+        charged: 0,
+        cancelled: 0,
+        totalTakenUsd: 0,
+        chargedUsd: 0,
+        pendingUsd: 0,
       };
-      cur.pending += 1;
-      if (o.status === FloorOrderStatus.SENT) cur.sent += 1;
-      if (o.status === FloorOrderStatus.IN_PREP) cur.inPrep += 1;
-      if (o.status === FloorOrderStatus.READY) cur.ready += 1;
-      cur.totalUsd += o.items.reduce(
+      const amount = o.items.reduce(
         (s, i) => s + Number(i.unitPrice) * i.quantity,
         0,
       );
+      cur.taken += 1;
+      if (o.status !== FloorOrderStatus.CANCELLED) cur.totalTakenUsd += amount;
+      if (o.status === FloorOrderStatus.SENT) cur.sent += 1;
+      if (o.status === FloorOrderStatus.IN_PREP) cur.inPrep += 1;
+      if (o.status === FloorOrderStatus.READY) cur.ready += 1;
+      if (o.status === FloorOrderStatus.CHARGED) {
+        cur.charged += 1;
+        cur.chargedUsd += amount;
+      } else if (o.status === FloorOrderStatus.CANCELLED) {
+        cur.cancelled += 1;
+      } else {
+        cur.pending += 1;
+        cur.pendingUsd += amount;
+      }
       map.set(userId, cur);
     }
     return [...map.values()]
       .map((r) => ({
         ...r,
-        totalUsd: Math.round(r.totalUsd * 100) / 100,
+        totalTakenUsd: Math.round(r.totalTakenUsd * 100) / 100,
+        chargedUsd: Math.round(r.chargedUsd * 100) / 100,
+        pendingUsd: Math.round(r.pendingUsd * 100) / 100,
       }))
       .sort((a, b) => b.pending - a.pending || a.fullName.localeCompare(b.fullName));
   }
@@ -341,6 +383,187 @@ export class FloorOrdersService {
     return order;
   }
 
+  async listTables(organizationId: number) {
+    await this.assertTableAccountsEnabled(organizationId);
+    const tables = await this.prisma.floorTable.findMany({
+      where: { organizationId, isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+      include: {
+        accounts: {
+          where: { status: FloorTableAccountStatus.OPEN },
+          include: {
+            orders: {
+              where: { status: { in: [FloorOrderStatus.SENT, FloorOrderStatus.IN_PREP, FloorOrderStatus.READY] } },
+              include: { items: true },
+            },
+            payments: true,
+          },
+        },
+      },
+    });
+    return tables.map((table) => {
+      const account = table.accounts[0] ?? null;
+      const total = account?.orders.reduce((sum, order) =>
+        sum + order.items.reduce((lineSum, item) => lineSum + Number(item.unitPrice) * item.quantity, 0), 0) ?? 0;
+      const paid = account?.payments.reduce((sum, payment) => sum + Number(payment.amount), 0) ?? 0;
+      return {
+        id: table.id, label: table.label, zone: table.zone, capacity: table.capacity,
+        accountId: account?.id ?? null, status: account ? "OCCUPIED" : "FREE",
+        totalUsd: Math.round(total * 100) / 100, paidUsd: Math.round(paid * 100) / 100,
+        balanceUsd: Math.round(Math.max(0, total - paid) * 100) / 100,
+        ordersCount: account?.orders.length ?? 0,
+      };
+    });
+  }
+
+  async createTable(organizationId: number, label: string, zone?: string) {
+    await this.assertTableAccountsEnabled(organizationId);
+    const count = await this.prisma.floorTable.count({ where: { organizationId } });
+    return this.prisma.floorTable.create({
+      data: { organizationId, label: label.trim(), zone: zone?.trim() || "", sortOrder: count },
+    });
+  }
+
+  async recordTablePayment(
+    organizationId: number,
+    userId: number,
+    accountId: number,
+    payment: { amount: number; method: string; currency?: string; notes?: string },
+  ) {
+    const account = await this.prisma.floorTableAccount.findFirst({
+      where: { id: accountId, organizationId, status: FloorTableAccountStatus.OPEN },
+      include: { orders: { include: { items: true } }, payments: true },
+    });
+    if (!account) throw new NotFoundException("Cuenta de mesa abierta no encontrada");
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException("Monto inválido");
+    if ((payment.currency ?? "USD") !== "USD") {
+      throw new BadRequestException("Los abonos de mesa deben registrarse en USD por ahora.");
+    }
+    const total = account.orders.reduce((sum, order) => sum + order.items.reduce(
+      (lineSum, item) => lineSum + Number(item.unitPrice) * item.quantity, 0), 0);
+    const paid = account.payments.reduce((sum, item) => sum + Number(item.amount), 0);
+    if (amount > total - paid + 0.01) throw new BadRequestException("El abono supera el saldo pendiente");
+    return this.prisma.floorTablePayment.create({
+      data: {
+        accountId, amount, method: payment.method, currency: "USD",
+        notes: payment.notes?.trim() || null, recordedById: userId,
+      },
+    });
+  }
+
+  /**
+   * Factura una cuenta completa. Los abonos quedan incorporados como líneas de
+   * pago de la misma factura, por lo que no se crea una venta parcial paralela.
+   */
+  async closeTableAccount(
+    organizationId: number,
+    userId: number,
+    accountId: number,
+    dto: { payments?: { method: string; amount: number; currency: string }[]; notes?: string },
+  ) {
+    const activeStatuses = [
+      FloorOrderStatus.SENT,
+      FloorOrderStatus.IN_PREP,
+      FloorOrderStatus.READY,
+    ];
+    const account = await this.prisma.floorTableAccount.findFirst({
+      where: { id: accountId, organizationId, status: FloorTableAccountStatus.OPEN },
+      include: {
+        table: true,
+        orders: { where: { status: { in: activeStatuses }, chargedInvoiceId: null }, include: { items: true } },
+        payments: true,
+      },
+    });
+    if (!account || !account.orders.length) {
+      throw new BadRequestException("No hay comandas activas para cerrar en esta mesa");
+    }
+    const total = account.orders.reduce((sum, order) => sum + order.items.reduce(
+      (lineSum, item) => lineSum + Number(item.unitPrice) * item.quantity, 0), 0);
+    const savedPayments = account.payments.map((payment) => ({
+      method: payment.method,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+    }));
+    const payments = [...savedPayments, ...(dto.payments ?? [])];
+    if (!payments.length) throw new BadRequestException("Indique los pagos para cerrar la mesa");
+    if (payments.some((p) => p.currency !== "USD")) {
+      throw new BadRequestException("El cierre de mesa actualmente requiere pagos expresados en USD.");
+    }
+    const paid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    if (Math.abs(paid - total) > 0.01) {
+      throw new BadRequestException(
+        `El total pagado (${paid.toFixed(2)}) debe coincidir con el saldo de la mesa (${total.toFixed(2)}).`,
+      );
+    }
+
+    const claim = await this.prisma.floorTableAccount.updateMany({
+      where: {
+        id: account.id,
+        status: FloorTableAccountStatus.OPEN,
+        openKey: `${account.tableId}:OPEN`,
+      },
+      data: { openKey: `${account.id}:CLOSING` },
+    });
+    if (claim.count !== 1) {
+      throw new BadRequestException("Esta mesa ya está siendo cobrada por otra persona.");
+    }
+
+    const orderIds = account.orders.map((order) => order.id);
+    try {
+      const claimedOrders = await this.prisma.floorOrder.updateMany({
+        where: { id: { in: orderIds }, chargedInvoiceId: null, status: { in: activeStatuses } },
+        data: { chargedInvoiceId: -1 },
+      });
+      if (claimedOrders.count !== orderIds.length) {
+        throw new BadRequestException("Una comanda de esta mesa ya fue cobrada.");
+      }
+      const items = account.orders.flatMap((order) =>
+        order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      );
+      const releaseReserved = account.orders.flatMap((order) =>
+        order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      );
+      const invoice = await this.invoices.create(
+        {
+          customerId: account.customerId ?? undefined,
+          items,
+          payments: payments.map((payment) => ({
+            method: payment.method as "CASH_USD" | "CASH_BS" | "PAGO_MOVIL" | "ZELLE" | "CARD" | "CREDIT",
+            amount: Number(payment.amount),
+            currency: "USD" as const,
+          })),
+          notes: dto.notes?.trim() || `Mesa ${account.table.label} · Cuenta #${account.id}`,
+        },
+        organizationId,
+        userId,
+        { releaseReserved },
+      );
+      await this.prisma.$transaction([
+        this.prisma.floorOrder.updateMany({
+          where: { id: { in: orderIds }, chargedInvoiceId: -1 },
+          data: { status: FloorOrderStatus.CHARGED, chargedInvoiceId: invoice.id, chargedAt: new Date(), isOpen: false },
+        }),
+        this.prisma.floorTableAccount.update({
+          where: { id: account.id },
+          data: { status: FloorTableAccountStatus.CLOSED, openKey: null, closedInvoiceId: invoice.id, closedAt: new Date() },
+        }),
+      ]);
+      for (const order of account.orders) this.emit(organizationId, "comanda:updated", { ...order, status: FloorOrderStatus.CHARGED, chargedInvoiceId: invoice.id });
+      return { invoice, accountId: account.id, totalUsd: total };
+    } catch (error) {
+      await this.prisma.floorOrder.updateMany({
+        where: { id: { in: orderIds }, chargedInvoiceId: -1 },
+        data: { chargedInvoiceId: null },
+      });
+      await this.prisma.floorTableAccount.updateMany({
+        where: { id: account.id, openKey: `${account.id}:CLOSING` },
+        data: { openKey: `${account.tableId}:OPEN` },
+      });
+      throw error;
+    }
+  }
+
   async create(
     organizationId: number,
     userId: number,
@@ -349,6 +572,7 @@ export class FloorOrdersService {
     if (!dto.items?.length) {
       throw new BadRequestException("La comanda debe tener al menos un ítem");
     }
+    if (dto.tableId) await this.assertTableAccountsEnabled(organizationId);
 
     const productIds = dto.items.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
@@ -397,16 +621,44 @@ export class FloorOrdersService {
       }
     }
 
-    const paymentMode = dto.paymentMode === "CUENTA_ABIERTA"
+    let tableLabel = dto.tableLabel.trim();
+    let tableAccountId: number | null = null;
+    let tableId: number | null = null;
+    if (dto.tableId) {
+      const table = await this.prisma.floorTable.findFirst({
+        where: { id: dto.tableId, organizationId, isActive: true },
+      });
+      if (!table) throw new NotFoundException("Mesa no encontrada o inactiva");
+      tableId = table.id;
+      tableLabel = table.label;
+      let account = await this.prisma.floorTableAccount.findFirst({
+        where: { tableId: table.id, status: FloorTableAccountStatus.OPEN },
+      });
+      if (!account) {
+        account = await this.prisma.floorTableAccount.create({
+          data: {
+            organizationId,
+            tableId: table.id,
+            customerId: resolvedCustomerId,
+            customerName: resolvedCustomerName,
+            openedById: userId,
+            openKey: `${table.id}:OPEN`,
+          },
+        });
+      }
+      tableAccountId = account.id;
+    }
+
+    const paymentMode = dto.tableId || dto.paymentMode === "CUENTA_ABIERTA"
       ? FloorPaymentMode.CUENTA_ABIERTA
       : FloorPaymentMode.INMEDIATO;
 
-    const isOpen = paymentMode === FloorPaymentMode.CUENTA_ABIERTA;
+    const isOpen = !!dto.tableId || paymentMode === FloorPaymentMode.CUENTA_ABIERTA;
 
     const order = await this.prisma.floorOrder.create({
       data: {
         organizationId,
-        tableLabel: dto.tableLabel.trim(),
+        tableLabel,
         zone: dto.zone?.trim() || "",
         customerName: resolvedCustomerName,
         customerId: resolvedCustomerId,
@@ -415,6 +667,8 @@ export class FloorOrdersService {
         status: FloorOrderStatus.DRAFT,
         paymentMode,
         isOpen,
+        tableId,
+        tableAccountId,
         items: {
           create: dto.items.map((item) => {
             const p = byId.get(item.productId)!;
