@@ -14,6 +14,7 @@ describe("parseQueryDate", () => {
     expect(d.toISOString()).toBe("2026-07-22T23:59:59.999Z");
   });
 
+  // Compat FE→BE: el cliente envía YYYY-MM-DD (también válido para @IsDateString en prod legacy).
   it("parsea YYYY-MM-DD a inicio/fin UTC", () => {
     expect(parseQueryDate("2026-07-01", "start").toISOString()).toBe(
       "2026-07-01T00:00:00.000Z",
