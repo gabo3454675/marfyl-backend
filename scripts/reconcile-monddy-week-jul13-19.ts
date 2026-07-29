@@ -9,9 +9,13 @@
  */
 import "dotenv/config";
 import fs from "fs";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { assertMarfylDatabaseUrl } from "../src/common/database-guard";
 import { parseFastReportSalesFile } from "../src/modules/sales-import/fastreport.parser";
+import {
+  createScriptPrisma,
+  type ScriptPrisma,
+} from "./lib/create-script-prisma";
 
 assertMarfylDatabaseUrl(process.env.DATABASE_URL);
 
@@ -47,7 +51,7 @@ function caracasDaySql(): string {
 }
 
 async function dayTotal(
-  prisma: PrismaClient,
+  prisma: ScriptPrisma,
   day: string,
   opts?: { excludeCuadre?: boolean },
 ) {
@@ -72,7 +76,7 @@ async function dayTotal(
   };
 }
 
-async function ensureCuadreProduct(prisma: PrismaClient, orgId: number) {
+async function ensureCuadreProduct(prisma: ScriptPrisma, orgId: number) {
   const existing = await prisma.product.findFirst({
     where: {
       organizationId: orgId,
@@ -113,7 +117,7 @@ async function ensureCuadreProduct(prisma: PrismaClient, orgId: number) {
   });
 }
 
-async function fixExcelHeaders(prisma: PrismaClient) {
+async function fixExcelHeaders(prisma: ScriptPrisma) {
   const changes: { key: string; from: number; to: number }[] = [];
   for (const fix of EXCEL_FIXES) {
     if (!fs.existsSync(fix.path)) {
@@ -157,7 +161,7 @@ async function fixExcelHeaders(prisma: PrismaClient) {
   return changes;
 }
 
-async function allocateConsecutive(prisma: PrismaClient, organizationId: number) {
+async function allocateConsecutive(prisma: ScriptPrisma, organizationId: number) {
   const bumped = await prisma.$queryRaw<{ allocated: number }[]>`
     UPDATE "organization_invoice_sequences"
     SET "nextNumber" = "nextNumber" + 1, "updatedAt" = CURRENT_TIMESTAMP
@@ -177,7 +181,7 @@ async function allocateConsecutive(prisma: PrismaClient, organizationId: number)
 }
 
 async function upsertCuadre(
-  prisma: PrismaClient,
+  prisma: ScriptPrisma,
   day: string,
   amount: number,
   productId: number,
@@ -290,7 +294,7 @@ async function upsertCuadre(
 }
 
 async function main() {
-  const prisma = new PrismaClient();
+  const prisma = createScriptPrisma();
   try {
     const org = await prisma.organization.findFirst({
       where: { id: ORG_ID, deletedAt: null },

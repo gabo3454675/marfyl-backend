@@ -88,12 +88,8 @@ function buildLegacyKey(type: string, doc: string): string {
   return `${type}-${doc}`;
 }
 
-function parseSaleDate(ddmmyyyy: string): Date {
-  const [dd, mm, yyyy] = ddmmyyyy.split("/").map(Number);
-  return new Date(yyyy, mm - 1, dd, 12, 0, 0);
-}
-
-export { parseSaleDate };
+/** Reexport canónico — validación fail-closed en `requireImportIssueDate`. */
+export { parseSaleDate } from "../invoices/issue-date";
 
 export function detectReportKind(xml: string): "ventas" | "productos" {
   if (/REPORTE\s+DE\s+PRODUCTOS\s+VENDIDOS/i.test(xml)) return "productos";

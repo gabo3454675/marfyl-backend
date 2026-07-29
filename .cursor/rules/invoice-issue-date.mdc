@@ -1,0 +1,20 @@
+---
+description: Obliga issueDate en creates/imports de invoices (código y scripts)
+globs: marfyl-backend/**/*.{ts,tsx,js,mjs}
+alwaysApply: false
+---
+
+# Invoice `issueDate` (imports y scripts)
+
+Al crear o importar invoices (código Nest, seeds o scripts):
+
+1. **SIEMPRE** setear `issueDate` = fecha de venta de la fuente (p. ej. FastReport `saleDate`).
+2. **NUNCA** omitir `issueDate`.
+3. **NUNCA** usar solo `createdAt` como fecha de venta en imports.
+
+## Scripts
+
+- Usar `createScriptPrisma()` desde `marfyl-backend/scripts/lib/create-script-prisma.ts` (aplica `invoiceIssueDateGuardExtension`).
+- No instanciar `new PrismaClient()` raw si el script hace `invoice.create` / `createMany`.
+- Legacy (`isLegacyImport`) sin `issueDate` debe fallar (fail-closed).
+- La BD NOT NULL es backstop tras migrate; no sustituye setear `issueDate` en el import.

@@ -8,6 +8,14 @@ Todos los cambios significativos del sistema se documentan aquí.
 
 ### ✨ Comportamiento
 
+#### `issueDate` fail-closed (import + create)
+- Helper canónico `resolveOperationalIssueDate` / `requireImportIssueDate`
+- Sales-import: fila sin `saleDate` válido → falla (no crea invoice)
+- POS / create operativo: siempre setea `issueDate` (DTO o `now`)
+- Prisma extension: legacy (`isLegacyImport`) sin `issueDate` → throw
+- Schema: `Invoice.issueDate` NOT NULL; migración `20260729200000_invoice_issue_date_not_null` en repo — **deploy pendiente**
+- **Agentes / scripts:** no usar `new PrismaClient()` raw si van a crear invoices; usar `createScriptPrisma()` (`scripts/lib/create-script-prisma.ts`) que aplica `invoiceIssueDateGuardExtension`, **o** setear `issueDate` desde la fecha de venta fuente (FastReport `saleDate`). La columna NOT NULL en BD es el backstop tras migrate — no sustituye setear `issueDate` en el import.
+
 #### Historial de facturas (backend)
 - Filtra y agrupa por `issueDate` (fallback a `createdAt` si `issueDate` es null)
 - Ítems con `lineageStatus=ACTIVE`
@@ -30,7 +38,8 @@ Todos los cambios significativos del sistema se documentan aquí.
 ### 🗄️ Base de Datos
 
 - Prisma/schema Plan B alineado a Neon
-- Migración en el repositorio; ya aplicada en Neon (sin re-deploy requerido por este cambio)
+- Migración Plan B en el repositorio; ya aplicada en Neon (sin re-deploy requerido por ese cambio)
+- `issueDate` NOT NULL: migración `20260729200000_invoice_issue_date_not_null` — **deploy pendiente** (no asumir aplicada en Neon)
 
 ### ✅ Verificación (smoke local)
 

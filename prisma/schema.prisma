@@ -816,7 +816,7 @@ model Invoice {
   fiscalDocumentType  FiscalDocumentType @default(FACTURA)
   controlNumber       String?
   fiscalInvoiceNumber String?
-  issueDate           DateTime?
+  issueDate           DateTime
   baseExempt          Decimal   @default(0) @db.Decimal(15, 2)
   baseReduced         Decimal   @default(0) @db.Decimal(15, 2)
   baseGeneral         Decimal   @default(0) @db.Decimal(15, 2)

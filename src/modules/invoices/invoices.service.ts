@@ -18,6 +18,7 @@ import { TasksService } from "@/modules/tasks/tasks.service";
 import { FiscalEngineService } from "@/modules/fiscal/fiscal-engine.service";
 import { FiscalControlNumberService } from "@/modules/fiscal/fiscal-control-number.service";
 import { InvoiceSequenceService } from "./invoice-sequence.service";
+import { resolveOperationalIssueDate } from "./issue-date";
 import {
   computeInvoiceTax,
   type LineTaxInput,
@@ -402,14 +403,8 @@ export class InvoicesService {
       ? PaymentStatus.pending_credit
       : PaymentStatus.paid;
 
-    // Fecha de emisión/venta: respetar DTO si viene; si no, momento de emisión.
-    const issueDate =
-      issueDateDto != null && String(issueDateDto).trim() !== ""
-        ? new Date(issueDateDto)
-        : new Date();
-    if (Number.isNaN(issueDate.getTime())) {
-      throw new BadRequestException("issueDate no es una fecha válida");
-    }
+    // Fecha de emisión/venta: DTO o now (helper canónico; nunca null).
+    const issueDate = resolveOperationalIssueDate(issueDateDto);
     const controlNumber =
       await this.fiscalControlNumber.allocateControlNumber(organizationId);
 

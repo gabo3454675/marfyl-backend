@@ -15,10 +15,10 @@ import {
 } from "@/modules/fiscal/helpers/tax-calculator";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
+import { requireImportIssueDate } from "@/modules/invoices/issue-date";
 import {
   mergeInvoicesByLegacyKey,
   parseFastReportSalesFile,
-  parseSaleDate,
   type ParsedSaleInvoice,
 } from "./fastreport.parser";
 
@@ -337,6 +337,26 @@ export class SalesImportService {
         continue;
       }
 
+      try {
+        requireImportIssueDate(inv.saleDate, inv.legacyKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors++;
+        previewInvoices.push({
+          legacyKey: inv.legacyKey,
+          saleDate: inv.saleDate,
+          customer: inv.customer,
+          lineCount: inv.lines.length,
+          excelTotal: 0,
+          computedTotal: 0,
+          totalsMatch: false,
+          status: "error",
+          issues: [message],
+          lines: [],
+        });
+        continue;
+      }
+
       const linePreviews = inv.lines.map((line) => {
         const { product, matchBy } = this.matchProduct(
           line.productCode,
@@ -626,7 +646,10 @@ export class SalesImportService {
     skipStockValidation: boolean;
     useLegacyHeaderTotal?: boolean;
   }) {
-    const issueDate = parseSaleDate(params.source.saleDate);
+    const issueDate = requireImportIssueDate(
+      params.source.saleDate,
+      params.source.legacyKey,
+    );
     const taxLineInputs: LineTaxInput[] = [];
     const invoiceItemsData: {
       productId: number;

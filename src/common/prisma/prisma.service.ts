@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "@prisma/client";
 import { tenantIsolationExtension } from "./tenant-isolation.extension";
+import { invoiceIssueDateGuardExtension } from "./invoice-issue-date.extension";
 import { isDevPreviewAuthEnabled } from "../dev-preview";
 
 @Injectable()
@@ -40,7 +41,9 @@ export class PrismaService
     // "InvalidDatasourceError: the URL must start with prisma://".
     // El Proxy delega el acceso a propiedades al cliente extendido sin
     // copiar su estado interno, preservando la configuración del super().
-    const extended = this.$extends(tenantIsolationExtension);
+    const extended = this
+      .$extends(tenantIsolationExtension)
+      .$extends(invoiceIssueDateGuardExtension);
     const self = this;
     // Conjunto de métodos de conexión que siempre deben ir al cliente base
     // de PrismaClient (super()), NO al extended client. El extended client
