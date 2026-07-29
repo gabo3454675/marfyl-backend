@@ -4,6 +4,42 @@ Todos los cambios significativos del sistema se documentan aquí.
 
 ---
 
+## [29 Julio 2026] - Historial de facturas, issueDate y métricas dashboard
+
+### ✨ Comportamiento
+
+#### Historial de facturas (backend)
+- Filtra y agrupa por `issueDate` (fallback a `createdAt` si `issueDate` es null)
+- Ítems con `lineageStatus=ACTIVE`
+- Payload enriquecido con `displayQuantity`, `displayName`, `displaySku`
+- Filtros de fecha: API acepta `DD/MM/YYYY`, `YYYY-MM-DD` e ISO; el parser resuelve bounds UTC (start/end del día); valores inválidos → `400`
+
+#### UI (frontend)
+- History e `invoice-detail-sheet` muestran `issueDate ?? createdAt`
+- Filtro de fechas del historial en formato `DD/MM/YYYY`
+
+#### Persistencia de `issueDate` en ventas operativas
+- Al crear/pagar: se persiste `issueDate` (DTO opcional o `now`)
+- Backfill en `markAsPaid` / crédito si `issueDate` es null
+
+#### Dashboard
+- Volumen incluye legacy
+- Métricas operativas excluyen `isLegacyImport`
+- SQL con `ACTIVE` + `COALESCE` de cantidad
+
+### 🗄️ Base de Datos
+
+- Prisma/schema Plan B alineado a Neon
+- Migración en el repositorio; ya aplicada en Neon (sin re-deploy requerido por este cambio)
+
+### ✅ Verificación (smoke local)
+
+- Monddy org2, FAC ACTIVE, jul 1–22: **1098** / **2171** / **10399.18**
+- Delta no-FAC: **7 CUADRE** + **1 NULL_KEY**
+- Solo local; sin push
+
+---
+
 ## [7 Julio 2026] - Variantes de Producto
 
 ### ✨ Nueva Funcionalidad

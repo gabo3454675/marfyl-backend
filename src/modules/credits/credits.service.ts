@@ -323,7 +323,11 @@ export class CreditsService {
 
     await this.prisma.invoice.update({
       where: { id: invoiceId },
-      data: { paymentStatus: PaymentStatus.paid },
+      data: {
+        paymentStatus: PaymentStatus.paid,
+        // Coordinación: si la venta quedó sin issueDate, fijarlo al cierre de cobro.
+        ...(invoice.issueDate == null ? { issueDate: new Date() } : {}),
+      },
     });
 
     await this.prisma.task.updateMany({

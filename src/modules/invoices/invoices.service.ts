@@ -8,6 +8,7 @@ import { PrismaService } from "@/common/prisma/prisma.service";
 import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { parseQueryDate } from "@/common/helpers/parse-query-date";
 import { randomBytes } from "crypto";
 import * as PDFKit from "pdfkit";
 import { CreditsService } from "@/modules/credits/credits.service";
@@ -30,6 +31,11 @@ import {
   MovementType,
 } from "@prisma/client";
 import { LiquorSalesService } from "./liquor-sales.service";
+import {
+  displayQuantity,
+  isActiveLineage,
+  mapInvoiceItemDisplay,
+} from "./canonical/invoice-item-display";
 
 export type CreateInvoiceOptions = {
   /** Al cobrar comanda: liberar reservedStock en la misma transacción del descuento */
@@ -69,6 +75,7 @@ export class InvoicesService {
       notes,
       paymentMethod: paymentMethodDto,
       payments: paymentsDto,
+      issueDate: issueDateDto,
     } = createInvoiceDto;
     const useHybridPayments =
       Array.isArray(paymentsDto) && paymentsDto.length > 0;
@@ -395,7 +402,14 @@ export class InvoicesService {
       ? PaymentStatus.pending_credit
       : PaymentStatus.paid;
 
-    const issueDate = new Date();
+    // Fecha de emisión/venta: respetar DTO si viene; si no, momento de emisión.
+    const issueDate =
+      issueDateDto != null && String(issueDateDto).trim() !== ""
+        ? new Date(issueDateDto)
+        : new Date();
+    if (Number.isNaN(issueDate.getTime())) {
+      throw new BadRequestException("issueDate no es una fecha válida");
+    }
     const controlNumber =
       await this.fiscalControlNumber.allocateControlNumber(organizationId);
 
@@ -694,7 +708,7 @@ export class InvoicesService {
   /**
    * Historial de facturas por rango de fechas: resumen diario y lista detallada.
    * Un usuario solo puede consultar la organización activa (x-tenant-id); un superadmin puede pasar companyId/organizationId para otra org.
-   * Consulta optimizada con índice (organizationId, createdAt).
+   * Filtra por issueDate (fecha de venta/emisión); fallback a createdAt solo si issueDate es null.
    */
   async getHistory(
     activeOrganizationId: number,
@@ -709,42 +723,72 @@ export class InvoicesService {
       requestedOrganizationId,
     );
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (start.getTime() > end.getTime()) {
+    let startOfRange: Date;
+    let endOfRange: Date;
+    try {
+      startOfRange = parseQueryDate(startDate, "start");
+      endOfRange = parseQueryDate(endDate, "end");
+    } catch {
+      throw new BadRequestException(
+        "startDate y endDate deben ser fechas válidas (DD/MM/YYYY, YYYY-MM-DD o ISO 8601)",
+      );
+    }
+    if (startOfRange.getTime() > endOfRange.getTime()) {
       throw new BadRequestException(
         "startDate no puede ser posterior a endDate",
       );
     }
-    const startOfRange = new Date(start);
-    startOfRange.setUTCHours(0, 0, 0, 0);
-    const endOfRange = new Date(end);
-    endOfRange.setUTCHours(23, 59, 59, 999);
 
     const invoices = await this.prisma.invoice.findMany({
       where: {
         organizationId: orgId,
         deletedAt: null,
-        createdAt: {
-          gte: startOfRange,
-          lte: endOfRange,
-        },
+        OR: [
+          {
+            issueDate: {
+              gte: startOfRange,
+              lte: endOfRange,
+            },
+          },
+          {
+            AND: [
+              { issueDate: null },
+              {
+                createdAt: {
+                  gte: startOfRange,
+                  lte: endOfRange,
+                },
+              },
+            ],
+          },
+        ],
       },
       include: {
-        items: { include: { product: { select: { id: true, name: true, costPrice: true } } } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, costPrice: true },
+            },
+          },
+        },
         customer: true,
         paymentLines: true,
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ issueDate: "asc" }, { createdAt: "asc" }],
     });
 
     const dailySummary = this.buildDailySummary(invoices);
+    const enrichedInvoices = invoices.map((inv) => ({
+      ...inv,
+      items: inv.items.map((item) => mapInvoiceItemDisplay(item)),
+    }));
     return {
       organizationId: orgId,
       startDate: startOfRange.toISOString(),
       endDate: endOfRange.toISOString(),
       dailySummary,
-      invoices,
+      invoices: enrichedInvoices,
     };
   }
 
@@ -805,10 +849,12 @@ export class InvoicesService {
         currency: string;
       }>;
       items?: Array<{
-        quantity: number;
+        quantity?: number | null;
+        effectiveQuantity?: unknown;
         subtotal: unknown;
         product?: { costPrice?: unknown } | null;
       }>;
+      issueDate?: Date | null;
       createdAt: Date;
     }>,
   ): Array<{
@@ -844,7 +890,8 @@ export class InvoicesService {
 
     for (const inv of invoices) {
       const total = this.toNum(inv.totalAmount);
-      const dateKey = new Date(inv.createdAt).toISOString().slice(0, 10);
+      const saleDate = inv.issueDate ?? inv.createdAt;
+      const dateKey = new Date(saleDate).toISOString().slice(0, 10);
       if (!byDate.has(dateKey)) {
         byDate.set(dateKey, {
           totalSales: 0,
@@ -872,7 +919,16 @@ export class InvoicesService {
 
       for (const item of inv.items ?? []) {
         const unitCost = this.toNum(item.product?.costPrice);
-        day.totalCost += unitCost * (item.quantity || 0);
+        day.totalCost +=
+          unitCost *
+          displayQuantity({
+            quantity: item.quantity,
+            effectiveQuantity: item.effectiveQuantity as
+              | string
+              | number
+              | null
+              | undefined,
+          });
       }
 
       if (inv.paymentLines && inv.paymentLines.length > 0) {
@@ -1265,8 +1321,12 @@ export class InvoicesService {
         notes: true,
         pdfUrl: true,
         publicToken: true,
+        issueDate: true,
         createdAt: true,
-        items: { include: { product: true } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: { product: true },
+        },
         customer: true,
         company: true,
         seller: true,
@@ -1278,7 +1338,10 @@ export class InvoicesService {
       throw new NotFoundException(`Factura con ID ${id} no encontrada`);
     }
 
-    return invoice;
+    return {
+      ...invoice,
+      items: invoice.items.map((item) => mapInvoiceItemDisplay(item)),
+    };
   }
 
   /**
@@ -1310,8 +1373,12 @@ export class InvoicesService {
         markedAsPaidBy: true,
         viewCount: true,
         lastViewedAt: true,
+        issueDate: true,
         createdAt: true,
-        items: { include: { product: true } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: { product: true },
+        },
         customer: true,
         company: true,
         paymentLines: true,
@@ -1333,7 +1400,10 @@ export class InvoicesService {
       console.error("Error al incrementar contador de vistas:", err);
     });
 
-    return invoice;
+    return {
+      ...invoice,
+      items: invoice.items.map((item) => mapInvoiceItemDisplay(item)),
+    };
   }
 
   /**
@@ -1374,14 +1444,16 @@ export class InvoicesService {
       throw new BadRequestException("Esta factura ya fue marcada como pagada");
     }
 
-    // Actualizar la factura
+    // Actualizar la factura; si no tenía issueDate, fijar fecha de venta al pago.
+    const paidAt = new Date();
     const updatedInvoice = await this.prisma.invoice.update({
       where: { id: invoice.id },
       data: {
         markedAsPaidByClient: true,
-        markedAsPaidAt: new Date(),
+        markedAsPaidAt: paidAt,
         markedAsPaidBy: markedBy || invoice.customer?.name || "Cliente",
         status: "PAID", // También actualizar el status general
+        ...(invoice.issueDate == null ? { issueDate: paidAt } : {}),
       },
       include: {
         items: {
@@ -1491,15 +1563,18 @@ export class InvoicesService {
           .fontSize(16)
           .fillColor(primary)
           .text("VENTA", 350, 50, { align: "right" });
+        const saleDate =
+          (invoice as { issueDate?: Date | null }).issueDate ??
+          invoice.createdAt;
         let dateStr = "";
         try {
-          dateStr = new Date(invoice.createdAt).toLocaleDateString("es-VE", {
+          dateStr = new Date(saleDate).toLocaleDateString("es-VE", {
             year: "numeric",
             month: "long",
             day: "numeric",
           });
         } catch {
-          dateStr = new Date(invoice.createdAt).toISOString().slice(0, 10);
+          dateStr = new Date(saleDate).toISOString().slice(0, 10);
         }
         const displayNumber =
           (invoice as { consecutiveNumber?: number }).consecutiveNumber ??
@@ -1543,7 +1618,13 @@ export class InvoicesService {
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 10;
 
-        const items = Array.isArray(invoice.items) ? invoice.items : [];
+        const items = Array.isArray(invoice.items)
+          ? invoice.items.filter((it) =>
+              isActiveLineage(
+                (it as { lineageStatus?: string }).lineageStatus,
+              ),
+            )
+          : [];
         for (const item of items) {
           if (y > 700) {
             doc.addPage();
@@ -1556,12 +1637,21 @@ export class InvoicesService {
             id?: number;
             name?: string;
           } | null;
+          const sourceSku = (item as { sourceSkuExact?: string | null })
+            .sourceSkuExact;
+          const sourceDesc = (item as { sourceDescription?: string | null })
+            .sourceDescription;
           const codigo =
-            product?.sku ?? product?.barcode ?? String(product?.id ?? "");
-          const desc = String(product?.name ?? "Producto").slice(0, 50);
+            product?.sku ??
+            product?.barcode ??
+            sourceSku ??
+            String(product?.id ?? "");
+          const desc = String(
+            product?.name ?? sourceDesc ?? "Producto",
+          ).slice(0, 50);
           doc.text((codigo || "-").slice(0, 12), 50, y, { width: 55 });
           doc.text(desc, 108, y, { width: 200 });
-          doc.text(String(Number(item.quantity) || 0), 310, y, {
+          doc.text(String(displayQuantity(item)), 310, y, {
             width: 45,
             align: "right",
           });

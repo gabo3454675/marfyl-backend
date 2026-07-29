@@ -723,9 +723,20 @@ model CreditTransaction {
 }
 
 enum PaymentStatus {
-  paid            // Totalmente pagada
-  partial         // Pago parcial
-  pending_credit  // Vendida a crédito, pendiente de cobro
+  paid             // Totalmente pagada
+  partial          // Pago parcial
+  pending_credit   // Vendida a crédito, pendiente de cobro
+  PROCESSED_LEGACY // Histórica reconciliada sin evidencia de cobro operativo
+}
+
+enum InvoiceItemRecordClass {
+  OPERATIONAL
+  RECONCILED_HISTORY
+}
+
+enum InvoiceItemLineageStatus {
+  ACTIVE
+  SUPERSEDED
 }
 
 // Origen del dinero: efectivo USD, efectivo Bs, Pago Móvil, Zelle, etc.
@@ -783,11 +794,11 @@ model Invoice {
   companyId     Int           // Legacy: mantener para compatibilidad
   organizationId Int?         // Nueva relación Multi-Tenant
   customerId    Int?
-  sellerId      Int           // El usuario que creó la factura
+  sellerId      Int?          // Nullable para imports históricos sin vendedor en fuente
   totalAmount   Decimal       @db.Decimal(15, 2)   // Total en USD (referencia para reportes)
   status        InvoiceStatus @default(PAID)
   paymentMethod String        @default("CASH")      // Legacy: CASH, ZELLE, CARD, CREDIT (cuando no hay paymentLines)
-  paymentStatus PaymentStatus @default(paid)       // paid, partial, pending_credit
+  paymentStatus PaymentStatus @default(paid)       // paid, partial, pending_credit, PROCESSED_LEGACY
   // Registro dual multimoneda: origen exacto del dinero (flujo de caja verídico)
   montoUsd       Decimal?    @db.Decimal(15, 2)   // Total pagado en USD
   montoBs        Decimal?    @db.Decimal(15, 2)   // Total pagado en Bs
@@ -827,7 +838,7 @@ model Invoice {
   company       Company       @relation(fields: [companyId], references: [id])
   organization  Organization? @relation(fields: [organizationId], references: [id])
   customer      Customer?     @relation(fields: [customerId], references: [id])
-  seller        User          @relation(fields: [sellerId], references: [id])
+  seller        User?         @relation(fields: [sellerId], references: [id])
   items         InvoiceItem[]
   paymentLines  InvoicePaymentLine[]  // Legacy / compat
   pagos         Pago[]                // Pagos canónicos (tesorería)
@@ -847,6 +858,7 @@ model Invoice {
   @@index([paymentStatus])
   @@index([tasaHistoricaId])
   @@index([deletedAt])
+  @@index([isLegacyImport])
   @@unique([organizationId, consecutiveNumber])
   @@unique([organizationId, legacyImportKey])
   @@map("invoices")
@@ -879,24 +891,34 @@ model SalesImportPreviewBatch {
 }
 
 model InvoiceItem {
-  id        Int     @id @default(autoincrement())
-  invoiceId Int
-  productId Int
-  variantId Int?    // Opcional: variante vendida (retrocompatibilidad)
-  quantity  Int
-  unitPrice Decimal @db.Decimal(10, 2)
-  subtotal  Decimal @db.Decimal(10, 2)
-  taxRate   Int     @default(16)
-  taxableBase Decimal @default(0) @db.Decimal(15, 2)
-  ivaLine   Decimal @default(0) @db.Decimal(15, 2)
+  id            Int                      @id @default(autoincrement())
+  invoiceId     Int
+  productId     Int? // Nullable en schema; OPERATIONAL exige NOT NULL vía CHECK C1
+  variantId     Int? // Opcional: variante vendida (retrocompatibilidad)
+  quantity      Int? // OPERATIONAL NOT NULL (C1); RECONCILED_HISTORY debe ser NULL (C4)
+  unitPrice     Decimal                  @db.Decimal(10, 2)
+  subtotal      Decimal                  @db.Decimal(10, 2)
+  taxRate       Int                      @default(16)
+  taxableBase   Decimal                  @default(0) @db.Decimal(15, 2)
+  ivaLine       Decimal                  @default(0) @db.Decimal(15, 2)
+  recordClass   InvoiceItemRecordClass   @default(OPERATIONAL)
+  lineageStatus InvoiceItemLineageStatus @default(ACTIVE)
+  sourceHash    String?
+  sourceLineKey String?                  @db.Char(64)
+  sourceSkuExact String?
+  sourceDescription String?
+  sourceQuantity Decimal?                @db.Decimal(18, 4)
+  sourceDetailedQuantity Decimal?        @db.Decimal(18, 4)
+  effectiveQuantity Decimal?             @db.Decimal(18, 4)
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  invoice Invoice         @relation(fields: [invoiceId], references: [id])
+  product Product?        @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
 
   @@index([invoiceId])
   @@index([productId])
   @@index([variantId])
+  @@index([lineageStatus, recordClass])
   @@map("invoice_items")
 }
 

@@ -92,7 +92,7 @@ export class InvoicesController {
 
   /**
    * Historial de facturas por rango de fechas: resumen diario (total ventas, IGTF, por método de pago) y lista detallada.
-   * Query: startDate, endDate (ISO 8601), opcional companyId u organizationId (solo superadmin puede consultar otra org).
+   * Query: startDate, endDate (DD/MM/YYYY, YYYY-MM-DD o ISO 8601), opcional companyId u organizationId (solo superadmin puede consultar otra org).
    */
   @Get("history")
   async getHistory(

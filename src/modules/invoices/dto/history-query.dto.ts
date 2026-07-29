@@ -1,18 +1,25 @@
-import { IsDateString, IsOptional, IsInt, Min } from "class-validator";
+import { IsOptional, IsInt, Min, IsString } from "class-validator";
 import { Type } from "class-transformer";
+import { IsFlexibleDate } from "@/common/validators/flexible-date.validator";
 
 /**
  * Parámetros de consulta para GET /invoices/history.
  * Filtra por rango de fechas y, si es superadmin, opcionalmente por organización (companyId/organizationId).
+ * Fechas: DD/MM/YYYY, YYYY-MM-DD o ISO 8601.
  */
 export class InvoiceHistoryQueryDto {
-  @IsDateString(
-    {},
-    { message: "startDate debe ser una fecha válida (ISO 8601)" },
-  )
+  @IsString()
+  @IsFlexibleDate({
+    message:
+      "startDate debe ser una fecha válida (DD/MM/YYYY, YYYY-MM-DD o ISO 8601)",
+  })
   startDate: string;
 
-  @IsDateString({}, { message: "endDate debe ser una fecha válida (ISO 8601)" })
+  @IsString()
+  @IsFlexibleDate({
+    message:
+      "endDate debe ser una fecha válida (DD/MM/YYYY, YYYY-MM-DD o ISO 8601)",
+  })
   endDate: string;
 
   /** ID de la organización a consultar. Solo superadmin puede indicar una org distinta a la activa. */

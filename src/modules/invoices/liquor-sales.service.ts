@@ -60,7 +60,7 @@ export class LiquorSalesService {
         p.id AS "productId",
         p.sku,
         p.name,
-        SUM(ii.quantity)::int AS quantity,
+        SUM(COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))::float AS quantity,
         ROUND(COALESCE(SUM(ii.subtotal), 0)::numeric, 2) AS usd
       FROM invoice_items ii
       JOIN invoices i ON i.id = ii."invoiceId"
@@ -68,6 +68,8 @@ export class LiquorSalesService {
       WHERE i."organizationId" = $1
         AND i.status = 'PAID'
         AND i."deletedAt" IS NULL
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         AND p."isBundle" = false
         AND p."isService" = false
         AND ((i."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Caracas')::date = $2::date
@@ -76,7 +78,7 @@ export class LiquorSalesService {
           OR i."legacyImportKey" NOT LIKE 'CUADRE-DIARIO-%'
         )
       GROUP BY p.id, p.sku, p.name
-      ORDER BY SUM(ii.quantity) DESC
+      ORDER BY SUM(COALESCE(ii.quantity::numeric, ii."effectiveQuantity")) DESC
       `,
       organizationId,
       day,
@@ -109,6 +111,8 @@ export class LiquorSalesService {
       WHERE i."organizationId" = $1
         AND i.status = 'PAID'
         AND i."deletedAt" IS NULL
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         AND p."isBundle" = false
         AND p."isService" = false
         AND (

@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsIn,
   IsString,
+  IsDateString,
 } from "class-validator";
 import { Type } from "class-transformer";
 
@@ -63,6 +64,13 @@ export class CreateInvoiceDto {
 
   @IsOptional()
   notes?: string;
+
+  /**
+   * Fecha de emisión/venta. Si se omite, se setea al momento del create (emisión).
+   */
+  @IsOptional()
+  @IsDateString()
+  issueDate?: string;
 
   /**
    * Legacy: un solo método (CASH, ZELLE, CARD, CREDIT).

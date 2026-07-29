@@ -72,8 +72,8 @@ export class DashboardService {
       Array<{ profit: Prisma.Decimal | null }>
     >`
       SELECT COALESCE(SUM(
-        (ii."unitPrice"::numeric * ii.quantity)
-        - (p."costPrice"::numeric * ii.quantity)
+        (ii."unitPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
+        - (p."costPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
       ), 0) AS profit
       FROM invoice_items ii
       INNER JOIN invoices i ON i.id = ii."invoiceId"
@@ -81,6 +81,8 @@ export class DashboardService {
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
         AND COALESCE(i."isLegacyImport", false) = false
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         AND i."issueDate" >= ${from}
         ${dateToFilter}
     `;
