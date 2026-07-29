@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Logger,
+} from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
@@ -139,11 +144,8 @@ export class InvoiceUploadService {
       for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
         const code = String(row.getCell(colCode + 1)?.value ?? "").trim();
-        const qtyNum = this.parseFlexibleNumber(
-          row.getCell(colQty + 1)?.value,
-        );
-        const costCell =
-          colCost >= 0 ? row.getCell(colCost + 1)?.value : null;
+        const qtyNum = this.parseFlexibleNumber(row.getCell(colQty + 1)?.value);
+        const costCell = colCost >= 0 ? row.getCell(colCost + 1)?.value : null;
         const unitCost =
           costCell != null && String(costCell).trim() !== ""
             ? this.parseFlexibleNumber(costCell)
@@ -309,7 +311,10 @@ export class InvoiceUploadService {
             let score = 0;
             if (nameNorm === codeNorm) {
               score = 100;
-            } else if (nameNorm.includes(codeNorm) || codeNorm.includes(nameNorm)) {
+            } else if (
+              nameNorm.includes(codeNorm) ||
+              codeNorm.includes(nameNorm)
+            ) {
               score = Math.min(nameNorm.length, codeNorm.length);
             }
             if (score > bestScore) {
@@ -319,7 +324,23 @@ export class InvoiceUploadService {
           }
           if (product && bestScore >= 8) {
             matchType = bestScore === 100 ? "name_exact" : "name_fuzzy";
-            matchConfidence = bestScore === 100 ? 95 : Math.min(90, Math.max(70, Math.round((bestScore / Math.max(codeNorm.length, this.normalizeFuzzy(product.name).length)) * 100)));
+            matchConfidence =
+              bestScore === 100
+                ? 95
+                : Math.min(
+                    90,
+                    Math.max(
+                      70,
+                      Math.round(
+                        (bestScore /
+                          Math.max(
+                            codeNorm.length,
+                            this.normalizeFuzzy(product.name).length,
+                          )) *
+                          100,
+                      ),
+                    ),
+                  );
           } else {
             product = null;
           }
@@ -411,9 +432,10 @@ export class InvoiceUploadService {
       }
 
       // ── 5f. Enrich matched line ──
-      const unitCost = r.unitCost != null && r.unitCost >= 0
-        ? r.unitCost
-        : num(product.costPrice);
+      const unitCost =
+        r.unitCost != null && r.unitCost >= 0
+          ? r.unitCost
+          : num(product.costPrice);
       const lineTotal = r.qty * unitCost;
       totalAmount += lineTotal;
 
@@ -438,7 +460,9 @@ export class InvoiceUploadService {
 
     totalAmount = Math.round(totalAmount * 100) / 100;
 
-    const matchedLines = resultLines.filter((l) => l.status === "matched").length;
+    const matchedLines = resultLines.filter(
+      (l) => l.status === "matched",
+    ).length;
     const unmatchedLines = resultLines.filter(
       (l) => l.status === "unmatched" || l.status === "error",
     ).length;
@@ -531,9 +555,11 @@ export class InvoiceUploadService {
     }
 
     // ── 5. Calculate totalAmount ─────────────────────────────────────
-    const totalAmount = Math.round(
-      validatedLines.reduce((sum, l) => sum + l.quantity * l.unitCost, 0) * 100,
-    ) / 100;
+    const totalAmount =
+      Math.round(
+        validatedLines.reduce((sum, l) => sum + l.quantity * l.unitCost, 0) *
+          100,
+      ) / 100;
 
     // ── 6. Execute in transaction ────────────────────────────────────
     const expenseDate = dto.date ?? new Date().toISOString().split("T")[0];

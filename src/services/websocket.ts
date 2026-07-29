@@ -167,8 +167,7 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
 
         // Attach validated identity to socket
         socket.userId = payload.sub;
-        socket.organizationId =
-          socket.organizationId ?? payload.organizationId;
+        socket.organizationId = socket.organizationId ?? payload.organizationId;
 
         this.logger.debug(
           `JWT validated for user ${payload.sub}, org ${payload.organizationId}`,

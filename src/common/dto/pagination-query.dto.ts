@@ -1,5 +1,5 @@
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsInt, Min, Max } from "class-validator";
+import { Type } from "class-transformer";
 
 /**
  * DTO genérico para query params de paginación.

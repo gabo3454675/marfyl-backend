@@ -221,9 +221,7 @@ export class ConcertService {
           ? event.priceUsdVip
           : event.priceUsdStandard);
       amountUsd += usd;
-      const bsUsd =
-        seat.priceBs ??
-        usd;
+      const bsUsd = seat.priceBs ?? usd;
       amountUsdBolivares += bsUsd;
       amountBs += concertBsPaymentAmount(bsUsd, exchangeRate);
     }
@@ -586,10 +584,7 @@ export class ConcertService {
       throw new BadRequestException("Indique número de referencia del pago");
     }
 
-    if (
-      dto.paymentMethod === ConcertPaymentMethod.CASH_USD &&
-      !paymentProof
-    ) {
+    if (dto.paymentMethod === ConcertPaymentMethod.CASH_USD && !paymentProof) {
       throw new BadRequestException(
         "Suba una foto de los billetes en efectivo (divisa) para registrar la venta",
       );
@@ -671,7 +666,10 @@ export class ConcertService {
         tickets: true,
       },
     });
-    if (!order) throw new NotFoundException(`Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`);
+    if (!order)
+      throw new NotFoundException(
+        `Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`,
+      );
     if (order.status === ConcertOrderStatus.PAID) {
       return this.getOrderDetail(order.organizationId, order.publicToken);
     }
@@ -1112,9 +1110,14 @@ export class ConcertService {
       where: { id: orderId, organizationId, status: ConcertOrderStatus.PAID },
       include: { event: true, tickets: true },
     });
-    if (!order) throw new NotFoundException(`Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`);
+    if (!order)
+      throw new NotFoundException(
+        `Orden #${orderId} no encontrada, no pertenece a esta organización, o no tiene estado PAID`,
+      );
     if (!order.buyerEmail)
-      throw new BadRequestException(`La orden #${orderId} no tiene email de comprador registrado (buyerEmail: ${order.buyerEmail})`);
+      throw new BadRequestException(
+        `La orden #${orderId} no tiene email de comprador registrado (buyerEmail: ${order.buyerEmail})`,
+      );
 
     let sent = false;
     try {
@@ -1128,9 +1131,7 @@ export class ConcertService {
       this.logger.error(
         `Resend tickets email failed for order ${orderId}: ${message}`,
       );
-      throw new BadRequestException(
-        `No se pudo reenviar el email: ${message}`,
-      );
+      throw new BadRequestException(`No se pudo reenviar el email: ${message}`);
     }
 
     if (!sent) {
@@ -1279,7 +1280,7 @@ export class ConcertService {
     const order = await this.prisma.concertOrder.findFirst({
       where: { id: orderId, organizationId },
     });
-    if (!order) throw new NotFoundException('Orden no encontrada');
+    if (!order) throw new NotFoundException("Orden no encontrada");
 
     // Aceptar PENDING_PAYMENT y PAID
     if (
@@ -1287,7 +1288,7 @@ export class ConcertService {
       order.status !== ConcertOrderStatus.PAID
     ) {
       throw new BadRequestException(
-        'Solo se pueden cancelar órdenes pendientes o pagadas',
+        "Solo se pueden cancelar órdenes pendientes o pagadas",
       );
     }
 
@@ -1308,7 +1309,7 @@ export class ConcertService {
       },
     });
 
-    return { ok: true, message: 'Orden cancelada correctamente' };
+    return { ok: true, message: "Orden cancelada correctamente" };
   }
 
   /**
@@ -1346,9 +1347,7 @@ export class ConcertService {
 
     const orderIds = [
       ...new Set(
-        seats
-          .map((s) => s.orderId)
-          .filter((id): id is number => id != null),
+        seats.map((s) => s.orderId).filter((id): id is number => id != null),
       ),
     ];
 

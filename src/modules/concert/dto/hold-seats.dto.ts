@@ -1,4 +1,10 @@
-import { ArrayMinSize, IsArray, IsInt, IsOptional, IsString } from "class-validator";
+import {
+  ArrayMinSize,
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+} from "class-validator";
 
 export class HoldSeatsDto {
   @IsArray()

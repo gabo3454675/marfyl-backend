@@ -1,4 +1,16 @@
-import { Controller, Get, Post, Body, Query, Param, ParseIntPipe, UseGuards, UploadedFile, UseInterceptors, BadRequestException } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+} from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { InvoiceUploadService } from "./invoice-upload.service";
@@ -70,7 +82,11 @@ export class InvoiceUploadController {
     @ActiveOrganization() organizationId: number,
   ) {
     const limit = limitStr ? parseInt(limitStr, 10) : 20;
-    return this.invoiceUploadService.searchProducts(organizationId, query || "", limit);
+    return this.invoiceUploadService.searchProducts(
+      organizationId,
+      query || "",
+      limit,
+    );
   }
 
   @Get("history")

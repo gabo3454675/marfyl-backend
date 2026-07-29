@@ -25,9 +25,13 @@ export class FiscalBackfillService {
       organizationId: number;
       createdAt?: { gte: Date; lt: Date };
       libroVentaLine: null;
+      isLegacyImport?: boolean | { not: true };
+      paymentStatus?: { not: "PROCESSED_LEGACY" };
     } = {
       organizationId,
       libroVentaLine: null,
+      isLegacyImport: { not: true },
+      paymentStatus: { not: "PROCESSED_LEGACY" },
     };
 
     if (options?.year && options?.month) {

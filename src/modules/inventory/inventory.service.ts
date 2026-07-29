@@ -32,7 +32,8 @@ export class InventoryService {
     string
   > = {
     SKU: "SKU: Obligatorio. Debe ser único por organización. Ej: ABC-001",
-    "NOMBRE DEL PRODUCTO": "NOMBRE DEL PRODUCTO: Obligatorio. Nombre del producto.",
+    "NOMBRE DEL PRODUCTO":
+      "NOMBRE DEL PRODUCTO: Obligatorio. Nombre del producto.",
     COSTO: "COSTO: Obligatorio. Solo números (ej: 10.50).",
     "PRECIO VENTA": "PRECIO VENTA: Obligatorio. Solo números (ej: 10.50).",
     GANANCIA: "GANANCIA: Obligatorio. Solo números (ej: 10.50).",
@@ -371,9 +372,7 @@ export class InventoryService {
       const sku = String(row.getCell(COL_SKU)?.value ?? "").trim();
       const categoryName = String(row.getCell(COL_NAME)?.value ?? "").trim();
       const productDesc =
-        COL_DESC > 0
-          ? String(row.getCell(COL_DESC)?.value ?? "").trim()
-          : "";
+        COL_DESC > 0 ? String(row.getCell(COL_DESC)?.value ?? "").trim() : "";
       const { name, description } = this.buildProductNames(
         categoryName,
         productDesc,
@@ -381,9 +380,7 @@ export class InventoryService {
       const cost = this.parseNumber(row.getCell(COL_COST)?.value);
       const salePrice = this.parseNumber(row.getCell(COL_SALE_PRICE)?.value);
       const profitRaw =
-        COL_PROFIT > 0
-          ? this.parseNumber(row.getCell(COL_PROFIT)?.value)
-          : NaN;
+        COL_PROFIT > 0 ? this.parseNumber(row.getCell(COL_PROFIT)?.value) : NaN;
       const profit = Number.isNaN(profitRaw)
         ? !Number.isNaN(salePrice) && !Number.isNaN(cost)
           ? Math.round((salePrice - cost) * 100) / 100

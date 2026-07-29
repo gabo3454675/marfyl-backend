@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   EMBEDDING_DIMENSIONS,
@@ -75,7 +79,10 @@ export class FiscalKnowledgeService {
     options?: FiscalKnowledgeSearchOptions,
   ): Promise<FiscalKnowledgeSearchResult> {
     const parsed = rewriteFiscalQuery(query);
-    const finalLimit = Math.min(Math.max(options?.limit ?? DEFAULT_FINAL_LIMIT, 1), 10);
+    const finalLimit = Math.min(
+      Math.max(options?.limit ?? DEFAULT_FINAL_LIMIT, 1),
+      10,
+    );
     const candidateLimit = Math.min(
       Math.max(options?.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT, finalLimit),
       30,
@@ -171,7 +178,7 @@ export class FiscalKnowledgeService {
 
     const vectorLiteral = `[${safeVector.join(",")}]`;
 
-    const rows = await this.prisma.$queryRawUnsafe<
+    const rows = await this.prisma.$queryRaw<
       Array<{
         ley: string;
         articulo: number;
@@ -181,8 +188,7 @@ export class FiscalKnowledgeService {
         metadata: Record<string, unknown>;
         similarity: number;
       }>
-    >(
-      `
+    >`
       SELECT
         ley,
         articulo,
@@ -190,16 +196,12 @@ export class FiscalKnowledgeService {
         titulo,
         content,
         metadata,
-        1 - (embedding <=> $1::vector) AS similarity
+        1 - (embedding <=> ${vectorLiteral}::vector) AS similarity
       FROM marfyl_knowledge_embeddings
-      WHERE ($2::varchar IS NULL OR ley = $2)
-      ORDER BY embedding <=> $1::vector
-      LIMIT $3
-      `,
-      vectorLiteral,
-      leyFilter,
-      options.limit,
-    );
+      WHERE (${leyFilter}::varchar IS NULL OR ley = ${leyFilter})
+      ORDER BY embedding <=> ${vectorLiteral}::vector
+      LIMIT ${options.limit}
+    `;
 
     return rows.map((row) => ({
       ley: row.ley,

@@ -15,7 +15,10 @@ import {
 import type { FiscalAdvisorDto } from "./dto/fiscal-advisor.dto";
 
 export type FiscalAdvisorStreamEvent =
-  | { type: "status"; phase: "thinking" | "analyzing" | "searching" | "generating" }
+  | {
+      type: "status";
+      phase: "thinking" | "analyzing" | "searching" | "generating";
+    }
   | { type: "audit_warnings"; warnings: AuditWarning[] }
   | {
       type: "knowledge";
@@ -63,7 +66,8 @@ export class FiscalAdvisorService {
       pagosDivisasEfectivo: dto.resumenOperativo.pagosDivisasEfectivo ?? 0,
       igtfRecaudado: dto.resumenOperativo.igtfRecaudado ?? 0,
       ultimaDeclaracionIVA: dto.resumenOperativo.ultimaDeclaracionIVA ?? null,
-      facturasSinMaquinaFiscal: dto.resumenOperativo.facturasSinMaquinaFiscal ?? 0,
+      facturasSinMaquinaFiscal:
+        dto.resumenOperativo.facturasSinMaquinaFiscal ?? 0,
     };
 
     yield { type: "status", phase: "analyzing" };
@@ -88,7 +92,9 @@ export class FiscalAdvisorService {
     try {
       const ready = await this.knowledge.isReady();
       if (ready) {
-        const rag = await this.knowledge.searchSemantic(searchQuery, { limit: 5 });
+        const rag = await this.knowledge.searchSemantic(searchQuery, {
+          limit: 5,
+        });
         articles = rag.hits;
         ragConfident = rag.confident;
         if (rag.parsed.ley || rag.parsed.articulo != null) {

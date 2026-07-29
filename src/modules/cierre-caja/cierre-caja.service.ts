@@ -480,6 +480,8 @@ export class CierreCajaService {
           organizationId: tenantId,
           sellerId: userId,
           status: { not: "CANCELLED" },
+          isLegacyImport: { not: true },
+          paymentStatus: { not: "PROCESSED_LEGACY" },
           createdAt: { gte: desde, lte: hasta },
         },
         select: {

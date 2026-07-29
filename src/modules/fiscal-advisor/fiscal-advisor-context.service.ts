@@ -1,17 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
-import type {
-  PerfilEmpresa,
-  ResumenOperativo,
-} from "./fiscal-audit.rules";
+import type { PerfilEmpresa, ResumenOperativo } from "./fiscal-audit.rules";
 
 @Injectable()
 export class FiscalAdvisorContextService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async buildForOrganization(
-    organizationId: number,
-  ): Promise<{ perfilEmpresa: PerfilEmpresa; resumenOperativo: ResumenOperativo }> {
+  async buildForOrganization(organizationId: number): Promise<{
+    perfilEmpresa: PerfilEmpresa;
+    resumenOperativo: ResumenOperativo;
+  }> {
     const org = await this.prisma.organization.findFirst({
       where: { id: organizationId, deletedAt: null },
       select: {
@@ -81,7 +79,7 @@ export class FiscalAdvisorContextService {
       ]);
 
     const tipoFacturacion =
-       org?.fiscalProfile?.taxpayerType === "ESPECIAL"
+      org?.fiscalProfile?.taxpayerType === "ESPECIAL"
         ? "Contribuyente Especial"
         : org?.isFormalTaxpayer
           ? "Máquina Fiscal"

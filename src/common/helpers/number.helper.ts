@@ -4,7 +4,12 @@
  */
 export function num(v: unknown): number {
   if (v == null) return 0;
-  if (typeof v === "object" && v !== null && "toNumber" in v && typeof (v as { toNumber: () => number }).toNumber === "function") {
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    "toNumber" in v &&
+    typeof (v as { toNumber: () => number }).toNumber === "function"
+  ) {
     return (v as { toNumber: () => number }).toNumber();
   }
   const n = Number(v);

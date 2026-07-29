@@ -30,6 +30,10 @@ import {
   MovementType,
 } from "@prisma/client";
 import { LiquorSalesService } from "./liquor-sales.service";
+import {
+  displayQuantity,
+  isActiveLineage,
+} from "./canonical/invoice-item-display";
 
 export type CreateInvoiceOptions = {
   /** Al cobrar comanda: liberar reservedStock en la misma transacción del descuento */
@@ -150,7 +154,9 @@ export class InvoicesService {
 
     // ── Batch de variantes ──
     const requestedVariantIds = [
-      ...new Set(items.filter((i) => i.variantId != null).map((i) => i.variantId!)),
+      ...new Set(
+        items.filter((i) => i.variantId != null).map((i) => i.variantId!),
+      ),
     ];
     const activeVariants =
       requestedVariantIds.length > 0
@@ -279,7 +285,10 @@ export class InvoicesService {
               `Stock insuficiente para ${product.name}. Disponible: ${avail}, Solicitado: ${effectiveQty}`,
             );
           }
-          stockDecrements.push({ productId: product.id, quantity: effectiveQty });
+          stockDecrements.push({
+            productId: product.id,
+            quantity: effectiveQty,
+          });
         }
 
         // ── InventoryMovement solo cuando se usa variante ──
@@ -731,7 +740,12 @@ export class InvoicesService {
         },
       },
       include: {
-        items: { include: { product: { select: { id: true, name: true, costPrice: true } } } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: {
+            product: { select: { id: true, name: true, costPrice: true } },
+          },
+        },
         customer: true,
         paymentLines: true,
       },
@@ -805,7 +819,8 @@ export class InvoicesService {
         currency: string;
       }>;
       items?: Array<{
-        quantity: number;
+        quantity?: number | null;
+        effectiveQuantity?: unknown;
         subtotal: unknown;
         product?: { costPrice?: unknown } | null;
       }>;
@@ -872,7 +887,11 @@ export class InvoicesService {
 
       for (const item of inv.items ?? []) {
         const unitCost = this.toNum(item.product?.costPrice);
-        day.totalCost += unitCost * (item.quantity || 0);
+        day.totalCost += unitCost * displayQuantity({
+          quantity: item.quantity,
+          effectiveQuantity:
+            item.effectiveQuantity as string | number | null | undefined,
+        });
       }
 
       if (inv.paymentLines && inv.paymentLines.length > 0) {
@@ -902,7 +921,9 @@ export class InvoicesService {
         const netSales = round2(data.totalSales);
         const taxAmount = round2(data.taxAmount);
         const igtfAmount = round2(data.igtfAmount);
-        const grossSales = round2(Math.max(0, netSales - taxAmount - igtfAmount));
+        const grossSales = round2(
+          Math.max(0, netSales - taxAmount - igtfAmount),
+        );
         const totalCost = round2(data.totalCost);
         const totalProfit = round2(grossSales - totalCost);
         const profitPercent =
@@ -997,9 +1018,13 @@ export class InvoicesService {
    *              Este método será removido en futuras versiones.
    * @throws BadRequestException siempre — las facturas no se eliminan físicamente.
    */
-  async remove(id: number, organizationId: number, _userId?: number): Promise<void> {
+  async remove(
+    id: number,
+    organizationId: number,
+    _userId?: number,
+  ): Promise<void> {
     throw new BadRequestException(
-      'Las facturas no pueden ser eliminadas según la normativa tributaria venezolana. Use anulación (void) en su lugar.',
+      "Las facturas no pueden ser eliminadas según la normativa tributaria venezolana. Use anulación (void) en su lugar.",
     );
   }
 
@@ -1043,8 +1068,27 @@ export class InvoicesService {
       throw new BadRequestException("La factura ya está anulada");
     }
 
+    if (invoice.isLegacyImport) {
+      throw new BadRequestException(
+        "No se pueden anular facturas de importación histórica (legacy)",
+      );
+    }
+
+    const reconciledOrOrphan = invoice.items.some(
+      (it) =>
+        it.recordClass === "RECONCILED_HISTORY" ||
+        it.productId == null ||
+        it.quantity == null,
+    );
+    if (reconciledOrOrphan) {
+      throw new BadRequestException(
+        "No se pueden anular facturas con líneas históricas reconciliadas o sin productId/quantity operativa",
+      );
+    }
+
     const allProductIds = new Set<number>();
     for (const item of invoice.items) {
+      if (item.productId == null) continue;
       allProductIds.add(item.productId);
       const compsUnknown = item.product?.bundleComponents as unknown;
       if (Array.isArray(compsUnknown)) {
@@ -1194,7 +1238,7 @@ export class InvoicesService {
         baseReduced: 0,
         // newAmount es el NUEVO TOTAL con IVA; calculamos base e IVA contenido
         baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        ivaAmount: Math.round(((newAmount * 0.16) / 1.16) * 100) / 100,
         totalAmount: newAmount,
         status: "ACTIVE",
       },
@@ -1205,7 +1249,7 @@ export class InvoicesService {
       where: { id },
       data: {
         totalAmount: newAmount,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        ivaAmount: Math.round(((newAmount * 0.16) / 1.16) * 100) / 100,
         baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
       },
       include: {
@@ -1227,7 +1271,7 @@ export class InvoicesService {
       },
       newValue: {
         totalAmount: newAmount,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        ivaAmount: Math.round(((newAmount * 0.16) / 1.16) * 100) / 100,
         difference: difference,
         reason: reason,
         creditNoteId: creditNote.id,
@@ -1266,7 +1310,10 @@ export class InvoicesService {
         pdfUrl: true,
         publicToken: true,
         createdAt: true,
-        items: { include: { product: true } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: { product: true },
+        },
         customer: true,
         company: true,
         seller: true,
@@ -1278,7 +1325,16 @@ export class InvoicesService {
       throw new NotFoundException(`Factura con ID ${id} no encontrada`);
     }
 
-    return invoice;
+    return {
+      ...invoice,
+      items: invoice.items.map((item) => ({
+        ...item,
+        displayQuantity: displayQuantity(item),
+        displayName:
+          item.product?.name ?? item.sourceDescription ?? "Producto",
+        displaySku: item.product?.sku ?? item.sourceSkuExact ?? null,
+      })),
+    };
   }
 
   /**
@@ -1311,7 +1367,10 @@ export class InvoicesService {
         viewCount: true,
         lastViewedAt: true,
         createdAt: true,
-        items: { include: { product: true } },
+        items: {
+          where: { lineageStatus: "ACTIVE" },
+          include: { product: true },
+        },
         customer: true,
         company: true,
         paymentLines: true,
@@ -1543,7 +1602,13 @@ export class InvoicesService {
         doc.moveTo(50, y).lineTo(550, y).strokeColor(border).stroke();
         y += 10;
 
-        const items = Array.isArray(invoice.items) ? invoice.items : [];
+        const items = Array.isArray(invoice.items)
+          ? invoice.items.filter((it) =>
+              isActiveLineage(
+                (it as { lineageStatus?: string }).lineageStatus,
+              ),
+            )
+          : [];
         for (const item of items) {
           if (y > 700) {
             doc.addPage();
@@ -1556,12 +1621,21 @@ export class InvoicesService {
             id?: number;
             name?: string;
           } | null;
+          const sourceSku = (item as { sourceSkuExact?: string | null })
+            .sourceSkuExact;
+          const sourceDesc = (item as { sourceDescription?: string | null })
+            .sourceDescription;
           const codigo =
-            product?.sku ?? product?.barcode ?? String(product?.id ?? "");
-          const desc = String(product?.name ?? "Producto").slice(0, 50);
+            product?.sku ??
+            product?.barcode ??
+            sourceSku ??
+            String(product?.id ?? "");
+          const desc = String(
+            product?.name ?? sourceDesc ?? "Producto",
+          ).slice(0, 50);
           doc.text((codigo || "-").slice(0, 12), 50, y, { width: 55 });
           doc.text(desc, 108, y, { width: 200 });
-          doc.text(String(Number(item.quantity) || 0), 310, y, {
+          doc.text(String(displayQuantity(item)), 310, y, {
             width: 45,
             align: "right",
           });

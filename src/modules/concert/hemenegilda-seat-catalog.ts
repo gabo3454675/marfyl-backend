@@ -11,11 +11,7 @@ export const HEMENEGILDA_SALON_SEAT_COUNT = 66;
 export const HEMENEGILDA_LEGACY_TOTAL_WITH_VIP = 98;
 export const HEMENEGILDA_VIP_SECTION_CODE = "VIP" as const;
 
-export type ConcertTierCode =
-  | "VIP"
-  | "PREFERENCIAL"
-  | "MEDIA"
-  | "GENERAL";
+export type ConcertTierCode = "VIP" | "PREFERENCIAL" | "MEDIA" | "GENERAL";
 
 export type SeatCatalogEntry = {
   sectionCode: "SALON";

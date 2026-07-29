@@ -58,7 +58,7 @@ export class FiscalAdvisorController {
             dto.resumenOperativo?.ultimaDeclaracionIVA ??
             (auto?.resumenOperativo.ultimaDeclaracionIVA instanceof Date
               ? auto.resumenOperativo.ultimaDeclaracionIVA.toISOString()
-              : auto?.resumenOperativo.ultimaDeclaracionIVA ?? null),
+              : (auto?.resumenOperativo.ultimaDeclaracionIVA ?? null)),
         },
       };
 

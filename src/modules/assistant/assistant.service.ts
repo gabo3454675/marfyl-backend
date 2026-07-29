@@ -83,9 +83,7 @@ export class AssistantService {
         if (!this.agentProxy.isFallbackEnabled()) {
           throw new ServiceUnavailableException(msg);
         }
-        this.logger.warn(
-          `Python agent falló; fallback Groq (chat): ${msg}`,
-        );
+        this.logger.warn(`Python agent falló; fallback Groq (chat): ${msg}`);
       }
     }
 
@@ -258,7 +256,8 @@ export class AssistantService {
       }
       if (delta.id) entry.id = delta.id;
       if (delta.function?.name) entry.name += delta.function.name;
-      if (delta.function?.arguments) entry.arguments += delta.function.arguments;
+      if (delta.function?.arguments)
+        entry.arguments += delta.function.arguments;
     }
   }
 

@@ -32,7 +32,9 @@ function assertExcelUpload(file: Express.Multer.File) {
 @Controller("purchases-import")
 @UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class PurchasesImportController {
-  constructor(private readonly purchasesImportService: PurchasesImportService) {}
+  constructor(
+    private readonly purchasesImportService: PurchasesImportService,
+  ) {}
 
   @Post("preview")
   @Permissions("canManageInventory")

@@ -116,7 +116,8 @@ export class SalesImportService {
     const key = this.normalizeCode(code);
     const stripped = this.stripLeadingZeros(key);
 
-    if (lookups.bySku.has(key)) return { product: lookups.bySku.get(key), matchBy: "sku" };
+    if (lookups.bySku.has(key))
+      return { product: lookups.bySku.get(key), matchBy: "sku" };
     if (lookups.bySku.has(stripped)) {
       return { product: lookups.bySku.get(stripped), matchBy: "sku" };
     }
@@ -141,10 +142,16 @@ export class SalesImportService {
     const parsed: ParsedSaleInvoice[] = [];
     for (const filePath of params.filePaths) {
       const xml = readFileSync(filePath, "utf8");
-      parsed.push(...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath));
+      parsed.push(
+        ...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath),
+      );
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
-    return this.buildPreview(params.organizationId, invoices, params.filePaths.length);
+    return this.buildPreview(
+      params.organizationId,
+      invoices,
+      params.filePaths.length,
+    );
   }
 
   async previewFromBuffers(params: {
@@ -154,12 +161,14 @@ export class SalesImportService {
     const parsed: ParsedSaleInvoice[] = [];
     for (const file of params.files) {
       const xml = file.buffer.toString("utf8");
-      parsed.push(
-        ...parseFastReportSalesFile(xml, file.originalname),
-      );
+      parsed.push(...parseFastReportSalesFile(xml, file.originalname));
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
-    return this.buildPreview(params.organizationId, invoices, params.files.length);
+    return this.buildPreview(
+      params.organizationId,
+      invoices,
+      params.files.length,
+    );
   }
 
   async provisionMissingProductsFromBuffers(params: {
@@ -182,7 +191,9 @@ export class SalesImportService {
     const parsed: ParsedSaleInvoice[] = [];
     for (const filePath of params.filePaths) {
       const xml = readFileSync(filePath, "utf8");
-      parsed.push(...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath));
+      parsed.push(
+        ...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath),
+      );
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
     return this.provisionMissingFromInvoices(params.organizationId, invoices);
@@ -214,7 +225,10 @@ export class SalesImportService {
       existing
         .map((p) => p.sku)
         .filter(Boolean)
-        .flatMap((s) => [this.normalizeCode(s!), this.normalizeCode(s!).replace(/^0+/, "")]),
+        .flatMap((s) => [
+          this.normalizeCode(s!),
+          this.normalizeCode(s!).replace(/^0+/, ""),
+        ]),
     );
 
     const companyId = await getCompanyIdFromOrganization(
@@ -227,7 +241,8 @@ export class SalesImportService {
     for (const [sku, info] of catalog) {
       const key = this.normalizeCode(sku);
       const stripped = key.replace(/^0+/, "");
-      if (existingSkus.has(key) || existingSkus.has(stripped) || seen.has(key)) continue;
+      if (existingSkus.has(key) || existingSkus.has(stripped) || seen.has(key))
+        continue;
       seen.add(key);
       toCreate.push({ sku, name: info.name, unitPrice: info.unitPrice });
     }
@@ -362,11 +377,14 @@ export class SalesImportService {
       const taxInputs: LineTaxInput[] = [];
       for (const lp of linePreviews) {
         if (!lp.productId) {
-          issues.push(`Producto no encontrado: ${lp.productCode} (${lp.description})`);
+          issues.push(
+            `Producto no encontrado: ${lp.productCode} (${lp.description})`,
+          );
           continue;
         }
         const product = products.find((p) => p.id === lp.productId)!;
-        if (product.isBundle) issues.push(`Combo no soportado en import: ${product.name}`);
+        if (product.isBundle)
+          issues.push(`Combo no soportado en import: ${product.name}`);
         const unitPrice =
           lp.quantity > 0 ? Number((lp.lineTotal / lp.quantity).toFixed(4)) : 0;
         taxInputs.push({
@@ -447,7 +465,12 @@ export class SalesImportService {
     }
 
     const batchId = randomBytes(16).toString("hex");
-    await this.savePreviewBatch(batchId, organizationId, invoices, previewInvoices);
+    await this.savePreviewBatch(
+      batchId,
+      organizationId,
+      invoices,
+      previewInvoices,
+    );
 
     return {
       batchId,
@@ -476,7 +499,10 @@ export class SalesImportService {
       data: {
         id: batchId,
         organizationId,
-        payload: { sources: invoices, preview } as unknown as Prisma.InputJsonValue,
+        payload: {
+          sources: invoices,
+          preview,
+        } as unknown as Prisma.InputJsonValue,
         expiresAt,
       },
     });
@@ -515,7 +541,9 @@ export class SalesImportService {
       preview: SalesImportInvoicePreview[];
     };
     if (!stored?.sources?.length || !stored?.preview?.length) {
-      throw new BadRequestException("Preview corrupto. Ejecute preview de nuevo.");
+      throw new BadRequestException(
+        "Preview corrupto. Ejecute preview de nuevo.",
+      );
     }
     return stored;
   }
@@ -578,7 +606,9 @@ export class SalesImportService {
     const failed: { legacyKey: string; error: string }[] = [];
 
     for (const invPreview of toImport) {
-      const source = cachedInvoices.find((i) => i.legacyKey === invPreview.legacyKey);
+      const source = cachedInvoices.find(
+        (i) => i.legacyKey === invPreview.legacyKey,
+      );
       if (!source) continue;
 
       try {
@@ -602,9 +632,11 @@ export class SalesImportService {
       }
     }
 
-    await this.prisma.salesImportPreviewBatch.delete({
-      where: { id: params.batchId },
-    }).catch(() => undefined);
+    await this.prisma.salesImportPreviewBatch
+      .delete({
+        where: { id: params.batchId },
+      })
+      .catch(() => undefined);
 
     return {
       imported: imported.length,
@@ -640,9 +672,13 @@ export class SalesImportService {
     const stockDecrements: { productId: number; quantity: number }[] = [];
 
     for (const line of params.invPreview.lines) {
-      if (!line.productId) throw new BadRequestException(`Línea sin producto: ${line.productCode}`);
+      if (!line.productId)
+        throw new BadRequestException(
+          `Línea sin producto: ${line.productCode}`,
+        );
       const product = params.productById.get(line.productId);
-      if (!product) throw new NotFoundException(`Producto ${line.productId} no encontrado`);
+      if (!product)
+        throw new NotFoundException(`Producto ${line.productId} no encontrado`);
 
       const unitPrice =
         line.quantity > 0
@@ -667,7 +703,10 @@ export class SalesImportService {
             `Stock insuficiente ${product.name}: ${product.stock} < ${line.quantity}`,
           );
         }
-        stockDecrements.push({ productId: product.id, quantity: line.quantity });
+        stockDecrements.push({
+          productId: product.id,
+          quantity: line.quantity,
+        });
       }
     }
 
@@ -689,8 +728,7 @@ export class SalesImportService {
     let ivaAmount = taxTotals.ivaAmount;
 
     const header = params.source.headerTotalNet;
-    const headerRounded =
-      header != null ? Number(header.toFixed(2)) : null;
+    const headerRounded = header != null ? Number(header.toFixed(2)) : null;
     const legacyGrossMode =
       params.useLegacyHeaderTotal &&
       (headerRounded != null

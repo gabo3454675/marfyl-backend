@@ -1,4 +1,14 @@
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from "class-validator";
 import { Type } from "class-transformer";
 
 export class InvoiceUploadLineDto {

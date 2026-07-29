@@ -30,7 +30,10 @@ function decodeXml(value: string): string {
 
 function parseNum(raw: string | undefined): number | null {
   if (!raw) return null;
-  const cleaned = String(raw).split(/[\r\n]/)[0].replace(/\s+/g, "").replace(",", ".");
+  const cleaned = String(raw)
+    .split(/[\r\n]/)[0]
+    .replace(/\s+/g, "")
+    .replace(",", ".");
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
@@ -71,7 +74,10 @@ function getAny(cells: Map<number, string>, indices: number[]): string {
   return "";
 }
 
-function parseNumAny(cells: Map<number, string>, indices: number[]): number | null {
+function parseNumAny(
+  cells: Map<number, string>,
+  indices: number[],
+): number | null {
   for (const i of indices) {
     const n = parseNum(get(cells, i));
     if (n != null) return n;
@@ -100,7 +106,10 @@ export function detectReportKind(xml: string): "ventas" | "productos" {
   return "ventas";
 }
 
-export function parseVentasReport(xml: string, sourceFile: string): ParsedSaleInvoice[] {
+export function parseVentasReport(
+  xml: string,
+  sourceFile: string,
+): ParsedSaleInvoice[] {
   const rows = parseSpreadsheetRows(xml);
   const invoices: ParsedSaleInvoice[] = [];
   let current: ParsedSaleInvoice | null = null;
@@ -155,7 +164,10 @@ export function parseVentasReport(xml: string, sourceFile: string): ParsedSaleIn
   return invoices.filter((inv) => inv.lines.length > 0);
 }
 
-export function parseProductosReport(xml: string, sourceFile: string): ParsedSaleInvoice[] {
+export function parseProductosReport(
+  xml: string,
+  sourceFile: string,
+): ParsedSaleInvoice[] {
   const rows = parseSpreadsheetRows(xml);
   const invoiceMap = new Map<string, ParsedSaleInvoice>();
   let currentProductCode = "";
@@ -195,7 +207,10 @@ export function parseProductosReport(xml: string, sourceFile: string): ParsedSal
   };
 
   for (const cells of rows) {
-    if (getAny(cells, [1, 2, 4]) === "Codigo" && getAny(cells, [9, 11, 18]) === "Descripcion") {
+    if (
+      getAny(cells, [1, 2, 4]) === "Codigo" &&
+      getAny(cells, [9, 11, 18]) === "Descripcion"
+    ) {
       inDetailSection = false;
       pendingLine = null;
       continue;
@@ -264,11 +279,7 @@ export function parseProductosReport(xml: string, sourceFile: string): ParsedSal
         quantity: qty != null && qty > 0 ? qty : 0,
       };
 
-      if (
-        pendingLine.quantity > 0 &&
-        inlineTotal != null &&
-        inlineTotal > 0
-      ) {
+      if (pendingLine.quantity > 0 && inlineTotal != null && inlineTotal > 0) {
         flushPending(inlineTotal);
       }
       continue;
@@ -280,11 +291,7 @@ export function parseProductosReport(xml: string, sourceFile: string): ParsedSal
         pendingLine.quantity = qtyOnDetail;
       }
       const lineTotal = parseNumAny(cells, [68, 69, 67, 60]);
-      if (
-        pendingLine.quantity > 0 &&
-        lineTotal != null &&
-        lineTotal > 0
-      ) {
+      if (pendingLine.quantity > 0 && lineTotal != null && lineTotal > 0) {
         flushPending(lineTotal);
       }
     }

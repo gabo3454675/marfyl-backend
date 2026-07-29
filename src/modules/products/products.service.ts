@@ -144,16 +144,13 @@ export class ProductsService {
     const limit = Math.min(100, Math.max(1, options.limit ?? 50));
     const skip = (page - 1) * limit;
 
-    console.log(
-      "[ProductsService] findAllPaginated called with",
-      {
-        organizationId,
-        page,
-        limit,
-        search: options.search,
-        categoryId: options.categoryId,
-      },
-    );
+    console.log("[ProductsService] findAllPaginated called with", {
+      organizationId,
+      page,
+      limit,
+      search: options.search,
+      categoryId: options.categoryId,
+    });
 
     const where: any = { organizationId };
 

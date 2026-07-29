@@ -1,5 +1,5 @@
-import { Module, Global } from '@nestjs/common';
-import { PlanLimitsService } from './limits.service';
+import { Module, Global } from "@nestjs/common";
+import { PlanLimitsService } from "./limits.service";
 
 @Global()
 @Module({

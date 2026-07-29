@@ -112,7 +112,8 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
                     const hasRelationConnect =
                       row[relationName] &&
                       typeof row[relationName] === "object" &&
-                      "connect" in (row[relationName] as Record<string, unknown>);
+                      "connect" in
+                        (row[relationName] as Record<string, unknown>);
                     if (hasRelationConnect) return row;
                     return { ...row, [field]: tenantId };
                   },
@@ -147,7 +148,8 @@ export const tenantIsolationExtension = Prisma.defineExtension((prisma) =>
                 const hasRelationConnect =
                   createData[relationName] &&
                   typeof createData[relationName] === "object" &&
-                  "connect" in (createData[relationName] as Record<string, unknown>);
+                  "connect" in
+                    (createData[relationName] as Record<string, unknown>);
                 if (!hasRelationConnect) {
                   createData[field] = tenantId;
                 }

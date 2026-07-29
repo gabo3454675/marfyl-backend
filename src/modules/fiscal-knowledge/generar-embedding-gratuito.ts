@@ -103,13 +103,16 @@ export async function generarEmbeddingGratuito(
     try {
       const parsed = await hf.featureExtraction(
         { model: HF_EMBEDDING_MODEL, inputs: input },
-        { retry_on_error: false, fetch: (url, init) => {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), timeoutMs);
-          return fetch(url, { ...init, signal: controller.signal }).finally(() =>
-            clearTimeout(timer),
-          );
-        }},
+        {
+          retry_on_error: false,
+          fetch: (url, init) => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            return fetch(url, { ...init, signal: controller.signal }).finally(
+              () => clearTimeout(timer),
+            );
+          },
+        },
       );
 
       const vector = normalizeVector(flattenEmbeddingPayload(parsed));
@@ -122,8 +125,9 @@ export async function generarEmbeddingGratuito(
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
-      const retryable =
-        /503|429|loading|timeout|rate|overloaded|abort/i.test(message);
+      const retryable = /503|429|loading|timeout|rate|overloaded|abort/i.test(
+        message,
+      );
 
       if (retryable && attempt < retries) {
         const waitMs = attempt * 2500;

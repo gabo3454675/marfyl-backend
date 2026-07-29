@@ -260,7 +260,9 @@ export class EmailService {
     }
 
     if (tickets.length === 0) {
-      this.logger.warn(`No se envían boletos: orden ${order.id} sin tickets asociados`);
+      this.logger.warn(
+        `No se envían boletos: orden ${order.id} sin tickets asociados`,
+      );
       return false;
     }
 
@@ -412,7 +414,8 @@ export class EmailService {
     fromEmail: string,
     params: SendEmailParams,
   ): Promise<{ ok: boolean; errorMessage?: string }> {
-    if (!this.resend) return { ok: false, errorMessage: "Resend no configurado" };
+    if (!this.resend)
+      return { ok: false, errorMessage: "Resend no configurado" };
 
     const result = await this.resend.emails.send({
       from: `${this.fromName} <${fromEmail}>`,
@@ -430,8 +433,7 @@ export class EmailService {
     } as Parameters<NonNullable<typeof this.resend>["emails"]["send"]>[0]);
 
     if (result.error) {
-      const errorMessage =
-        result.error.message ?? JSON.stringify(result.error);
+      const errorMessage = result.error.message ?? JSON.stringify(result.error);
       return { ok: false, errorMessage };
     }
 
@@ -512,9 +514,7 @@ export class EmailService {
             .map((s) => {
               const section = s.sectionCode ? ` · ${s.sectionCode}` : "";
               const price =
-                s.priceUsd != null
-                  ? ` — ${formatUsd(s.priceUsd)}`
-                  : "";
+                s.priceUsd != null ? ` — ${formatUsd(s.priceUsd)}` : "";
               return `<li style="margin:6px 0;font-size:13px;">🪑 ${s.seatLabel}${section}${price}</li>`;
             })
             .join("")
@@ -527,7 +527,8 @@ export class EmailService {
     const proofLine = order.paymentProofUrl?.trim()
       ? `<p style="margin:4px 0;font-size:13px;">📎 <a href="${order.paymentProofUrl}" style="color:#5eead4;">${proofLabel}</a></p>`
       : "";
-    const orderRef = order.publicToken?.slice(0, 8).toUpperCase() ?? String(order.id);
+    const orderRef =
+      order.publicToken?.slice(0, 8).toUpperCase() ?? String(order.id);
 
     return `<!DOCTYPE html>
 <html lang="es">

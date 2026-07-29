@@ -13,7 +13,8 @@ import { getCompanyIdFromOrganization } from "@/common/helpers/organization.help
 
 /** Modelos Groq con visión (OCR). llama-3.1-8b-instant NO soporta imágenes. */
 const DEFAULT_GROQ_VISION_PRIMARY = "meta-llama/llama-4-scout-17b-16e-instruct";
-const DEFAULT_GROQ_VISION_FALLBACK = "meta-llama/llama-4-maverick-17b-128e-instruct";
+const DEFAULT_GROQ_VISION_FALLBACK =
+  "meta-llama/llama-4-maverick-17b-128e-instruct";
 const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite";
 
 const RECEIPT_OCR_PROMPT = `Analiza esta factura o recibo comercial venezolano (puede ser foto inclinada).
@@ -79,13 +80,17 @@ export class ReceiptScanService {
     private readonly expensesService: ExpensesService,
   ) {}
 
-  async scanReceiptImage(file: Express.Multer.File): Promise<ScannedReceiptResult> {
+  async scanReceiptImage(
+    file: Express.Multer.File,
+  ): Promise<ScannedReceiptResult> {
     if (!file?.buffer?.length) {
       throw new BadRequestException("Imagen no válida");
     }
     const mime = file.mimetype || "image/jpeg";
     if (!mime.startsWith("image/")) {
-      throw new BadRequestException("Solo se admiten imágenes (JPEG, PNG, WebP).");
+      throw new BadRequestException(
+        "Solo se admiten imágenes (JPEG, PNG, WebP).",
+      );
     }
 
     try {
@@ -93,7 +98,10 @@ export class ReceiptScanService {
       const parsed = this.parseReceiptJson(text);
       return this.normalizeScanResult(parsed);
     } catch (err) {
-      if (err instanceof BadRequestException || err instanceof ServiceUnavailableException) {
+      if (
+        err instanceof BadRequestException ||
+        err instanceof ServiceUnavailableException
+      ) {
         throw err;
       }
       this.logger.warn(`Receipt OCR failed: ${String(err)}`);
@@ -122,7 +130,9 @@ export class ReceiptScanService {
       }
       const geminiKey = this.config.get<string>("GEMINI_API_KEY")?.trim();
       if (geminiKey) {
-        this.logger.warn("Todos los modelos Groq visión fallaron; probando Gemini…");
+        this.logger.warn(
+          "Todos los modelos Groq visión fallaron; probando Gemini…",
+        );
         return this.extractWithGemini(file, mime, geminiKey);
       }
       throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
@@ -146,7 +156,10 @@ export class ReceiptScanService {
     const extraRaw =
       this.config.get<string>("GROQ_VISION_MODEL_FALLBACK")?.trim() || "";
     const extras = extraRaw
-      ? extraRaw.split(",").map((m) => m.trim()).filter(Boolean)
+      ? extraRaw
+          .split(",")
+          .map((m) => m.trim())
+          .filter(Boolean)
       : [DEFAULT_GROQ_VISION_FALLBACK];
     return [...new Set([primary, ...extras])];
   }
@@ -211,17 +224,24 @@ export class ReceiptScanService {
     ]);
     const text = result.response.text().trim();
     if (!text) {
-      throw new BadRequestException("Gemini no devolvió contenido para la imagen.");
+      throw new BadRequestException(
+        "Gemini no devolvió contenido para la imagen.",
+      );
     }
     return text;
   }
 
   private parseReceiptJson(text: string): Partial<ScannedReceiptResult> {
-    const jsonStr = text.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+    const jsonStr = text
+      .replace(/^```json?\s*/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
     return JSON.parse(jsonStr) as Partial<ScannedReceiptResult>;
   }
 
-  private normalizeScanResult(raw: Partial<ScannedReceiptResult>): ScannedReceiptResult {
+  private normalizeScanResult(
+    raw: Partial<ScannedReceiptResult>,
+  ): ScannedReceiptResult {
     const lines = (raw.lines ?? [])
       .map((l) => ({
         name: String(l?.name ?? "").trim(),
@@ -244,7 +264,9 @@ export class ReceiptScanService {
     return {
       vendorName: raw.vendorName ? String(raw.vendorName).trim() : null,
       vendorTaxId: raw.vendorTaxId ? String(raw.vendorTaxId).trim() : null,
-      documentNumber: raw.documentNumber ? String(raw.documentNumber).trim() : null,
+      documentNumber: raw.documentNumber
+        ? String(raw.documentNumber).trim()
+        : null,
       issueDate: raw.issueDate ? String(raw.issueDate).trim() : null,
       condition: raw.condition ? String(raw.condition).trim() : null,
       totalUsd:
@@ -256,7 +278,8 @@ export class ReceiptScanService {
           ? Number(raw.totalBs)
           : null,
       referenceFactor:
-        raw.referenceFactor != null && Number.isFinite(Number(raw.referenceFactor))
+        raw.referenceFactor != null &&
+        Number.isFinite(Number(raw.referenceFactor))
           ? Number(raw.referenceFactor)
           : null,
       lines,
@@ -386,22 +409,25 @@ export class ReceiptScanService {
         }, 0);
 
       if (!params.categoryId) {
-        throw new BadRequestException("categoryId es obligatorio para compra/inventario.");
+        throw new BadRequestException(
+          "categoryId es obligatorio para compra/inventario.",
+        );
       }
 
       return this.expensesService.create(
         {
           date: scan.issueDate ?? new Date().toISOString().slice(0, 10),
           amount: Math.max(0.01, totalAmount),
-          description:
-            scan.vendorName
-              ? `Compra ${scan.vendorName}${scan.documentNumber ? ` #${scan.documentNumber}` : ""}`
-              : `Compra por escaneo OCR`,
+          description: scan.vendorName
+            ? `Compra ${scan.vendorName}${scan.documentNumber ? ` #${scan.documentNumber}` : ""}`
+            : `Compra por escaneo OCR`,
           categoryId: params.categoryId,
           supplierId: params.supplierId,
           referenceNumber: scan.documentNumber ?? undefined,
           supplierInvoiceNumber: scan.documentNumber ?? undefined,
-          status: params.status ?? (scan.condition === "CREDITO" ? "PENDING" : "PAID"),
+          status:
+            params.status ??
+            (scan.condition === "CREDITO" ? "PENDING" : "PAID"),
           purchaseLines,
         },
         organizationId,
@@ -410,7 +436,9 @@ export class ReceiptScanService {
     }
 
     if (!params.categoryId) {
-      throw new BadRequestException("categoryId es obligatorio para gasto operativo.");
+      throw new BadRequestException(
+        "categoryId es obligatorio para gasto operativo.",
+      );
     }
 
     const amount =
@@ -421,14 +449,14 @@ export class ReceiptScanService {
       {
         date: scan.issueDate ?? new Date().toISOString().slice(0, 10),
         amount: Math.max(0.01, amount),
-        description:
-          scan.vendorName
-            ? `Gasto ${scan.vendorName}${scan.documentNumber ? ` #${scan.documentNumber}` : ""}`
-            : "Gasto operativo por escaneo OCR",
+        description: scan.vendorName
+          ? `Gasto ${scan.vendorName}${scan.documentNumber ? ` #${scan.documentNumber}` : ""}`
+          : "Gasto operativo por escaneo OCR",
         categoryId: params.categoryId,
         supplierId: params.supplierId,
         referenceNumber: scan.documentNumber ?? undefined,
-        status: params.status ?? (scan.condition === "CREDITO" ? "PENDING" : "PAID"),
+        status:
+          params.status ?? (scan.condition === "CREDITO" ? "PENDING" : "PAID"),
       },
       organizationId,
       userId,

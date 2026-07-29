@@ -52,11 +52,7 @@ describe("rerankFiscalHits", () => {
       }),
     ];
 
-    const ranked = rerankFiscalHits(
-      hits,
-      { ley: "COT", articulo: 120 },
-      2,
-    );
+    const ranked = rerankFiscalHits(hits, { ley: "COT", articulo: 120 }, 2);
 
     expect(ranked[0]!.articulo).toBe(120);
     expect(ranked[0]!.rerankScore).toBeGreaterThan(ranked[1]!.rerankScore);

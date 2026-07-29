@@ -218,10 +218,7 @@ export class CreditsService {
     reason: string,
   ) {
     const credit = await this.getOrCreateCredit(customerId, organizationId);
-    const newBalance = Math.max(
-      0,
-      Number(credit.currentBalance) - amountUsd,
-    );
+    const newBalance = Math.max(0, Number(credit.currentBalance) - amountUsd);
     await this.prisma.customerCredit.update({
       where: { id: credit.id },
       data: { currentBalance: newBalance },

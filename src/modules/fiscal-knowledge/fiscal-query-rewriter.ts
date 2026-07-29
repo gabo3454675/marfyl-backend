@@ -8,8 +8,7 @@ export interface ParsedFiscalQuery {
   articulo: number | null;
 }
 
-const ARTICULO_RE =
-  /\b(?:art[ií]culo|art\.?)\s*(?:n[°º.]?\s*)?(\d{1,4})\b/i;
+const ARTICULO_RE = /\b(?:art[ií]culo|art\.?)\s*(?:n[°º.]?\s*)?(\d{1,4})\b/i;
 
 /** Alias de normas que el usuario puede mencionar en lenguaje natural */
 const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
@@ -27,11 +26,18 @@ const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
   },
   {
     ley: "RIVA",
-    patterns: [/\briva\b/i, /reglamento\s+(?:de\s+la\s+)?ley\s+(?:del\s+)?iva/i],
+    patterns: [
+      /\briva\b/i,
+      /reglamento\s+(?:de\s+la\s+)?ley\s+(?:del\s+)?iva/i,
+    ],
   },
   {
     ley: "LISLR",
-    patterns: [/\blislr\b/i, /ley\s+(?:del\s+)?islr/i, /ley\s+impuesto\s+sobre\s+la\s+renta/i],
+    patterns: [
+      /\blislr\b/i,
+      /ley\s+(?:del\s+)?islr/i,
+      /ley\s+impuesto\s+sobre\s+la\s+renta/i,
+    ],
   },
   {
     ley: "RISLR",
@@ -39,11 +45,19 @@ const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
   },
   {
     ley: "LIGTF",
-    patterns: [/\bligtf\b/i, /\bigtf\b/i, /gran\s+transacciones\s+financieras/i],
+    patterns: [
+      /\bligtf\b/i,
+      /\bigtf\b/i,
+      /gran\s+transacciones\s+financieras/i,
+    ],
   },
   {
     ley: "PROV_0071",
-    patterns: [/\bprov(?:idencia)?[\s._-]*0*071\b/i, /\b0071\b/, /providencia\s+0071/i],
+    patterns: [
+      /\bprov(?:idencia)?[\s._-]*0*071\b/i,
+      /\b0071\b/,
+      /providencia\s+0071/i,
+    ],
   },
   {
     ley: "PROV_SNAT_0141",

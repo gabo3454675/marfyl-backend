@@ -63,7 +63,9 @@ function findHeaderRow(rows: unknown[][]): number {
   return -1;
 }
 
-export function parseMonddyPurchasesExcel(buffer: Buffer): ParsedPurchaseGroup[] {
+export function parseMonddyPurchasesExcel(
+  buffer: Buffer,
+): ParsedPurchaseGroup[] {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("El Excel no tiene hojas");
@@ -107,7 +109,7 @@ export function parseMonddyPurchasesExcel(buffer: Buffer): ParsedPurchaseGroup[]
   }
 
   const groups: ParsedPurchaseGroup[] = [];
-  let ctx = {
+  const ctx = {
     monthLabel: "",
     purchaseDate: "",
     invoiceRef: "",
@@ -134,7 +136,8 @@ export function parseMonddyPurchasesExcel(buffer: Buffer): ParsedPurchaseGroup[]
     const mes = cMes >= 0 ? String(row[cMes] ?? "").trim() : "";
     const fechaRaw = cFecha >= 0 ? row[cFecha] : "";
     const factura = cFactura >= 0 ? String(row[cFactura] ?? "").trim() : "";
-    const proveedor = cProveedor >= 0 ? String(row[cProveedor] ?? "").trim() : "";
+    const proveedor =
+      cProveedor >= 0 ? String(row[cProveedor] ?? "").trim() : "";
     const parsedDate = parseDateCell(fechaRaw);
 
     const hasHeader =
@@ -161,7 +164,11 @@ export function parseMonddyPurchasesExcel(buffer: Buffer): ParsedPurchaseGroup[]
       (cNombre >= 0 ? String(row[cNombre] ?? "").trim() : "") ||
       sku;
     const exentoRaw =
-      cExento >= 0 ? String(row[cExento] ?? "").trim().toUpperCase() : "";
+      cExento >= 0
+        ? String(row[cExento] ?? "")
+            .trim()
+            .toUpperCase()
+        : "";
 
     currentGroup!.lines.push({
       rowNum: r + 1,

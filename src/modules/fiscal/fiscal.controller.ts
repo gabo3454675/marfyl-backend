@@ -296,11 +296,6 @@ export class FiscalController {
     @Param("month", ParseIntPipe) month: number,
     @ActiveUser() user: { id: number },
   ) {
-    return this.fiscalService.closePeriod(
-      organizationId,
-      year,
-      month,
-      user.id,
-    );
+    return this.fiscalService.closePeriod(organizationId, year, month, user.id);
   }
 }

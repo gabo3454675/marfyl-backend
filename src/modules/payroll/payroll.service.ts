@@ -122,7 +122,9 @@ export class PayrollService {
     const bonus = dto.bonusAmount ?? 0;
     const deduction = dto.deductionAmount ?? 0;
     if (bonus <= 0 && deduction <= 0) {
-      throw new BadRequestException("Indica un monto de bonificación o deducción.");
+      throw new BadRequestException(
+        "Indica un monto de bonificación o deducción.",
+      );
     }
 
     const updated = await this.prisma.payrollProfile.update({
@@ -250,7 +252,9 @@ export class PayrollService {
 
       for (const { profile, amount } of payable) {
         const name =
-          profile.member.user.fullName ?? profile.member.user.email ?? "Empleado";
+          profile.member.user.fullName ??
+          profile.member.user.email ??
+          "Empleado";
         const description = `Nómina - ${name} - ${periodLabel}`;
 
         try {
@@ -395,8 +399,10 @@ export class PayrollService {
       type: mapPayTypeToFrontend(profile.payType),
       payCurrency: profile.payCurrency,
       baseSalary: num(profile.baseSalary),
-      commission: profile.commissionPct != null ? num(profile.commissionPct) : undefined,
-      hoursWorked: profile.hoursWorked != null ? num(profile.hoursWorked) : undefined,
+      commission:
+        profile.commissionPct != null ? num(profile.commissionPct) : undefined,
+      hoursWorked:
+        profile.hoursWorked != null ? num(profile.hoursWorked) : undefined,
       bonuses: num(profile.bonuses),
       deductions: num(profile.deductions),
       status: mapProfileStatus(profile.status),
@@ -405,24 +411,22 @@ export class PayrollService {
     };
   }
 
-  private toRunDto(
-    run: {
+  private toRunDto(run: {
+    id: number;
+    periodLabel: string;
+    totalAmount: unknown;
+    employeeCount: number;
+    status: PayrollRunStatus;
+    createdAt: Date;
+    processedBy?: { fullName: string | null; email: string } | null;
+    lines?: {
       id: number;
-      periodLabel: string;
-      totalAmount: unknown;
-      employeeCount: number;
-      status: PayrollRunStatus;
+      employeeName: string;
+      amount: unknown;
+      payCurrency?: PayrollCurrency;
       createdAt: Date;
-      processedBy?: { fullName: string | null; email: string } | null;
-      lines?: {
-        id: number;
-        employeeName: string;
-        amount: unknown;
-        payCurrency?: PayrollCurrency;
-        createdAt: Date;
-      }[];
-    },
-  ) {
+    }[];
+  }) {
     return {
       id: run.id,
       periodLabel: run.periodLabel,
@@ -430,8 +434,7 @@ export class PayrollService {
       employeeCount: run.employeeCount,
       status: run.status.toLowerCase(),
       createdAt: run.createdAt,
-      processedBy:
-        run.processedBy?.fullName ?? run.processedBy?.email ?? null,
+      processedBy: run.processedBy?.fullName ?? run.processedBy?.email ?? null,
       lines: (run.lines ?? []).map((l) => ({
         id: l.id,
         employeeName: l.employeeName,

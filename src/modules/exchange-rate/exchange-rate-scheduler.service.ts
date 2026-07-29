@@ -15,7 +15,9 @@ export class ExchangeRateSchedulerService implements OnModuleInit {
 
   async onModuleInit() {
     if (!this.autoSyncEnabled) {
-      this.logger.log("Sync BCV automático desactivado (EXCHANGE_RATE_AUTO_SYNC=false)");
+      this.logger.log(
+        "Sync BCV automático desactivado (EXCHANGE_RATE_AUTO_SYNC=false)",
+      );
       return;
     }
 

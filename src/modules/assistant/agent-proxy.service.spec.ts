@@ -24,13 +24,19 @@ describe("AgentProxyService", () => {
   describe("isEnabled / isFallbackEnabled", () => {
     it("habilita proxy solo con true|1", () => {
       expect(
-        new AgentProxyService(mockConfig({ USE_PYTHON_AGENT: "true" })).isEnabled(),
+        new AgentProxyService(
+          mockConfig({ USE_PYTHON_AGENT: "true" }),
+        ).isEnabled(),
       ).toBe(true);
       expect(
-        new AgentProxyService(mockConfig({ USE_PYTHON_AGENT: "1" })).isEnabled(),
+        new AgentProxyService(
+          mockConfig({ USE_PYTHON_AGENT: "1" }),
+        ).isEnabled(),
       ).toBe(true);
       expect(
-        new AgentProxyService(mockConfig({ USE_PYTHON_AGENT: "false" })).isEnabled(),
+        new AgentProxyService(
+          mockConfig({ USE_PYTHON_AGENT: "false" }),
+        ).isEnabled(),
       ).toBe(false);
       expect(new AgentProxyService(mockConfig({})).isEnabled()).toBe(false);
     });
@@ -53,7 +59,9 @@ describe("AgentProxyService", () => {
     const proxy = new AgentProxyService(mockConfig({}));
 
     it("parsea delta / tool_round / done / error", () => {
-      expect(proxy.parseSseDataLine('data: {"type":"delta","text":"hola"}')).toEqual({
+      expect(
+        proxy.parseSseDataLine('data: {"type":"delta","text":"hola"}'),
+      ).toEqual({
         type: "delta",
         text: "hola",
       });
@@ -61,7 +69,9 @@ describe("AgentProxyService", () => {
         type: "tool_round",
       });
       expect(
-        proxy.parseSseDataLine('data: {"type":"done","reply":"ok","model":"m"}'),
+        proxy.parseSseDataLine(
+          'data: {"type":"done","reply":"ok","model":"m"}',
+        ),
       ).toEqual({ type: "done", reply: "ok", model: "m" });
       expect(
         proxy.parseSseDataLine('data: {"type":"error","message":"boom"}'),
@@ -84,10 +94,7 @@ describe("AgentProxyService", () => {
         }),
       );
       await expect(
-        proxy.chat(
-          { message: "hola" },
-          { organizationId: 0, userId: 1 },
-        ),
+        proxy.chat({ message: "hola" }, { organizationId: 0, userId: 1 }),
       ).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
 
@@ -148,12 +155,15 @@ describe("AgentProxyService", () => {
       }) as unknown as typeof fetch;
 
       const proxy = new AgentProxyService(
-        mockConfig({ AGENT_SECRET: "sec", PYTHON_AGENT_URL: "http://localhost:8000" }),
+        mockConfig({
+          AGENT_SECRET: "sec",
+          PYTHON_AGENT_URL: "http://localhost:8000",
+        }),
       );
 
-      await expect(
-        proxy.chat({ message: "hola" }, context),
-      ).rejects.toThrow(/Agent Python no disponible/);
+      await expect(proxy.chat({ message: "hola" }, context)).rejects.toThrow(
+        /Agent Python no disponible/,
+      );
     });
   });
 

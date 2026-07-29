@@ -61,7 +61,10 @@ export class PayrollController {
     @Query("limit") limit?: string,
   ) {
     const n = limit ? parseInt(limit, 10) : 20;
-    return this.payrollService.listRuns(organizationId, Number.isFinite(n) ? n : 20);
+    return this.payrollService.listRuns(
+      organizationId,
+      Number.isFinite(n) ? n : 20,
+    );
   }
 
   @Get("runs/:id")

@@ -96,12 +96,12 @@ export class UploadService {
     file: Express.Multer.File,
     storagePath: string,
   ): Promise<string> {
-    const { error: uploadError } = await this.supabase!.storage
-      .from(this.bucket!)
-      .upload(storagePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false,
-      });
+    const { error: uploadError } = await this.supabase!.storage.from(
+      this.bucket!,
+    ).upload(storagePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
 
     if (uploadError) {
       throw new BadRequestException(
@@ -111,9 +111,10 @@ export class UploadService {
 
     // Generar signed URL para lectura (bucket privado)
     const { data: signedUrlData, error: signedUrlError } =
-      await this.supabase!.storage
-        .from(this.bucket!)
-        .createSignedUrl(storagePath, SIGNED_URL_EXPIRY);
+      await this.supabase!.storage.from(this.bucket!).createSignedUrl(
+        storagePath,
+        SIGNED_URL_EXPIRY,
+      );
 
     if (signedUrlError) {
       throw new BadRequestException(

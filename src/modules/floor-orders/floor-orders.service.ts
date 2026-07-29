@@ -34,13 +34,16 @@ function resolveHistoryRange(
   from?: string,
   to?: string,
 ): { from: string; to: string } {
-  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from) && to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+  if (
+    from &&
+    /^\d{4}-\d{2}-\d{2}$/.test(from) &&
+    to &&
+    /^\d{4}-\d{2}-\d{2}$/.test(to)
+  ) {
     return { from, to };
   }
   const ym =
-    month && /^\d{4}-\d{2}$/.test(month)
-      ? month
-      : todayCaracas().slice(0, 7);
+    month && /^\d{4}-\d{2}$/.test(month) ? month : todayCaracas().slice(0, 7);
   const [y, m] = ym.split("-").map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return {
@@ -210,7 +213,9 @@ export class FloorOrdersService {
         ...r,
         totalUsd: Math.round(r.totalUsd * 100) / 100,
       }))
-      .sort((a, b) => b.pending - a.pending || a.fullName.localeCompare(b.fullName));
+      .sort(
+        (a, b) => b.pending - a.pending || a.fullName.localeCompare(b.fullName),
+      );
   }
 
   /**
@@ -359,7 +364,9 @@ export class FloorOrdersService {
       },
     });
     if (products.length !== new Set(productIds).size) {
-      throw new NotFoundException("Uno o más productos no existen o están inactivos");
+      throw new NotFoundException(
+        "Uno o más productos no existen o están inactivos",
+      );
     }
     const byId = new Map(products.map((p) => [p.id, p]));
 
@@ -397,9 +404,10 @@ export class FloorOrdersService {
       }
     }
 
-    const paymentMode = dto.paymentMode === "CUENTA_ABIERTA"
-      ? FloorPaymentMode.CUENTA_ABIERTA
-      : FloorPaymentMode.INMEDIATO;
+    const paymentMode =
+      dto.paymentMode === "CUENTA_ABIERTA"
+        ? FloorPaymentMode.CUENTA_ABIERTA
+        : FloorPaymentMode.INMEDIATO;
 
     const isOpen = paymentMode === FloorPaymentMode.CUENTA_ABIERTA;
 
@@ -474,7 +482,8 @@ export class FloorOrdersService {
 
     for (const [productId, qty] of needByProduct) {
       const p = byId.get(productId);
-      if (!p) throw new NotFoundException(`Producto ${productId} no encontrado`);
+      if (!p)
+        throw new NotFoundException(`Producto ${productId} no encontrado`);
       if (p.isBundle || p.isService) {
         throw new BadRequestException(
           `El producto "${p.name}" es combo/servicio; use el POS para cobro directo`,
@@ -713,7 +722,10 @@ export class FloorOrdersService {
     }
 
     // Obtener companyId de la organización
-    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const companyId = await getCompanyIdFromOrganization(
+      this.prisma,
+      organizationId,
+    );
 
     const name = `${dto.firstName} ${dto.lastName}`.trim();
 
@@ -748,7 +760,11 @@ export class FloorOrdersService {
     organizationId: number,
     userId: number,
     customerId: number,
-    dto: { paymentMethod?: string; payments?: { method: string; amount: number; currency: string }[]; notes?: string },
+    dto: {
+      paymentMethod?: string;
+      payments?: { method: string; amount: number; currency: string }[];
+      notes?: string;
+    },
   ) {
     // FASE 1: Obtener órdenes elegibles
     // Solo órdenes activas que reservaron stock: SENT, IN_PREP, READY
@@ -773,7 +789,9 @@ export class FloorOrdersService {
     });
 
     if (!orders.length) {
-      throw new BadRequestException("No hay órdenes abiertas para este cliente");
+      throw new BadRequestException(
+        "No hay órdenes abiertas para este cliente",
+      );
     }
 
     const orderIds = orders.map((o) => o.id);
@@ -813,7 +831,10 @@ export class FloorOrdersService {
     for (const order of orders) {
       for (const item of order.items) {
         allItems.push({ productId: item.productId, quantity: item.quantity });
-        releaseReserved.push({ productId: item.productId, quantity: item.quantity });
+        releaseReserved.push({
+          productId: item.productId,
+          quantity: item.quantity,
+        });
       }
     }
 
@@ -831,8 +852,14 @@ export class FloorOrdersService {
           customerId,
           items: allItems,
           paymentMethod: dto.paymentMethod,
-          payments: dto.payments?.map(p => ({
-            method: p.method as "CASH_USD" | "CASH_BS" | "PAGO_MOVIL" | "ZELLE" | "CARD" | "CREDIT",
+          payments: dto.payments?.map((p) => ({
+            method: p.method as
+              | "CASH_USD"
+              | "CASH_BS"
+              | "PAGO_MOVIL"
+              | "ZELLE"
+              | "CARD"
+              | "CREDIT",
             amount: p.amount,
             currency: p.currency as "USD" | "VES",
           })),
@@ -891,7 +918,9 @@ export class FloorOrdersService {
         organizationId,
         paymentMode: "CUENTA_ABIERTA",
         isOpen: true,
-        status: { notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED] },
+        status: {
+          notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED],
+        },
       },
       include: {
         items: {
@@ -903,13 +932,16 @@ export class FloorOrdersService {
     });
 
     // Agrupar por customerId
-    const grouped = new Map<number, {
-      customerId: number;
-      customerName: string;
-      totalUsd: number;
-      ordersCount: number;
-      orders: typeof orders;
-    }>();
+    const grouped = new Map<
+      number,
+      {
+        customerId: number;
+        customerName: string;
+        totalUsd: number;
+        ordersCount: number;
+        orders: typeof orders;
+      }
+    >();
 
     for (const order of orders) {
       const key = order.customerId ?? 0;
@@ -947,7 +979,9 @@ export class FloorOrdersService {
         customerId,
         paymentMode: "CUENTA_ABIERTA",
         isOpen: true,
-        status: { notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED] },
+        status: {
+          notIn: [FloorOrderStatus.CHARGED, FloorOrderStatus.CANCELLED],
+        },
       },
       include: {
         items: {

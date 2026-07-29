@@ -16,9 +16,10 @@ import { FiscalValidationService } from "./fiscal-validation.service";
 import { FiscalEventsService } from "./fiscal-events.service";
 import { FiscalAuditService } from "./fiscal-audit.service";
 import { FiscalNormsService } from "./fiscal-norms.service";
+import { FiscalQueryModule } from "./fiscal-query/fiscal-query.module";
 
 @Module({
-  imports: [PrismaModule, NotificationsModule],
+  imports: [PrismaModule, NotificationsModule, FiscalQueryModule],
   controllers: [FiscalController],
   providers: [
     FiscalService,

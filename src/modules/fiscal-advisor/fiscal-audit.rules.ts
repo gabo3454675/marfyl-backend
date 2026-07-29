@@ -44,7 +44,9 @@ export function ivaDeadlineForTerminal(
   return new Date(year, month, day, 23, 59, 59, 999);
 }
 
-export function evaluateIgtfAlert(resumen: ResumenOperativo): AuditWarning | null {
+export function evaluateIgtfAlert(
+  resumen: ResumenOperativo,
+): AuditWarning | null {
   if (resumen.pagosDivisasEfectivo > 0 && resumen.igtfRecaudado === 0) {
     return {
       code: "IGTF_NO_PERCIBIDO",
@@ -54,7 +56,8 @@ export function evaluateIgtfAlert(resumen: ResumenOperativo): AuditWarning | nul
         "Riesgo de multa por no percibir el IGTF (3%) en pagos con divisas en efectivo según la LIGTF.",
       accionMarfyl:
         "Active el impuesto IGTF en la configuración de cajas y registre el 3% en cada cobro en divisas.",
-      referenciaLegal: "LIGTF — Impuesto a las Grandes Transacciones Financieras",
+      referenciaLegal:
+        "LIGTF — Impuesto a las Grandes Transacciones Financieras",
     };
   }
   return null;
@@ -105,11 +108,7 @@ export function evaluateCalendario0141Alert(
     ? new Date(resumen.ultimaDeclaracionIVA)
     : null;
 
-  if (
-    ultima &&
-    ultima.getFullYear() === year &&
-    ultima.getMonth() === month
-  ) {
+  if (ultima && ultima.getFullYear() === year && ultima.getMonth() === month) {
     return null;
   }
 
@@ -120,7 +119,8 @@ export function evaluateCalendario0141Alert(
     message: `Faltan ${daysLeft} día(s) para el vencimiento de su declaración de IVA (terminal RIF ${terminal}, límite ${deadline.toLocaleDateString("es-VE")}) según calendario de especiales (Prov. SNAT/0141).`,
     accionMarfyl:
       "Prepare el libro de ventas y declare en el módulo Fiscal de MARFYL antes del vencimiento.",
-    referenciaLegal: "Providencia Administrativa SNAT/0141 · Calendario de Especiales",
+    referenciaLegal:
+      "Providencia Administrativa SNAT/0141 · Calendario de Especiales",
   };
 }
 

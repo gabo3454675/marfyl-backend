@@ -1,8 +1,15 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { Groq } from "groq-sdk";
-import type { ChatCompletionChunk, ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
+import type {
+  ChatCompletionChunk,
+  ChatCompletionMessageParam,
+} from "groq-sdk/resources/chat/completions";
 
 // ──────────────────────────────────────────────────
 // Types
@@ -61,9 +68,13 @@ export class MarfylAIService {
   ) {
     this.groqApiKey = this.config.get<string>("GROQ_API_KEY")?.trim() || "";
     this.groqModel =
-      this.config.get<string>("MARFYL_MODEL")?.trim() || "llama-3.3-70b-versatile";
+      this.config.get<string>("MARFYL_MODEL")?.trim() ||
+      "llama-3.3-70b-versatile";
     this.cohereApiKey = this.config.get<string>("COHERE_API_KEY")?.trim() || "";
-    this.topK = Math.min(Math.max(this.config.get<number>("MARFYL_TOP_K") ?? 3, 1), 10);
+    this.topK = Math.min(
+      Math.max(this.config.get<number>("MARFYL_TOP_K") ?? 3, 1),
+      10,
+    );
   }
 
   // ── Embedding via Cohere API ────────────────────
@@ -134,7 +145,7 @@ export class MarfylAIService {
 
     const vectorLiteral = `[${safeVector}]`;
 
-    const rows = await this.prisma.$queryRawUnsafe<
+    const rows = await this.prisma.$queryRaw<
       Array<{
         fuente: string;
         categoria: string;
@@ -143,23 +154,19 @@ export class MarfylAIService {
         explicacion_simplificada: string | null;
         similarity: number;
       }>
-    >(
-      `
+    >`
       SELECT
         fuente,
         categoria,
         articulo_seccion,
         contenido_legal,
         explicacion_simplificada,
-        1 - (embedding <=> $1::vector(1024)) AS similarity
+        1 - (embedding <=> ${vectorLiteral}::vector(1024)) AS similarity
       FROM marfyl_conocimiento_estrategico
-      WHERE 1 - (embedding <=> $1::vector(1024)) > 0.5
-      ORDER BY embedding <=> $1::vector(1024)
-      LIMIT $2
-      `,
-      vectorLiteral,
-      limit,
-    );
+      WHERE 1 - (embedding <=> ${vectorLiteral}::vector(1024)) > 0.5
+      ORDER BY embedding <=> ${vectorLiteral}::vector(1024)
+      LIMIT ${limit}
+    `;
 
     return rows.map((r) => ({
       fuente: r.fuente,

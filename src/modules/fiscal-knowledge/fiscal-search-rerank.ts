@@ -30,8 +30,7 @@ export function rerankFiscalHits(
     let rerankScore = hit.similarity;
 
     const leyMatch = leyHint != null && hit.ley === leyHint;
-    const articuloMatch =
-      articuloHint != null && hit.articulo === articuloHint;
+    const articuloMatch = articuloHint != null && hit.articulo === articuloHint;
 
     if (leyMatch) rerankScore += LEY_MATCH_BOOST;
     if (articuloMatch) rerankScore += ARTICULO_MATCH_BOOST;

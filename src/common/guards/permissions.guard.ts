@@ -3,14 +3,14 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from '@/common/decorators/permissions.decorator';
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { PERMISSIONS_KEY } from "@/common/decorators/permissions.decorator";
 import {
   getPermissionsForRole,
   type PermissionKey,
   type RoleName,
-} from '@/common/constants/permissions.constants';
+} from "@/common/constants/permissions.constants";
 
 /**
  * Guard que verifica que el usuario tenga TODOS los permisos requeridos.
@@ -49,14 +49,14 @@ export class PermissionsGuard implements CanActivate {
 
     if (!membership) {
       throw new ForbiddenException(
-        'No se pudo verificar permisos. Asegúrate de enviar el header x-tenant-id.',
+        "No se pudo verificar permisos. Asegúrate de enviar el header x-tenant-id.",
       );
     }
 
-    const userRole = String(membership.role || '').toUpperCase();
+    const userRole = String(membership.role || "").toUpperCase();
 
     // SUPER_ADMIN bypasea todos los permisos
-    if (userRole === 'SUPER_ADMIN') {
+    if (userRole === "SUPER_ADMIN") {
       return true;
     }
 
@@ -68,7 +68,7 @@ export class PermissionsGuard implements CanActivate {
 
     if (missingPermissions.length > 0) {
       throw new ForbiddenException(
-        `Permisos insuficientes. Se requieren: ${missingPermissions.join(', ')}`,
+        `Permisos insuficientes. Se requieren: ${missingPermissions.join(", ")}`,
       );
     }
 

@@ -44,6 +44,7 @@ import { SalesImportModule } from "./modules/sales-import/sales-import.module";
 import { PurchasesImportModule } from "./modules/purchases-import/purchases-import.module";
 import { CashHoldModule } from "./modules/cash-hold/cash-hold.module";
 import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
+import { FiscalKnowledgeModule } from "./modules/fiscal-knowledge/fiscal-knowledge.module";
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
     PurchasesImportModule,
     CashHoldModule,
     FloorOrdersModule,
+    FiscalKnowledgeModule,
     ThrottlerModule.forRoot([
       {
         name: "short",

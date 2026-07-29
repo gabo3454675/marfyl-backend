@@ -35,10 +35,12 @@ export function roleToLabel(role: string): string {
 
 export function defaultProfileForRole(role: string) {
   return (
-    DEFAULT_BY_ROLE[role] ?? { payType: "FIXED" as PayrollPayType, baseSalary: 400 }
+    DEFAULT_BY_ROLE[role] ?? {
+      payType: "FIXED" as PayrollPayType,
+      baseSalary: 400,
+    }
   );
 }
-
 
 export function calculateNetAmount(profile: {
   payType: PayrollPayType;
@@ -54,7 +56,10 @@ export function calculateNetAmount(profile: {
   } else if (profile.payType === "COMMISSION") {
     base = base + base * (num(profile.commissionPct) / 100);
   }
-  return Math.round((base + num(profile.bonuses) - num(profile.deductions)) * 100) / 100;
+  return (
+    Math.round((base + num(profile.bonuses) - num(profile.deductions)) * 100) /
+    100
+  );
 }
 
 export function mapProfileStatus(

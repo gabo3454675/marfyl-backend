@@ -9,7 +9,11 @@ import { FiscalAdvisorContextService } from "./fiscal-advisor-context.service";
 @Module({
   imports: [PrismaModule, FiscalKnowledgeModule],
   controllers: [FiscalAdvisorController],
-  providers: [FiscalAdvisorService, FiscalAdvisorContextService, MarfylAIService],
+  providers: [
+    FiscalAdvisorService,
+    FiscalAdvisorContextService,
+    MarfylAIService,
+  ],
   exports: [FiscalAdvisorService, MarfylAIService],
 })
 export class FiscalAdvisorModule {}

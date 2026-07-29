@@ -9,6 +9,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { buildDevPreviewUser, isDevPreviewAuthEnabled } from "../dev-preview";
 import { OrganizationBillingService } from "../billing/organization-billing.service";
+import { INTERNAL_AGENT_DEFAULT_USER_ID } from "../internal-agent-auth";
 
 @Injectable()
 export class OrganizationGuard implements CanActivate {
@@ -27,7 +28,8 @@ export class OrganizationGuard implements CanActivate {
     }
 
     // Agente interno: tenant viene de X-Organization-Id (ya en user.organizationId).
-    // No exige membresía JWT; sí exige que la organización exista.
+    // B1: se exige membresía REAL del X-User-Id en la organización (status ACTIVE).
+    // B2: se usa el rol real del miembro; ya no se inyecta SUPER_ADMIN sintético.
     if (user.isInternalAgent === true) {
       const organizationId = user.organizationId ?? user.tenantId;
       if (organizationId == null || organizationId <= 0) {
@@ -36,9 +38,31 @@ export class OrganizationGuard implements CanActivate {
         );
       }
 
-      const organization = await this.prisma.organization.findUnique({
-        where: { id: organizationId },
+      // B1: X-User-Id obligatorio para validar membresía real.
+      // El helper de auth S2S deja user.id = INTERNAL_AGENT_DEFAULT_USER_ID (-1)
+      // cuando el header no viene; lo detectamos aquí sin reparsear headers.
+      if (user.id == null || user.id === INTERNAL_AGENT_DEFAULT_USER_ID) {
+        throw new BadRequestException(
+          "X-User-Id es obligatorio para el agente interno (se requiere membresía real)",
+        );
+      }
+
+      const membership = await this.prisma.member.findFirst({
+        where: {
+          userId: user.id,
+          organizationId,
+          status: "ACTIVE",
+        },
+        include: { organization: true },
       });
+
+      if (!membership) {
+        throw new ForbiddenException(
+          "El agente interno no tiene membresía activa en la organización indicada",
+        );
+      }
+
+      const organization = membership.organization;
       if (!organization) {
         throw new NotFoundException(
           `La organización con ID ${organizationId} no existe`,
@@ -47,16 +71,8 @@ export class OrganizationGuard implements CanActivate {
 
       request.activeOrganizationId = organizationId;
       request.activeOrganization = organization;
-      // Rol sintético con acceso total de permisos (agente trusted vía AGENT_SECRET).
-      request.activeOrganizationMembership = {
-        id: -1,
-        userId: user.id,
-        organizationId,
-        role: "SUPER_ADMIN",
-        status: "ACTIVE",
-        joinedAt: new Date(),
-        organization,
-      } as typeof request.activeOrganizationMembership;
+      // Rol real del miembro (B2): los guards de RBAC posteriores leen este campo.
+      request.activeOrganizationMembership = membership;
 
       await this.billing.assertOrganizationBillingActive(organizationId, {
         slug: organization.slug,

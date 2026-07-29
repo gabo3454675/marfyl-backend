@@ -6,6 +6,7 @@ import { InvoicesPublicController } from "./invoices-public.controller";
 import { InvoicesService } from "./invoices.service";
 import { InvoiceSequenceService } from "./invoice-sequence.service";
 import { LiquorSalesService } from "./liquor-sales.service";
+import { CanonicalInvoiceItemsRepository } from "./canonical/canonical-invoice-items.repository";
 import { AnyPermissionsGuard } from "@/common/guards/any-permissions.guard";
 import { CreditsModule } from "../credits/credits.module";
 import { TasksModule } from "../tasks/tasks.module";
@@ -24,8 +25,14 @@ import { FiscalModule } from "../fiscal/fiscal.module";
     InvoicesService,
     InvoiceSequenceService,
     LiquorSalesService,
+    CanonicalInvoiceItemsRepository,
     AnyPermissionsGuard,
   ],
-  exports: [InvoicesService, InvoiceSequenceService, LiquorSalesService],
+  exports: [
+    InvoicesService,
+    InvoiceSequenceService,
+    LiquorSalesService,
+    CanonicalInvoiceItemsRepository,
+  ],
 })
 export class InvoicesModule {}

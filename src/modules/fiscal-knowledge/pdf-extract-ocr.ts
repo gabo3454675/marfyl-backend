@@ -3,7 +3,10 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import { createCanvas } from "@napi-rs/canvas";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import {
+  getDocument,
+  GlobalWorkerOptions,
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createWorker, type Worker } from "tesseract.js";
 import { extractPdfText } from "./pdf-extract";
 
@@ -96,10 +99,7 @@ export async function extractPdfTextWithOcr(
       : "[ocr] PDF sin capa de texto, aplicando OCR…",
   );
 
-  const pageImages = await renderPdfPagesToPng(
-    filePath,
-    options.maxPages ?? 0,
-  );
+  const pageImages = await renderPdfPagesToPng(filePath, options.maxPages ?? 0);
   log(`[ocr] ${pageImages.length} página(s) a procesar…`);
 
   const worker = await getOcrWorker();

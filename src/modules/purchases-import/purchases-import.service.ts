@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import { buildMovementReason } from "@/modules/invoice-upload/invoice-upload.constants";
@@ -78,8 +74,16 @@ export class PurchasesImportService {
   }
 
   private nameSimilarity(a: string, b: string): number {
-    const wa = new Set(this.normalizeName(a).split(" ").filter((w) => w.length > 2));
-    const wb = new Set(this.normalizeName(b).split(" ").filter((w) => w.length > 2));
+    const wa = new Set(
+      this.normalizeName(a)
+        .split(" ")
+        .filter((w) => w.length > 2),
+    );
+    const wb = new Set(
+      this.normalizeName(b)
+        .split(" ")
+        .filter((w) => w.length > 2),
+    );
     if (wa.size === 0 || wb.size === 0) return 0;
     let shared = 0;
     for (const w of wa) if (wb.has(w)) shared += 1;
@@ -94,12 +98,18 @@ export class PurchasesImportService {
     line: ParsedPurchaseLine,
     bySku: Map<string, ProductRow>,
     byName: Map<string, ProductRow>,
-  ): { product: ProductRow | null; method: PurchaseLinePreview["matchMethod"] } {
+  ): {
+    product: ProductRow | null;
+    method: PurchaseLinePreview["matchMethod"];
+  } {
     const skuKey = this.normalizeSku(line.sku);
     const descKey = this.normalizeName(line.description);
 
     const bySkuHit = bySku.get(skuKey);
-    if (bySkuHit && this.nameSimilarity(bySkuHit.name, line.description) >= 0.3) {
+    if (
+      bySkuHit &&
+      this.nameSimilarity(bySkuHit.name, line.description) >= 0.3
+    ) {
       return { product: bySkuHit, method: "sku" };
     }
 
@@ -127,7 +137,9 @@ export class PurchasesImportService {
   }): Promise<PurchasesImportPreview> {
     const groups = parseMonddyPurchasesExcel(params.buffer);
     if (groups.length === 0) {
-      throw new BadRequestException("No se encontraron líneas de compra en el archivo");
+      throw new BadRequestException(
+        "No se encontraron líneas de compra en el archivo",
+      );
     }
 
     const products = await this.prisma.product.findMany({
@@ -206,7 +218,10 @@ export class PurchasesImportService {
         purchaseDate: group.purchaseDate,
         invoiceRef: group.invoiceRef,
         supplierName: group.supplierName,
-        totalUsd: Math.round(lines.reduce((s, l) => s + l.quantity * l.unitCostUsd, 0) * 100) / 100,
+        totalUsd:
+          Math.round(
+            lines.reduce((s, l) => s + l.quantity * l.unitCostUsd, 0) * 100,
+          ) / 100,
         lines,
         importKey,
         alreadyImported: importedKeys.has(importKey),
@@ -268,7 +283,9 @@ export class PurchasesImportService {
 
     for (const group of groups) {
       const importKey = this.buildImportKey(group);
-      const groupPreview = preview.groups.find((g) => g.groupIndex === group.groupIndex);
+      const groupPreview = preview.groups.find(
+        (g) => g.groupIndex === group.groupIndex,
+      );
       if (params.skipImported !== false && groupPreview?.alreadyImported) {
         expensesSkipped += 1;
         continue;
@@ -295,7 +312,9 @@ export class PurchasesImportService {
           organizationId: params.organizationId,
           companyId,
           line,
-          previewLine: groupPreview?.lines.find((l) => l.rowNum === line.rowNum),
+          previewLine: groupPreview?.lines.find(
+            (l) => l.rowNum === line.rowNum,
+          ),
         });
         if (created && !createdProductIds.has(productId)) {
           createdProductIds.add(productId);
@@ -315,9 +334,10 @@ export class PurchasesImportService {
         });
       }
 
-      const totalAmount = Math.round(
-        validated.reduce((s, l) => s + l.quantity * l.unitCostUsd, 0) * 100,
-      ) / 100;
+      const totalAmount =
+        Math.round(
+          validated.reduce((s, l) => s + l.quantity * l.unitCostUsd, 0) * 100,
+        ) / 100;
 
       await this.prisma.$transaction(
         async (tx) => {

@@ -42,7 +42,9 @@ function extractTitle(body: string): string | null {
     .find((l) => l.length > 8);
   if (!firstLine) return null;
   if (/^Art[ií]culo\s+\d+/i.test(firstLine)) {
-    const rest = firstLine.replace(/^Art[ií]culo\s+\d+\s*[°º.:]?\s*/i, "").trim();
+    const rest = firstLine
+      .replace(/^Art[ií]culo\s+\d+\s*[°º.:]?\s*/i, "")
+      .trim();
     return rest.length > 3 ? rest.slice(0, 500) : null;
   }
   return firstLine.slice(0, 500);
@@ -100,7 +102,9 @@ export function chunkByArticles(
     const match = matches[i];
     const start = match.index ?? 0;
     const end =
-      i + 1 < matches.length ? (matches[i + 1].index ?? text.length) : text.length;
+      i + 1 < matches.length
+        ? (matches[i + 1].index ?? text.length)
+        : text.length;
     const articulo = Number.parseInt(match[1], 10);
     if (!Number.isFinite(articulo)) continue;
 
@@ -108,7 +112,11 @@ export function chunkByArticles(
     if (!body) continue;
 
     // Asegura que párrafos legales no se corten en límites internos
-    if (PARAGRAPH_MARKERS.test(body) && body.length < 40 && i + 1 < matches.length) {
+    if (
+      PARAGRAPH_MARKERS.test(body) &&
+      body.length < 40 &&
+      i + 1 < matches.length
+    ) {
       const nextEnd =
         i + 2 < matches.length
           ? (matches[i + 2].index ?? text.length)

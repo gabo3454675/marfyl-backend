@@ -12,10 +12,7 @@ export class InvoiceSequenceService {
    * Reserva el siguiente consecutivo de factura para la organización (atómico).
    * Debe llamarse dentro de la misma transacción que crea la factura.
    */
-  async allocateNext(
-    organizationId: number,
-    tx?: TxClient,
-  ): Promise<number> {
+  async allocateNext(organizationId: number, tx?: TxClient): Promise<number> {
     if (tx) {
       return this.allocateInTransaction(tx, organizationId);
     }

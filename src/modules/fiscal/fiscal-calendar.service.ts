@@ -43,10 +43,7 @@ const DEFAULT_FISCAL_CALENDAR_RULES: RulesJson = {
     {
       code: "IVA_ORDINARIO",
       name: "Declaración y pago IVA (ordinario)",
-      taxpayerTypes: [
-        FiscalTaxpayerType.ORDINARIO,
-        FiscalTaxpayerType.FORMAL,
-      ],
+      taxpayerTypes: [FiscalTaxpayerType.ORDINARIO, FiscalTaxpayerType.FORMAL],
       periodicity: "MENSUAL",
       dueMonthOffset: 1,
       rulesByRifDigit: true,
@@ -113,7 +110,14 @@ export class FiscalCalendarService {
       path.join(process.cwd(), "..", "docs", "FISCAL-CALENDARIO-REGLAS.json"),
       // nest build → dist/modules/fiscal/*.js
       path.join(__dirname, "assets", "FISCAL-CALENDARIO-REGLAS.json"),
-      path.join(__dirname, "..", "..", "..", "docs", "FISCAL-CALENDARIO-REGLAS.json"),
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "docs",
+        "FISCAL-CALENDARIO-REGLAS.json",
+      ),
     ];
     for (const p of candidates) {
       if (fs.existsSync(p)) return p;

@@ -78,8 +78,8 @@ export class DashboardService {
       Array<{ profit: Prisma.Decimal | null }>
     >`
       SELECT COALESCE(SUM(
-        (ii."unitPrice"::numeric * ii.quantity)
-        - (p."costPrice"::numeric * ii.quantity)
+        (ii."unitPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
+        - (p."costPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
       ), 0) AS profit
       FROM invoice_items ii
       INNER JOIN invoices i ON i.id = ii."invoiceId"
@@ -87,6 +87,8 @@ export class DashboardService {
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
         AND COALESCE(i."isLegacyImport", false) = false
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         AND i."issueDate" >= ${from}
         ${dateToFilter}
     `;
@@ -111,12 +113,14 @@ export class DashboardService {
     const rows = await this.prisma.$queryRaw<
       Array<{ cost: Prisma.Decimal | null }>
     >`
-      SELECT COALESCE(SUM(p."costPrice"::numeric * ii.quantity), 0) AS cost
+      SELECT COALESCE(SUM(p."costPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity")), 0) AS cost
       FROM invoice_items ii
       INNER JOIN invoices i ON i.id = ii."invoiceId"
       INNER JOIN products p ON p.id = ii."productId"
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         ${scopeFilter}
         AND i."issueDate" >= ${from}
         ${dateToFilter}
@@ -353,8 +357,8 @@ export class DashboardService {
         p.id AS product_id,
         p.name AS product_name,
         COALESCE(SUM(
-          (ii."unitPrice"::numeric * ii.quantity)
-          - (p."costPrice"::numeric * ii.quantity)
+          (ii."unitPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
+          - (p."costPrice"::numeric * COALESCE(ii.quantity::numeric, ii."effectiveQuantity"))
         ), 0) AS margin
       FROM invoice_items ii
       INNER JOIN invoices i ON i.id = ii."invoiceId"
@@ -362,6 +366,8 @@ export class DashboardService {
       WHERE i."organizationId" = ${organizationId}
         AND i.status = 'PAID'
         AND i."deletedAt" IS NULL
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
         AND i."issueDate" >= ${chartFrom}
         AND i."issueDate" < ${this.addUtcDays(todayUtc, 1)}
       GROUP BY p.id, p.name
@@ -369,11 +375,13 @@ export class DashboardService {
       LIMIT 5
     `;
 
-    const topProductsByMargin: TopProductMarginDto[] = topMarginRaw.map((row) => ({
-      productId: row.product_id,
-      productName: row.product_name,
-      margin: Math.round(Number(row.margin) * 100) / 100,
-    }));
+    const topProductsByMargin: TopProductMarginDto[] = topMarginRaw.map(
+      (row) => ({
+        productId: row.product_id,
+        productName: row.product_name,
+        margin: Math.round(Number(row.margin) * 100) / 100,
+      }),
+    );
 
     // KPIs: ticket promedio (mes actual), crecimiento mensual - OPTIMIZADO con aggregations
     const [invoicesThisMonthAgg, invoicesLastMonthAgg] = await Promise.all([
@@ -403,7 +411,9 @@ export class DashboardService {
       countLastMonth > 0 ? totalLastMonth / countLastMonth : 0;
     const crecimientoMensual: number =
       totalLastMonth > 0
-        ? Math.round(((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 * 10) / 10
+        ? Math.round(
+            ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100 * 10,
+          ) / 10
         : totalThisMonth > 0
           ? 100
           : 0;
@@ -417,7 +427,11 @@ export class DashboardService {
     // Ganancia neta estimada (ingresos - costos de reposición en USD), sin importaciones legacy
     const [estimatedNetProfit, estimatedNetProfitPrev, costAllSalesMonth] =
       await Promise.all([
-        this.aggregateNetProfitUsd(organizationId, firstDayThisMonth, undefined),
+        this.aggregateNetProfitUsd(
+          organizationId,
+          firstDayThisMonth,
+          undefined,
+        ),
         this.aggregateNetProfitUsd(
           organizationId,
           firstDayLastMonth,
@@ -431,7 +445,7 @@ export class DashboardService {
         ),
       ]);
 
-      const sixMonthsAgo = new Date(
+    const sixMonthsAgo = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1),
     );
     const monthlySalesRaw = await this.prisma.$queryRaw<
@@ -447,11 +461,27 @@ export class DashboardService {
       ORDER BY month
     `;
 
-    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const monthNames = [
+      "Ene",
+      "Feb",
+      "Mar",
+      "Abr",
+      "May",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dic",
+    ];
     const monthlySalesChart = monthlySalesRaw.map((row) => {
-      const [year, month] = row.month.split('-');
+      const [year, month] = row.month.split("-");
       const label = `${monthNames[parseInt(month, 10) - 1]} ${year}`;
-      return { month: label, ventas: Math.round(Number(row.total) * 100) / 100 };
+      return {
+        month: label,
+        ventas: Math.round(Number(row.total) * 100) / 100,
+      };
     });
 
     // Punto de equilibrio: Costos Fijos / Margen Promedio
@@ -522,8 +552,7 @@ export class DashboardService {
           p.salePriceCurrency,
           rate,
         );
-        const marginPct =
-          saleUsd > 0 ? ((saleUsd - cost) / saleUsd) * 100 : 0;
+        const marginPct = saleUsd > 0 ? ((saleUsd - cost) / saleUsd) * 100 : 0;
         return {
           productId: p.id,
           productName: p.name,
@@ -697,7 +726,12 @@ export class DashboardService {
         ...this.paidVolumeWhere(organizationId),
         issueDate: { gte: frictionSince },
       },
-      select: { createdAt: true, updatedAt: true, markedAsPaidAt: true, issueDate: true },
+      select: {
+        createdAt: true,
+        updatedAt: true,
+        markedAsPaidAt: true,
+        issueDate: true,
+      },
     });
 
     const timesMs: number[] = [];

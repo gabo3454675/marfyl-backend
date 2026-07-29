@@ -97,10 +97,7 @@ export function tryAuthenticateInternalAgent(request: {
   }
 
   const orgRaw = headerValue(request.headers, INTERNAL_ORGANIZATION_HEADER);
-  const organizationId = parsePositiveIntHeader(
-    orgRaw,
-    "X-Organization-Id",
-  );
+  const organizationId = parsePositiveIntHeader(orgRaw, "X-Organization-Id");
 
   const userRaw = headerValue(request.headers, INTERNAL_USER_HEADER);
   const userId =

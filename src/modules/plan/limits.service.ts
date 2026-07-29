@@ -1,5 +1,5 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
-import { Plan } from '@prisma/client';
+import { Injectable, ForbiddenException } from "@nestjs/common";
+import { Plan } from "@prisma/client";
 
 export interface PlanLimits {
   maxUsers: number;
@@ -93,18 +93,18 @@ export const PLAN_PRICES: Record<Plan, number> = {
 };
 
 export const PLAN_DISPLAY_NAMES: Record<Plan, string> = {
-  FREE: 'Free',
-  BASIC: 'Starter',
-  PREMIUM: 'Professional',
-  ENTERPRISE: 'Enterprise',
+  FREE: "Free",
+  BASIC: "Starter",
+  PREMIUM: "Professional",
+  ENTERPRISE: "Enterprise",
 };
 
 // User-facing plan descriptions
 export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
-  FREE: 'Para negocios que inician',
-  BASIC: 'Para pequeños comercios',
-  PREMIUM: 'El más popular para pymes',
-  ENTERPRISE: 'Control total',
+  FREE: "Para negocios que inician",
+  BASIC: "Para pequeños comercios",
+  PREMIUM: "El más popular para pymes",
+  ENTERPRISE: "Control total",
 };
 
 @Injectable()
@@ -118,19 +118,19 @@ export class PlanLimitsService {
   }
 
   getDisplayName(plan: Plan): string {
-    return PLAN_DISPLAY_NAMES[plan] ?? 'Unknown';
+    return PLAN_DISPLAY_NAMES[plan] ?? "Unknown";
   }
 
   getDescription(plan: Plan): string {
-    return PLAN_DESCRIPTIONS[plan] ?? '';
+    return PLAN_DESCRIPTIONS[plan] ?? "";
   }
 
   getPlanName(plan: Plan): string {
-    return PLAN_DISPLAY_NAMES[plan] ?? 'Unknown';
+    return PLAN_DISPLAY_NAMES[plan] ?? "Unknown";
   }
 
   formatLimit(limit: number): string {
-    return limit === -1 ? 'Ilimitado' : limit.toString();
+    return limit === -1 ? "Ilimitado" : limit.toString();
   }
 
   canAddUser(plan: Plan, currentUserCount: number): boolean {
@@ -204,8 +204,9 @@ export class PlanLimitsService {
         hasAPIAccess: limits.hasAPIAccess,
         hasMultiCompany: limits.hasMultiCompany,
       },
-      canUpgrade: plan !== 'ENTERPRISE',
-      upgradeTo: plan === 'FREE' ? 'BASIC' : plan === 'BASIC' ? 'PREMIUM' : 'ENTERPRISE',
+      canUpgrade: plan !== "ENTERPRISE",
+      upgradeTo:
+        plan === "FREE" ? "BASIC" : plan === "BASIC" ? "PREMIUM" : "ENTERPRISE",
     };
   }
 }

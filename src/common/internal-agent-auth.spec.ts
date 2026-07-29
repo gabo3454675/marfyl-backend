@@ -31,7 +31,9 @@ const { OrganizationGuard } = require("./guards/organization.guard") as {
   };
 };
 
-function mockHttpExecutionContext(request: Record<string, unknown>): ExecutionContext {
+function mockHttpExecutionContext(
+  request: Record<string, unknown>,
+): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => request,
@@ -137,24 +139,27 @@ describe("internal-agent-auth", () => {
 
     it("usa userId sintético si falta X-User-Id", () => {
       process.env.AGENT_SECRET = "shared-agent-secret";
-      const request: { headers: Record<string, string>; user?: { id: number } } =
-        {
-          headers: {
-            "x-internal-secret": "shared-agent-secret",
-            "x-organization-id": "2",
-          },
-        };
+      const request: {
+        headers: Record<string, string>;
+        user?: { id: number };
+      } = {
+        headers: {
+          "x-internal-secret": "shared-agent-secret",
+          "x-organization-id": "2",
+        },
+      };
 
       expect(tryAuthenticateInternalAgent(request)).toBe(true);
       expect(request.user?.id).toBe(INTERNAL_AGENT_DEFAULT_USER_ID);
     });
 
-    it("con secret válido: SuperAdminGuard rechaza; OrganizationGuard da acceso tenant", async () => {
+    it("con secret válido: SuperAdminGuard rechaza; OrganizationGuard valida membresía real del agente", async () => {
       process.env.AGENT_SECRET = "shared-agent-secret";
       const request: Record<string, unknown> = {
         headers: {
           "x-internal-secret": "shared-agent-secret",
           "x-organization-id": "9",
+          "x-user-id": "15",
         },
       };
 
@@ -179,9 +184,18 @@ describe("internal-agent-auth", () => {
         plan: "PRO",
         name: "Acme",
       };
+      const membership = {
+        id: 42,
+        userId: 15,
+        organizationId: 9,
+        role: "FISCAL",
+        status: "ACTIVE",
+        joinedAt: new Date(),
+        organization,
+      };
       const prisma = {
-        organization: {
-          findUnique: jest.fn().mockResolvedValue(organization),
+        member: {
+          findFirst: jest.fn().mockResolvedValue(membership),
         },
       };
       const billing = {
@@ -194,11 +208,13 @@ describe("internal-agent-auth", () => {
       ).resolves.toBe(true);
 
       expect(request.activeOrganizationId).toBe(9);
+      // B2: rol real del miembro, no SUPER_ADMIN sintético.
       expect(
         (request.activeOrganizationMembership as { role: string }).role,
-      ).toBe("SUPER_ADMIN");
-      expect(prisma.organization.findUnique).toHaveBeenCalledWith({
-        where: { id: 9 },
+      ).toBe("FISCAL");
+      expect(prisma.member.findFirst).toHaveBeenCalledWith({
+        where: { userId: 15, organizationId: 9, status: "ACTIVE" },
+        include: { organization: true },
       });
     });
   });

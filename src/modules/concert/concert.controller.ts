@@ -30,7 +30,8 @@ import { NotFoundException } from "@nestjs/common";
 @Controller("concert/admin")
 @UseGuards(JwtAuthGuard, OrganizationGuard, RolesGuard)
 export class ConcertController {
-  constructor(private readonly concertService: ConcertService,
+  constructor(
+    private readonly concertService: ConcertService,
     private readonly uploadService: UploadService,
   ) {}
 
@@ -136,7 +137,7 @@ export class ConcertController {
     );
   }
 
-    @Get("orders/:id/proof")
+  @Get("orders/:id/proof")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   async getOrderProof(
     @Param("id", ParseIntPipe) orderId: number,
@@ -150,19 +151,21 @@ export class ConcertController {
     if (!order || !order.paymentProofUrl) {
       throw new NotFoundException("Comprobante de pago no encontrado");
     }
-  
+
     const proofUrl = order.paymentProofUrl;
-  
+
     // Si es URL de Supabase, generar signed URL fresca y redirigir
     if (proofUrl.includes("supabase")) {
       const storagePath = this.uploadService.extractPathFromUrl(proofUrl);
       if (!storagePath) {
-        throw new NotFoundException("No se pudo extraer la ruta del archivo de Supabase");
+        throw new NotFoundException(
+          "No se pudo extraer la ruta del archivo de Supabase",
+        );
       }
       const signedUrl = await this.uploadService.getSignedUrl(storagePath);
       return res.redirect(signedUrl);
     }
-  
+
     // Fallback: servir archivo local (legacy)
     // URL format: http://host/uploads/private/concert/payments/filename.jpg
     const urlParts = proofUrl.split("/uploads/");
@@ -171,12 +174,12 @@ export class ConcertController {
     }
     const relativePath = urlParts[1];
     const filePath = path.join(process.cwd(), "uploads", relativePath);
-  
+
     // Verify file exists
     if (!fs.existsSync(filePath)) {
       throw new NotFoundException("Archivo no encontrado en el servidor");
     }
-  
+
     // Determine content type
     const ext = path.extname(filePath).toLowerCase();
     const contentTypes: Record<string, string> = {
@@ -187,7 +190,7 @@ export class ConcertController {
       ".gif": "image/gif",
     };
     const contentType = contentTypes[ext] || "application/octet-stream";
-  
+
     res.setHeader("Content-Type", contentType);
     res.setHeader(
       "Content-Disposition",
@@ -195,7 +198,7 @@ export class ConcertController {
     );
     return res.sendFile(filePath);
   }
-  
+
   @Delete("orders/:id/proof")
   @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
   async deleteOrderProof(

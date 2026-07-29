@@ -65,10 +65,13 @@ export class ProductsController {
     @Query("search") search?: string,
     @Query("categoryId") categoryId?: string,
   ) {
-    console.log(
-      "[ProductsController] findAll called with",
-      { organizationId, page, limit, search, categoryId },
-    );
+    console.log("[ProductsController] findAll called with", {
+      organizationId,
+      page,
+      limit,
+      search,
+      categoryId,
+    });
     const pageNum = page ? parseInt(page, 10) : undefined;
     const limitNum = limit ? parseInt(limit, 10) : undefined;
 
@@ -157,7 +160,11 @@ export class ProductsController {
     @Body() createVariantDto: CreateVariantDto,
     @ActiveOrganization() organizationId: number,
   ) {
-    return this.productsService.createVariant(id, createVariantDto, organizationId);
+    return this.productsService.createVariant(
+      id,
+      createVariantDto,
+      organizationId,
+    );
   }
 
   @Patch("/variants/:variantId")
@@ -167,7 +174,11 @@ export class ProductsController {
     @Body() updateVariantDto: UpdateVariantDto,
     @ActiveOrganization() organizationId: number,
   ) {
-    return this.productsService.updateVariant(variantId, updateVariantDto, organizationId);
+    return this.productsService.updateVariant(
+      variantId,
+      updateVariantDto,
+      organizationId,
+    );
   }
 
   @Delete("/variants/:variantId")

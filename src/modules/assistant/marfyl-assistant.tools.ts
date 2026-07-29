@@ -193,7 +193,8 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
           },
           type: {
             type: "string",
-            description: "AUTOCONSUMO, MERMA_VENCIDO, MERMA_DANADO o USO_TALLER",
+            description:
+              "AUTOCONSUMO, MERMA_VENCIDO, MERMA_DANADO o USO_TALLER",
           },
           reason: { type: "string", description: "Motivo (opcional)" },
         },
@@ -318,50 +319,57 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
       name: "search_fiscal_law",
       description:
         "Busca artículos de leyes y normativa fiscal venezolana (COT, IVA, ISLR, IGTF, providencias, calendario) por tema o situación del cliente. Usar para asesorar con base legal real cuando pregunte obligaciones, incumplimientos, plazos o tratamiento tributario.",
-      parameters: objectSchema({
-        query: {
-          type: "string",
-          description:
-            "Consulta en lenguaje natural (ej: retención IVA servicios, plazo declaración ISLR, sanción por no emitir factura, qué dice el artículo 120 del COT)",
+      parameters: objectSchema(
+        {
+          query: {
+            type: "string",
+            description:
+              "Consulta en lenguaje natural (ej: retención IVA servicios, plazo declaración ISLR, sanción por no emitir factura, qué dice el artículo 120 del COT)",
+          },
+          ley: {
+            type: "string",
+            description:
+              "Filtrar por norma: COT, LIVA, RIVA, LISLR, RISLR, LIGTF, PROV_0071, CALENDARIO_2026, PROV_SNAT_0141 (opcional)",
+          },
+          articulo: {
+            type: "number",
+            description:
+              "Número de artículo si el usuario lo menciona (ej: 120). Mejora el rerank semántico.",
+          },
+          limit: {
+            type: "number",
+            description: "Cantidad máxima de fragmentos (default 5, máx 10)",
+          },
         },
-        ley: {
-          type: "string",
-          description:
-            "Filtrar por norma: COT, LIVA, RIVA, LISLR, RISLR, LIGTF, PROV_0071, CALENDARIO_2026, PROV_SNAT_0141 (opcional)",
-        },
-        articulo: {
-          type: "number",
-          description:
-            "Número de artículo si el usuario lo menciona (ej: 120). Mejora el rerank semántico.",
-        },
-        limit: {
-          type: "number",
-          description: "Cantidad máxima de fragmentos (default 5, máx 10)",
-        },
-      }, ["query"]),
+        ["query"],
+      ),
     },
     {
       name: "brave_search",
       description:
         "Búsqueda de normativa fiscal venezolana (alias de search_fiscal_law). Usar para plazos, sanciones, IVA, ISLR, IGTF o COT.",
-      parameters: objectSchema({
-        query: {
-          type: "string",
-          description: "Consulta fiscal en lenguaje natural",
+      parameters: objectSchema(
+        {
+          query: {
+            type: "string",
+            description: "Consulta fiscal en lenguaje natural",
+          },
+          ley: {
+            type: "string",
+            description: "Norma opcional: COT, LIVA, RIVA, LISLR, etc.",
+          },
+          articulo: {
+            type: "number",
+            description:
+              "Número de artículo mencionado por el usuario (opcional)",
+          },
+          limit: {
+            type: "number",
+            description: "Cantidad máxima de fragmentos (default 5)",
+          },
         },
-        ley: {
-          type: "string",
-          description: "Norma opcional: COT, LIVA, RIVA, LISLR, etc.",
-        },
-        articulo: {
-          type: "number",
-          description: "Número de artículo mencionado por el usuario (opcional)",
-        },
-        limit: {
-          type: "number",
-          description: "Cantidad máxima de fragmentos (default 5)",
-        },
-      }, ["query"]),
+        ["query"],
+      ),
     },
   ];
 

@@ -9,196 +9,195 @@
  */
 
 export type PermissionKey =
-  | 'canViewDashboard'
-  | 'canViewFinancialCharts'
-  | 'canViewReports'
-  | 'canAccessPOS'
-  | 'canAccessComanda'
-  | 'canTakeFloorOrder'
-  | 'canViewKitchenQueue'
-  | 'canViewFloorHistory'
-  | 'canManageProducts'
-  | 'canViewProducts'
-  | 'canManageInventory'
-  | 'canManageCustomers'
-  | 'canManageInvoices'
-  | 'canAnulateInvoices'
-  | 'canDeleteInvoices'
-  | 'canViewCredits'
-  | 'canManageCredits'
-  | 'canManageCierreCaja'
-  | 'canManageExpenses'
-  | 'canManageTeam'
-  | 'canManageSettings'
-  | 'canInviteMembers'
-  | 'canAssignTasks'
-  | 'canCreateOrganization'
-  | 'canManageFiscal';
+  | "canViewDashboard"
+  | "canViewFinancialCharts"
+  | "canViewReports"
+  | "canAccessPOS"
+  | "canAccessComanda"
+  | "canTakeFloorOrder"
+  | "canViewKitchenQueue"
+  | "canViewFloorHistory"
+  | "canManageProducts"
+  | "canViewProducts"
+  | "canManageInventory"
+  | "canManageCustomers"
+  | "canManageInvoices"
+  | "canAnulateInvoices"
+  | "canDeleteInvoices"
+  | "canViewCredits"
+  | "canManageCredits"
+  | "canManageCierreCaja"
+  | "canManageExpenses"
+  | "canManageTeam"
+  | "canManageSettings"
+  | "canInviteMembers"
+  | "canAssignTasks"
+  | "canCreateOrganization"
+  | "canManageFiscal";
 
 export const ALL_PERMISSIONS: readonly PermissionKey[] = [
-  'canViewDashboard',
-  'canViewFinancialCharts',
-  'canViewReports',
-  'canAccessPOS',
-  'canAccessComanda',
-  'canTakeFloorOrder',
-  'canViewKitchenQueue',
-  'canViewFloorHistory',
-  'canManageProducts',
-  'canViewProducts',
-  'canManageInventory',
-  'canManageCustomers',
-  'canManageInvoices',
-  'canAnulateInvoices',
-  'canDeleteInvoices',
-  'canViewCredits',
-  'canManageCredits',
-  'canManageCierreCaja',
-  'canManageExpenses',
-  'canManageTeam',
-  'canManageSettings',
-  'canInviteMembers',
-  'canAssignTasks',
-  'canCreateOrganization',
-  'canManageFiscal',
+  "canViewDashboard",
+  "canViewFinancialCharts",
+  "canViewReports",
+  "canAccessPOS",
+  "canAccessComanda",
+  "canTakeFloorOrder",
+  "canViewKitchenQueue",
+  "canViewFloorHistory",
+  "canManageProducts",
+  "canViewProducts",
+  "canManageInventory",
+  "canManageCustomers",
+  "canManageInvoices",
+  "canAnulateInvoices",
+  "canDeleteInvoices",
+  "canViewCredits",
+  "canManageCredits",
+  "canManageCierreCaja",
+  "canManageExpenses",
+  "canManageTeam",
+  "canManageSettings",
+  "canInviteMembers",
+  "canAssignTasks",
+  "canCreateOrganization",
+  "canManageFiscal",
 ] as const;
 
 export type RoleName =
-  | 'SUPER_ADMIN'
-  | 'ADMIN'
-  | 'MANAGER'
-  | 'SELLER'
-  | 'WAREHOUSE'
-  | 'POS_OPERATOR'
-  | 'WAITER'
-  | 'KITCHEN'
-  | 'FISCAL';
+  | "SUPER_ADMIN"
+  | "ADMIN"
+  | "MANAGER"
+  | "SELLER"
+  | "WAREHOUSE"
+  | "POS_OPERATOR"
+  | "WAITER"
+  | "KITCHEN"
+  | "FISCAL";
 
 const FULL_OPS = [
-  'canViewDashboard',
-  'canViewFinancialCharts',
-  'canViewReports',
-  'canAccessPOS',
-  'canAccessComanda',
-  'canTakeFloorOrder',
-  'canViewKitchenQueue',
-  'canViewFloorHistory',
-  'canManageProducts',
-  'canViewProducts',
-  'canManageInventory',
-  'canManageCustomers',
-  'canManageInvoices',
-  'canAnulateInvoices',
-  'canDeleteInvoices',
-  'canViewCredits',
-  'canManageCredits',
-  'canManageCierreCaja',
-  'canManageExpenses',
-  'canManageTeam',
-  'canManageSettings',
-  'canInviteMembers',
-  'canAssignTasks',
-  'canCreateOrganization',
-  'canManageFiscal',
+  "canViewDashboard",
+  "canViewFinancialCharts",
+  "canViewReports",
+  "canAccessPOS",
+  "canAccessComanda",
+  "canTakeFloorOrder",
+  "canViewKitchenQueue",
+  "canViewFloorHistory",
+  "canManageProducts",
+  "canViewProducts",
+  "canManageInventory",
+  "canManageCustomers",
+  "canManageInvoices",
+  "canAnulateInvoices",
+  "canDeleteInvoices",
+  "canViewCredits",
+  "canManageCredits",
+  "canManageCierreCaja",
+  "canManageExpenses",
+  "canManageTeam",
+  "canManageSettings",
+  "canInviteMembers",
+  "canAssignTasks",
+  "canCreateOrganization",
+  "canManageFiscal",
 ] as const satisfies readonly PermissionKey[];
 
 export const ROLE_PERMISSIONS_MAP = {
   SUPER_ADMIN: FULL_OPS,
 
   ADMIN: [
-    'canViewDashboard',
-    'canViewFinancialCharts',
-    'canViewReports',
-    'canAccessPOS',
-    'canAccessComanda',
-    'canTakeFloorOrder',
-    'canViewKitchenQueue',
-    'canViewFloorHistory',
-    'canManageProducts',
-    'canViewProducts',
-    'canManageInventory',
-    'canManageCustomers',
-    'canManageInvoices',
-    'canAnulateInvoices',
-    'canDeleteInvoices',
-    'canViewCredits',
-    'canManageCredits',
-    'canManageCierreCaja',
-    'canManageExpenses',
-    'canManageTeam',
-    'canManageSettings',
-    'canInviteMembers',
-    'canAssignTasks',
-    'canManageFiscal',
+    "canViewDashboard",
+    "canViewFinancialCharts",
+    "canViewReports",
+    "canAccessPOS",
+    "canAccessComanda",
+    "canTakeFloorOrder",
+    "canViewKitchenQueue",
+    "canViewFloorHistory",
+    "canManageProducts",
+    "canViewProducts",
+    "canManageInventory",
+    "canManageCustomers",
+    "canManageInvoices",
+    "canAnulateInvoices",
+    "canDeleteInvoices",
+    "canViewCredits",
+    "canManageCredits",
+    "canManageCierreCaja",
+    "canManageExpenses",
+    "canManageTeam",
+    "canManageSettings",
+    "canInviteMembers",
+    "canAssignTasks",
+    "canManageFiscal",
   ] as const,
 
   MANAGER: [
-    'canViewDashboard',
-    'canViewFinancialCharts',
-    'canViewReports',
-    'canAccessPOS',
-    'canAccessComanda',
-    'canTakeFloorOrder',
-    'canViewKitchenQueue',
-    'canViewFloorHistory',
-    'canManageProducts',
-    'canViewProducts',
-    'canManageInventory',
-    'canManageCustomers',
-    'canManageInvoices',
-    'canViewCredits',
-    'canManageCierreCaja',
-    'canManageExpenses',
-    'canAssignTasks',
+    "canViewDashboard",
+    "canViewFinancialCharts",
+    "canViewReports",
+    "canAccessPOS",
+    "canAccessComanda",
+    "canTakeFloorOrder",
+    "canViewKitchenQueue",
+    "canViewFloorHistory",
+    "canManageProducts",
+    "canViewProducts",
+    "canManageInventory",
+    "canManageCustomers",
+    "canManageInvoices",
+    "canViewCredits",
+    "canManageCierreCaja",
+    "canManageExpenses",
+    "canAssignTasks",
   ] as const,
 
   /** Cajero / vendedor: solo cobro (POS), sin tomar pedido ni cocina */
   SELLER: [
-    'canViewDashboard',
-    'canAccessPOS',
-    'canViewProducts',
-    'canManageCustomers',
-    'canManageInvoices',
-    'canViewCredits',
-    'canManageCierreCaja',
+    "canViewDashboard",
+    "canAccessPOS",
+    "canViewProducts",
+    "canManageCustomers",
+    "canManageInvoices",
+    "canViewCredits",
+    "canManageCierreCaja",
   ] as const,
 
   WAREHOUSE: [
-    'canViewDashboard',
-    'canManageProducts',
-    'canViewProducts',
-    'canManageInventory',
+    "canViewDashboard",
+    "canManageProducts",
+    "canViewProducts",
+    "canManageInventory",
   ] as const,
 
   /** Cajero dedicado */
   POS_OPERATOR: [
-    'canAccessPOS',
-    'canViewProducts',
-    'canManageCierreCaja',
+    "canAccessPOS",
+    "canViewProducts",
+    "canManageCierreCaja",
   ] as const,
 
   /** Anfitrión: toma pedidos + ve su historial */
   WAITER: [
-    'canAccessComanda',
-    'canTakeFloorOrder',
-    'canViewFloorHistory',
-    'canViewProducts',
+    "canAccessComanda",
+    "canTakeFloorOrder",
+    "canViewFloorHistory",
+    "canViewProducts",
   ] as const,
 
   /** Cocina / barra: solo cola KDS */
   KITCHEN: [
-    'canAccessComanda',
-    'canViewKitchenQueue',
-    'canViewProducts',
+    "canAccessComanda",
+    "canViewKitchenQueue",
+    "canViewProducts",
   ] as const,
 
-  FISCAL: [
-    'canViewDashboard',
-    'canManageFiscal',
-  ] as const,
+  FISCAL: ["canViewDashboard", "canManageFiscal"] as const,
 } as const;
 
-export function getPermissionsForRole(role: RoleName): ReadonlySet<PermissionKey> {
+export function getPermissionsForRole(
+  role: RoleName,
+): ReadonlySet<PermissionKey> {
   const permissions = ROLE_PERMISSIONS_MAP[role];
   if (!permissions) {
     return new Set<PermissionKey>();
@@ -206,7 +205,10 @@ export function getPermissionsForRole(role: RoleName): ReadonlySet<PermissionKey
   return new Set<PermissionKey>(permissions);
 }
 
-export function hasPermission(role: RoleName, permission: PermissionKey): boolean {
+export function hasPermission(
+  role: RoleName,
+  permission: PermissionKey,
+): boolean {
   const permissions = ROLE_PERMISSIONS_MAP[role];
   if (!permissions) {
     return false;

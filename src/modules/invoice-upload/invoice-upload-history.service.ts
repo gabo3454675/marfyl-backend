@@ -11,7 +11,12 @@ export class InvoiceUploadHistoryService {
 
   async getHistory(
     organizationId: number,
-    params?: { page?: number; limit?: number; dateFrom?: string; dateTo?: string },
+    params?: {
+      page?: number;
+      limit?: number;
+      dateFrom?: string;
+      dateTo?: string;
+    },
   ) {
     const page = Math.max(params?.page ?? 1, 1);
     const limit = Math.min(Math.max(params?.limit ?? 20, 1), 100);
@@ -79,13 +84,26 @@ export class InvoiceUploadHistoryService {
       this.prisma.expense.findFirst({
         where: { id: expenseId, organizationId },
         include: {
-          supplier: { select: { id: true, name: true, taxId: true, email: true, phone: true } },
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+              taxId: true,
+              email: true,
+              phone: true,
+            },
+          },
           category: { select: { id: true, name: true } },
-          payments: { select: { id: true, amount: true, paidAt: true, notes: true }, orderBy: { paidAt: "asc" } },
+          payments: {
+            select: { id: true, amount: true, paidAt: true, notes: true },
+            orderBy: { paidAt: "asc" },
+          },
         },
       }),
       this.prisma.inventoryMovement.findMany({
-        where: { reason: { contains: buildMovementReasonSearchPattern(expenseId) } },
+        where: {
+          reason: { contains: buildMovementReasonSearchPattern(expenseId) },
+        },
         include: { product: { select: { id: true, name: true, sku: true } } },
         orderBy: { createdAt: "asc" },
       } as any),
@@ -95,7 +113,10 @@ export class InvoiceUploadHistoryService {
       throw new NotFoundException(`Gasto con ID ${expenseId} no encontrado`);
     }
 
-    const amountPaid = expense.payments.reduce((sum, p) => sum + num(p.amount), 0);
+    const amountPaid = expense.payments.reduce(
+      (sum, p) => sum + num(p.amount),
+      0,
+    );
 
     return {
       id: expense.id,
@@ -124,8 +145,12 @@ export class InvoiceUploadHistoryService {
         productName: m.product?.name ?? null,
         productSku: m.product?.sku ?? null,
         quantity: m.quantity,
-        unitCost: m.unitCostAtTransaction != null ? num(m.unitCostAtTransaction) : null,
-        total: m.unitCostAtTransaction != null ? num(m.unitCostAtTransaction) * m.quantity : null,
+        unitCost:
+          m.unitCostAtTransaction != null ? num(m.unitCostAtTransaction) : null,
+        total:
+          m.unitCostAtTransaction != null
+            ? num(m.unitCostAtTransaction) * m.quantity
+            : null,
       })),
       createdAt: expense.createdAt,
     };
