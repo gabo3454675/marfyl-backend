@@ -13,11 +13,11 @@ Todos los cambios significativos del sistema se documentan aquí.
 - Sales-import: fila sin `saleDate` válido → falla (no crea invoice)
 - POS / create operativo: siempre setea `issueDate` (DTO o `now`)
 - Prisma extension: legacy (`isLegacyImport`) sin `issueDate` → throw
-- Schema: `Invoice.issueDate` NOT NULL; migración `20260729200000_invoice_issue_date_not_null` en repo — **deploy pendiente**
+- Schema: `Invoice.issueDate` NOT NULL; migración `20260729200000_invoice_issue_date_not_null`
 - **Agentes / scripts:** no usar `new PrismaClient()` raw si van a crear invoices; usar `createScriptPrisma()` (`scripts/lib/create-script-prisma.ts`) que aplica `invoiceIssueDateGuardExtension`, **o** setear `issueDate` desde la fecha de venta fuente (FastReport `saleDate`). La columna NOT NULL en BD es el backstop tras migrate — no sustituye setear `issueDate` en el import.
 
 #### Historial de facturas (backend)
-- Filtra y agrupa por `issueDate` (fallback a `createdAt` si `issueDate` es null)
+- Filtra y agrupa solo por `issueDate` (sin `issueDate: null` en where; incompatible con NOT NULL / PrismaClientValidationError)
 - Ítems con `lineageStatus=ACTIVE`
 - Payload enriquecido con `displayQuantity`, `displayName`, `displaySku`
 - Filtros de fecha: API acepta `DD/MM/YYYY`, `YYYY-MM-DD` e ISO; el parser resuelve bounds UTC (start/end del día); valores inválidos → `400`

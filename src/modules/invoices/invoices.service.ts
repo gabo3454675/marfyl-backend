@@ -703,7 +703,8 @@ export class InvoicesService {
   /**
    * Historial de facturas por rango de fechas: resumen diario y lista detallada.
    * Un usuario solo puede consultar la organización activa (x-tenant-id); un superadmin puede pasar companyId/organizationId para otra org.
-   * Filtra por issueDate (fecha de venta/emisión); fallback a createdAt solo si issueDate es null.
+   * Filtra por issueDate (fecha de venta/emisión).
+   * Tras NOT NULL en issueDate ya no hay fallback a createdAt en el where.
    */
   async getHistory(
     activeOrganizationId: number,
@@ -738,25 +739,10 @@ export class InvoicesService {
       where: {
         organizationId: orgId,
         deletedAt: null,
-        OR: [
-          {
-            issueDate: {
-              gte: startOfRange,
-              lte: endOfRange,
-            },
-          },
-          {
-            AND: [
-              { issueDate: null },
-              {
-                createdAt: {
-                  gte: startOfRange,
-                  lte: endOfRange,
-                },
-              },
-            ],
-          },
-        ],
+        issueDate: {
+          gte: startOfRange,
+          lte: endOfRange,
+        },
       },
       include: {
         items: {
