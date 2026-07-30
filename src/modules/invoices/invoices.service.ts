@@ -703,8 +703,11 @@ export class InvoicesService {
   /**
    * Historial de facturas por rango de fechas: resumen diario y lista detallada.
    * Un usuario solo puede consultar la organización activa (x-tenant-id); un superadmin puede pasar companyId/organizationId para otra org.
-   * Filtra por issueDate (fecha de venta/emisión).
-   * Tras NOT NULL en issueDate ya no hay fallback a createdAt en el where.
+   *
+   * Inclusión: la factura entra si issueDate O createdAt cae en el rango
+   * (sin `issueDate: null` en Prisma; compatible con NOT NULL).
+   * dailySummary: aporta al día de emisión y, si difiere, también al de registro,
+   * para que días como el import (createdAt) sean visibles sin borrar issueDate.
    */
   async getHistory(
     activeOrganizationId: number,
@@ -735,15 +738,35 @@ export class InvoicesService {
       );
     }
 
-    const invoices = await this.prisma.invoice.findMany({
-      where: {
+    const idRows = await this.prisma.$queryRaw<Array<{ id: number }>>`
+      SELECT i.id
+      FROM invoices i
+      WHERE i."organizationId" = ${orgId}
+        AND i."deletedAt" IS NULL
+        AND (
+          (i."issueDate" IS NOT NULL
+            AND i."issueDate" >= ${startOfRange}
+            AND i."issueDate" <= ${endOfRange})
+          OR (
+            i."createdAt" >= ${startOfRange}
+            AND i."createdAt" <= ${endOfRange})
+        )
+      ORDER BY COALESCE(i."issueDate", i."createdAt") ASC, i."createdAt" ASC
+    `;
+
+    if (idRows.length === 0) {
+      return {
         organizationId: orgId,
-        deletedAt: null,
-        issueDate: {
-          gte: startOfRange,
-          lte: endOfRange,
-        },
-      },
+        startDate: startOfRange.toISOString(),
+        endDate: endOfRange.toISOString(),
+        dailySummary: [],
+        invoices: [],
+      };
+    }
+
+    const ids = idRows.map((r) => r.id);
+    const invoicesUnordered = await this.prisma.invoice.findMany({
+      where: { id: { in: ids } },
       include: {
         items: {
           where: { lineageStatus: "ACTIVE" },
@@ -756,8 +779,12 @@ export class InvoicesService {
         customer: true,
         paymentLines: true,
       },
-      orderBy: [{ issueDate: "asc" }, { createdAt: "asc" }],
     });
+
+    const byId = new Map(invoicesUnordered.map((inv) => [inv.id, inv]));
+    const invoices = ids
+      .map((id) => byId.get(id))
+      .filter((inv): inv is NonNullable<typeof inv> => inv != null);
 
     const dailySummary = this.buildDailySummary(invoices);
     const enrichedInvoices = invoices.map((inv) => ({
@@ -868,11 +895,14 @@ export class InvoicesService {
 
     const byDate = new Map<string, DayAgg>();
     const round2 = (n: number) => Math.round(n * 100) / 100;
+    const utcDayKey = (d: Date | string | null | undefined): string | null => {
+      if (d == null) return null;
+      const dt = d instanceof Date ? d : new Date(d);
+      if (Number.isNaN(dt.getTime())) return null;
+      return dt.toISOString().slice(0, 10);
+    };
 
-    for (const inv of invoices) {
-      const total = this.toNum(inv.totalAmount);
-      const saleDate = inv.issueDate ?? inv.createdAt;
-      const dateKey = new Date(saleDate).toISOString().slice(0, 10);
+    const ensureDay = (dateKey: string): DayAgg => {
       if (!byDate.has(dateKey)) {
         byDate.set(dateKey, {
           totalSales: 0,
@@ -886,7 +916,12 @@ export class InvoicesService {
           byCurrency: {},
         });
       }
-      const day = byDate.get(dateKey)!;
+      return byDate.get(dateKey)!;
+    };
+
+    const addInvoiceToDay = (dateKey: string, inv: (typeof invoices)[number]) => {
+      const total = this.toNum(inv.totalAmount);
+      const day = ensureDay(dateKey);
       day.totalSales += total;
       day.invoiceCount += 1;
       day.taxAmount += this.toNum(inv.ivaAmount);
@@ -932,6 +967,15 @@ export class InvoicesService {
           day.byCurrency.USD = (day.byCurrency.USD ?? 0) + total;
         }
       }
+    };
+
+    for (const inv of invoices) {
+      const issueKey = utcDayKey(inv.issueDate);
+      const createdKey = utcDayKey(inv.createdAt);
+      // Emisión (si existe) + registro si es otro día → se ven ambos en el carrusel.
+      if (issueKey) addInvoiceToDay(issueKey, inv);
+      if (createdKey && createdKey !== issueKey) addInvoiceToDay(createdKey, inv);
+      if (!issueKey && createdKey) addInvoiceToDay(createdKey, inv);
     }
 
     return Array.from(byDate.entries())

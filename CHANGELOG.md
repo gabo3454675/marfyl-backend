@@ -17,7 +17,9 @@ Todos los cambios significativos del sistema se documentan aquí.
 - **Agentes / scripts:** no usar `new PrismaClient()` raw si van a crear invoices; usar `createScriptPrisma()` (`scripts/lib/create-script-prisma.ts`) que aplica `invoiceIssueDateGuardExtension`, **o** setear `issueDate` desde la fecha de venta fuente (FastReport `saleDate`). La columna NOT NULL en BD es el backstop tras migrate — no sustituye setear `issueDate` en el import.
 
 #### Historial de facturas (backend)
-- Filtra y agrupa solo por `issueDate` (sin `issueDate: null` en where; incompatible con NOT NULL / PrismaClientValidationError)
+- Incluye factura si `issueDate` **o** `createdAt` cae en el rango (SQL OR; sin `issueDate: null` en Prisma)
+- `dailySummary`: día de emisión y, si difiere, también día de registro (p.ej. import del 28 visible)
+- Script read-only: `scripts/verify-history-issue-date.ts`
 - Ítems con `lineageStatus=ACTIVE`
 - Payload enriquecido con `displayQuantity`, `displayName`, `displaySku`
 - Filtros de fecha: API acepta `DD/MM/YYYY`, `YYYY-MM-DD` e ISO; el parser resuelve bounds UTC (start/end del día); valores inválidos → `400`
