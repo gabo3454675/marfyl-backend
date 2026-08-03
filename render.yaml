@@ -36,6 +36,21 @@ services:
         value: MARFYL Entradas
       - key: CONCERT_OWNER_NOTIFY_EMAIL
         sync: false
+      # LLM texto: Nemotron Ultra (NVIDIA NIM). OCR visión sigue en Groq/Gemini.
+      - key: LLM_PROVIDER
+        value: nvidia
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NVIDIA_MODEL
+        value: nvidia/nemotron-3-ultra-550b-a55b
+      - key: NVIDIA_ENABLE_THINKING
+        value: "false"
+      - key: NVIDIA_TIMEOUT_MS
+        value: "180000"
+      - key: ASSISTANT_MAX_TOKENS
+        value: "2048"
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
@@ -50,11 +65,11 @@ services:
       - key: FISCAL_EMBEDDING_MODEL
         value: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
       - key: FISCAL_ADVISOR_MODEL
-        value: llama-3.1-8b-instant
+        value: nvidia/nemotron-3-ultra-550b-a55b
       # Marfyl AI — Asesor Fiscal Proactivo (RAG)
       - key: COHERE_API_KEY
         sync: false
       - key: MARFYL_MODEL
-        value: llama-3.3-70b-versatile
+        value: nvidia/nemotron-3-ultra-550b-a55b
       - key: MARFYL_TOP_K
         value: "3"

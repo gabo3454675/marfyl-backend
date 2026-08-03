@@ -1,8 +1,11 @@
 import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "@/common/prisma/prisma.service";
-import { Groq } from "groq-sdk";
-import type { ChatCompletionChunk, ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
+import type {
+  ChatCompletionChunk,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
+import { resolveLlm } from "@/common/llm/llm-provider";
 
 // ──────────────────────────────────────────────────
 // Types
@@ -50,8 +53,6 @@ Plan de Mitigacion Inmediato:
 @Injectable()
 export class MarfylAIService {
   private readonly logger = new Logger(MarfylAIService.name);
-  private readonly groqApiKey: string;
-  private readonly groqModel: string;
   private readonly cohereApiKey: string;
   private readonly topK: number;
 
@@ -59,9 +60,6 @@ export class MarfylAIService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.groqApiKey = this.config.get<string>("GROQ_API_KEY")?.trim() || "";
-    this.groqModel =
-      this.config.get<string>("MARFYL_MODEL")?.trim() || "llama-3.3-70b-versatile";
     this.cohereApiKey = this.config.get<string>("COHERE_API_KEY")?.trim() || "";
     this.topK = Math.min(Math.max(this.config.get<number>("MARFYL_TOP_K") ?? 3, 1), 10);
   }
@@ -198,11 +196,16 @@ Explicación simplificada: ${f.explicacionSimplificada ? truncar(f.explicacionSi
   async *consultarMarfyl(
     preguntaUsuario: string,
   ): AsyncGenerator<MarfylAIEvent> {
-    if (!this.groqApiKey) {
+    let llm;
+    try {
+      llm = resolveLlm(this.config, "marfyl");
+    } catch (e: unknown) {
       yield {
         type: "error",
         message:
-          "GROQ_API_KEY no configurada. Defínala en .env para activar Marfyl.",
+          e instanceof Error
+            ? e.message
+            : "LLM no configurado. Defina NVIDIA_API_KEY o GROQ_API_KEY.",
       };
       return;
     }
@@ -216,7 +219,7 @@ Explicación simplificada: ${f.explicacionSimplificada ? truncar(f.explicacionSi
 
       yield { type: "context", fragments };
 
-      // 3. Construir mensajes para Groq
+      // 3. Construir mensajes
       const contextoLegal = this.construirContexto(fragments);
       const preguntaAislada = preguntaUsuario.slice(0, 4000);
       const mensajeUsuario = contextoLegal
@@ -228,19 +231,22 @@ Explicación simplificada: ${f.explicacionSimplificada ? truncar(f.explicacionSi
         { role: "user", content: mensajeUsuario },
       ];
 
-      // 4. Streaming con Groq
-      const groq = new Groq({ apiKey: this.groqApiKey });
-      const stream = (await groq.chat.completions.create({
-        model: this.groqModel,
+      this.logger.log(
+        `Marfyl AI LLM: provider=${llm.provider} model=${llm.model}`,
+      );
+
+      const stream = (await llm.client.chat.completions.create({
+        model: llm.model,
         messages,
         temperature: 0.3,
-        max_completion_tokens: 2048,
+        max_tokens: 2048,
         top_p: 0.9,
         stream: true,
+        ...llm.extraBody,
       })) as AsyncIterable<ChatCompletionChunk>;
 
       let reply = "";
-      let modelUsed = this.groqModel;
+      let modelUsed = llm.model;
 
       for await (const chunk of stream) {
         if (chunk.model) modelUsed = chunk.model;

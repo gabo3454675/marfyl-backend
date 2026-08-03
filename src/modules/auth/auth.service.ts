@@ -47,8 +47,9 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string) {
+    const normalizedEmail = email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -476,8 +477,9 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
+    const email = registerDto.email.trim().toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
-      where: { email: registerDto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -489,27 +491,34 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: registerDto.email,
+        email,
         passwordHash,
-        fullName: registerDto.fullName,
+        fullName: registerDto.fullName.trim(),
         isSuperAdmin: false,
       },
     });
 
-    await this.createOrganizationForNewCustomer(
-      user.id,
-      registerDto.organizationName,
-      registerDto.organizationSlug,
-    );
+    try {
+      await this.createOrganizationForNewCustomer(
+        user.id,
+        registerDto.organizationName,
+        registerDto.organizationSlug,
+      );
+    } catch (error) {
+      // Evita dejar una cuenta huérfana si falla el alta de la organización
+      // (por ejemplo, por un slug que otro registro acaba de ocupar).
+      await this.prisma.user.delete({ where: { id: user.id } });
+      throw error;
+    }
 
     this.sendWelcomeEmailAsync(
-      registerDto.email,
-      registerDto.fullName,
+      email,
+      registerDto.fullName.trim(),
       registerDto.organizationName.trim(),
     );
 
     const validatedUser = await this.validateUser(
-      registerDto.email,
+      email,
       registerDto.password,
     );
     const organizationId = validatedUser.organizations?.[0]?.id ?? null;

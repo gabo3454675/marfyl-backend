@@ -5,13 +5,12 @@ import {
   Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Groq } from "groq-sdk";
 import type {
   ChatCompletionChunk,
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
   ChatCompletionTool,
-} from "groq-sdk/resources/chat/completions";
+} from "openai/resources/chat/completions";
 import { AssistantChatDto } from "./dto/chat.dto";
 import {
   AssistantToolContext,
@@ -23,8 +22,8 @@ import {
   buildGroqAssistantTools,
   MARFYL_SYSTEM_INSTRUCTION,
 } from "./marfyl-assistant.tools";
+import { resolveLlm } from "@/common/llm/llm-provider";
 
-const DEFAULT_MODEL = "llama-3.1-8b-instant";
 const MAX_TOOL_CALLS = 12;
 const MAX_HISTORY_MESSAGES = 24;
 
@@ -48,24 +47,19 @@ type ToolCallAccum = {
 /**
  * Asistente Marfyl.
  *
- * Por defecto (USE_PYTHON_AGENT=false): Groq + tools locales.
+ * Por defecto: LLM_PROVIDER (nvidia|groq) + tools locales.
  * Con USE_PYTHON_AGENT=true: reenvía a agent-marfyl vía AgentProxyService.
- * Si Python falla y PYTHON_AGENT_FALLBACK=true, cae a Groq; si no, error claro.
  */
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
-  private readonly modelName: string;
 
   constructor(
     private readonly config: ConfigService,
     private readonly toolsService: AssistantToolsService,
     private readonly localFallback: AssistantLocalFallbackService,
     private readonly agentProxy: AgentProxyService,
-  ) {
-    this.modelName =
-      this.config.get<string>("GROQ_MODEL")?.trim() || DEFAULT_MODEL;
-  }
+  ) {}
 
   async chat(dto: AssistantChatDto, context: AssistantToolContext) {
     if (this.agentProxy.isEnabled()) {
@@ -83,13 +77,11 @@ export class AssistantService {
         if (!this.agentProxy.isFallbackEnabled()) {
           throw new ServiceUnavailableException(msg);
         }
-        this.logger.warn(
-          `Python agent falló; fallback Groq (chat): ${msg}`,
-        );
+        this.logger.warn(`Python agent falló; fallback LLM (chat): ${msg}`);
       }
     }
 
-    return this.aggregateGroqChat(dto, context);
+    return this.aggregateChat(dto, context);
   }
 
   async *chatStream(
@@ -112,20 +104,20 @@ export class AssistantService {
         return;
       }
       this.logger.warn(
-        `Python agent falló; fallback Groq (stream): ${proxyError}`,
+        `Python agent falló; fallback LLM (stream): ${proxyError}`,
       );
     }
 
-    yield* this.chatStreamGroq(dto, context);
+    yield* this.chatStreamLlm(dto, context);
   }
 
-  private async aggregateGroqChat(
+  private async aggregateChat(
     dto: AssistantChatDto,
     context: AssistantToolContext,
   ) {
     let reply = "";
-    let model = this.modelName;
-    for await (const event of this.chatStreamGroq(dto, context)) {
+    let model = "unknown";
+    for await (const event of this.chatStreamLlm(dto, context)) {
       if (event.type === "delta") reply += event.text;
       if (event.type === "done") {
         reply = event.reply;
@@ -144,27 +136,32 @@ export class AssistantService {
     };
   }
 
-  private async *chatStreamGroq(
+  private async *chatStreamLlm(
     dto: AssistantChatDto,
     context: AssistantToolContext,
   ): AsyncGenerator<AssistantStreamEvent> {
-    const apiKey = this.config.get<string>("GROQ_API_KEY");
-    if (!apiKey?.trim()) {
-      throw new ServiceUnavailableException(
-        "Asistente no configurado: defina GROQ_API_KEY en el backend (.env).",
-      );
+    let llm;
+    try {
+      llm = resolveLlm(this.config, "assistant");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new ServiceUnavailableException(msg);
     }
 
+    this.logger.log(`Asistente LLM: provider=${llm.provider} model=${llm.model}`);
+
+    const shortModel =
+      llm.provider === "nvidia" ? "Nemotron" : llm.model.split("/").pop() || llm.model;
+    const identityLine = `\n\nSi preguntan qué modelo/IA eres, responde solo: "${shortModel}". Nada más. No uses herramientas.`;
     const systemInstruction = context.orgName
-      ? `${MARFYL_SYSTEM_INSTRUCTION}\n\nOrganización activa: ${context.orgName} (ID ${context.organizationId}).`
-      : `${MARFYL_SYSTEM_INSTRUCTION}\n\nOrganización activa ID: ${context.organizationId}.`;
+      ? `${MARFYL_SYSTEM_INSTRUCTION}${identityLine}\n\nOrganización activa: ${context.orgName} (ID ${context.organizationId}).`
+      : `${MARFYL_SYSTEM_INSTRUCTION}${identityLine}\n\nOrganización activa ID: ${context.organizationId}.`;
 
     const userMessage = dto.context
       ? `[Contexto: ${dto.context}]\n${dto.message}`
       : dto.message;
 
-    const groq = new Groq({ apiKey });
-    const tools = buildGroqAssistantTools();
+    const tools = buildGroqAssistantTools() as ChatCompletionTool[];
     const messages = this.buildMessages(
       systemInstruction,
       dto.history,
@@ -173,7 +170,9 @@ export class AssistantService {
 
     try {
       const result = yield* this.executeWithToolCallingStream(
-        groq,
+        llm.client,
+        llm.model,
+        llm.extraBody,
         messages,
         tools,
         context,
@@ -212,7 +211,7 @@ export class AssistantService {
     if (!this.localFallback.canHandle(message)) return null;
     const handled = await this.localFallback.handle(message, context);
     if (!handled) return null;
-    this.logger.warn("Usando fallback local (Groq no disponible)");
+    this.logger.warn("Usando fallback local (LLM no disponible)");
     return {
       reply: handled.reply,
       model: "marfyl-local",
@@ -262,36 +261,31 @@ export class AssistantService {
     }
   }
 
-  private groqCompletionParams(
-    messages: ChatCompletionMessageParam[],
-    tools: ChatCompletionTool[],
-    stream: boolean,
-  ) {
-    return {
-      model: this.modelName,
-      messages,
-      tools,
-      tool_choice: "auto" as const,
-      temperature: 1,
-      max_completion_tokens: 1024,
-      top_p: 1,
-      stream,
-    };
-  }
-
   private async *executeWithToolCallingStream(
-    groq: Groq,
+    client: ReturnType<typeof resolveLlm>["client"],
+    modelName: string,
+    extraBody: Record<string, unknown>,
     messages: ChatCompletionMessageParam[],
     tools: ChatCompletionTool[],
     context: AssistantToolContext,
   ): AsyncGenerator<AssistantStreamEvent, { reply: string; model: string }> {
     let toolCallCount = 0;
-    let modelUsed = this.modelName;
+    let modelUsed = modelName;
+    const maxTokens = Number(
+      this.config.get<string>("ASSISTANT_MAX_TOKENS") || 2048,
+    );
 
     while (toolCallCount < MAX_TOOL_CALLS) {
-      const stream = (await groq.chat.completions.create({
-        ...this.groqCompletionParams(messages, tools, true),
+      const stream = (await client.chat.completions.create({
+        model: modelName,
+        messages,
+        tools,
+        tool_choice: "auto",
+        temperature: 1,
+        max_tokens: maxTokens,
+        top_p: 1,
         stream: true,
+        ...extraBody,
       })) as AsyncIterable<ChatCompletionChunk>;
 
       let reply = "";
@@ -319,11 +313,10 @@ export class AssistantService {
       yield { type: "tool_round" };
 
       const openAiToolCalls: ChatCompletionMessageToolCall[] = toolCalls.map(
-        (t, i) => ({
+        (t) => ({
           id: t.id,
           type: "function",
           function: { name: t.name, arguments: t.arguments || "{}" },
-          index: i,
         }),
       );
 
@@ -334,6 +327,7 @@ export class AssistantService {
       });
 
       for (const toolCall of openAiToolCalls) {
+        if (toolCall.type !== "function") continue;
         toolCallCount++;
         const toolName = toolCall.function.name;
         let args: Record<string, unknown> = {};
@@ -371,13 +365,13 @@ export class AssistantService {
 
   private toUserMessage(raw: string): string {
     if (/404/i.test(raw) && /model/i.test(raw)) {
-      return `Modelo de IA no disponible. Use GROQ_MODEL=${DEFAULT_MODEL} en backend/.env y reinicie.`;
+      return "Modelo de IA no disponible. Revise NVIDIA_MODEL / GROQ_MODEL en backend/.env y reinicie.";
     }
-    if (/429|quota|rate limit/i.test(raw)) {
-      return "Límite de uso de Groq alcanzado. Espere 1–2 minutos e intente de nuevo.";
+    if (/429|quota|rate limit|ResourceExhausted/i.test(raw)) {
+      return "Límite de uso del proveedor de IA alcanzado. Espere 1–2 minutos e intente de nuevo.";
     }
-    if (/GROQ_API_KEY|invalid api key|authentication/i.test(raw)) {
-      return "Configure GROQ_API_KEY en backend/.env y reinicie el servidor en el puerto 3001.";
+    if (/NVIDIA_API_KEY|GROQ_API_KEY|invalid api key|authentication|401|403/i.test(raw)) {
+      return "Configure NVIDIA_API_KEY (o GROQ_API_KEY) en backend/.env y reinicie el servidor.";
     }
     return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
   }
