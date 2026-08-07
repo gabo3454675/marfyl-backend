@@ -189,6 +189,7 @@ export class ProductsService {
           minStock: true,
           imageUrl: true,
           isExempt: true,
+          isActive: true,
           isBundle: true,
           isService: true,
         },
