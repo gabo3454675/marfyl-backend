@@ -751,7 +751,7 @@ export class SalesImportService {
         select: { id: true },
       });
       if (already) {
-        return already;
+        return already.id;
       }
 
       const nextConsecutive = await this.invoiceSequence.allocateNext(

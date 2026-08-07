@@ -59,6 +59,8 @@ export interface ChatRequest {
   context?: string;
   orgName?: string;
   userRole?: string;
+  /** Tenant activo — obligatorio para tools (nunca hardcodear 0). */
+  organizationId?: number;
 }
 
 export interface ChatResponse {
@@ -149,7 +151,14 @@ export class ChatHandler {
       );
     }
 
-    const { message, history = [], context, orgName, userRole } = request;
+    const {
+      message,
+      history = [],
+      context,
+      orgName,
+      userRole,
+      organizationId,
+    } = request;
 
     // Build system instruction with organization context
     let systemInstruction = SYSTEM_PROMPT;
@@ -207,9 +216,18 @@ export class ChatHandler {
 
         if (response.functionCalls && response.functionCalls.length > 0) {
           // Execute function calls and continue conversation
+          if (
+            organizationId == null ||
+            !Number.isFinite(organizationId) ||
+            organizationId <= 0
+          ) {
+            throw new ServiceUnavailableException(
+              "organizationId de tenant requerido para ejecutar tools del asistente.",
+            );
+          }
           const functionResponse = await this.executeFunctionCalls(
             response.functionCalls,
-            { organizationId: 0, orgName },
+            { organizationId, orgName },
           );
           toolsUsed = response.functionCalls.map((fc) => fc.name);
 
