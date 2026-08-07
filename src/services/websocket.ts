@@ -165,13 +165,34 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
           organizationId?: number;
         }>(token);
 
-        // Attach validated identity to socket
+        // Attach validated identity to socket.
+        // JWT a menudo no trae organizationId; el cliente lo manda en handshake.auth.
+        const authOrgRaw = (socket.handshake.auth as { organizationId?: unknown })
+          ?.organizationId;
+        const authOrg =
+          typeof authOrgRaw === "number"
+            ? authOrgRaw
+            : typeof authOrgRaw === "string"
+              ? Number.parseInt(authOrgRaw, 10)
+              : NaN;
+        const orgFromAuth =
+          Number.isFinite(authOrg) && authOrg > 0 ? authOrg : undefined;
+
         socket.userId = payload.sub;
         socket.organizationId =
-          socket.organizationId ?? payload.organizationId;
+          (payload.organizationId && payload.organizationId > 0
+            ? payload.organizationId
+            : undefined) ??
+          orgFromAuth ??
+          (() => {
+            const q = socket.handshake.query?.organizationId;
+            const raw = Array.isArray(q) ? q[0] : q;
+            const n = raw != null ? Number.parseInt(String(raw), 10) : NaN;
+            return Number.isFinite(n) && n > 0 ? n : undefined;
+          })();
 
         this.logger.debug(
-          `JWT validated for user ${payload.sub}, org ${payload.organizationId}`,
+          `JWT validated for user ${payload.sub}, org ${socket.organizationId ?? "none"} (jwt=${payload.organizationId ?? "none"}, auth=${orgFromAuth ?? "none"})`,
         );
 
         return next();
@@ -230,6 +251,37 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`Socket ${socket.id} joined room ${roomId}`);
       }
 
+      // Cliente puede enviar org tardía (tras seleccionar empresa)
+      socket.on(
+        "join_org",
+        (payload: { organizationId?: number } | number) => {
+          const raw =
+            typeof payload === "number" ? payload : payload?.organizationId;
+          const orgId = Number(raw);
+          if (!Number.isFinite(orgId) || orgId <= 0) return;
+          socket.organizationId = orgId;
+          const roomId = `${ROOM_PREFIX}${orgId}`;
+          socket.join(roomId);
+          if (!this.rooms.has(roomId)) {
+            this.rooms.set(roomId, {
+              id: roomId,
+              organizationId: orgId,
+              createdAt: new Date(),
+            });
+          }
+          this.logger.log(`Socket ${socket.id} join_org → room ${roomId}`);
+          this.sendToSocket(socket, {
+            type: "connected",
+            payload: {
+              socketId: socket.id,
+              organizationId: orgId,
+              message: "Organización vinculada al socket",
+            },
+            timestamp: Date.now(),
+          });
+        },
+      );
+
       // Handle new chat message
       socket.on("message", async (payload: SendMessagePayload) => {
         await this.handleMessage(socket, payload);
@@ -280,11 +332,28 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const organizationId = socket.organizationId;
+    if (
+      organizationId == null ||
+      !Number.isFinite(organizationId) ||
+      organizationId <= 0
+    ) {
+      this.sendToSocket(socket, {
+        type: "error",
+        payload: {
+          message:
+            "organizationId de tenant requerido para el chat (nunca 0 ni vacío).",
+        },
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
     // Create or update session
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, {
         id: sessionId,
-        roomId: `${ROOM_PREFIX}${socket.organizationId}`,
+        roomId: `${ROOM_PREFIX}${organizationId}`,
         history: [],
         context,
         orgName,
@@ -311,6 +380,7 @@ export class WebSocketService implements OnModuleInit, OnModuleDestroy {
           context,
           orgName,
           userRole,
+          organizationId,
         },
         async (chunk: string) => {
           fullReply.push(chunk);

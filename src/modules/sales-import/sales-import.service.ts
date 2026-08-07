@@ -742,6 +742,18 @@ export class SalesImportService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Idempotente: si ya existe por legacyImportKey, no recrear ni tocar stock otra vez
+      const already = await tx.invoice.findFirst({
+        where: {
+          organizationId: params.organizationId,
+          legacyImportKey: params.source.legacyKey,
+        },
+        select: { id: true },
+      });
+      if (already) {
+        return already;
+      }
+
       const nextConsecutive = await this.invoiceSequence.allocateNext(
         params.organizationId,
         tx,

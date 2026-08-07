@@ -307,8 +307,9 @@ export class InvitationsService {
       );
     }
 
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase().trim() },
+    const emailNormalized = dto.email.toLowerCase().trim();
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: { equals: emailNormalized, mode: "insensitive" } },
     });
 
     if (existingUser) {
@@ -316,15 +317,107 @@ export class InvitationsService {
         where: {
           userId: existingUser.id,
           organizationId,
-          status: "ACTIVE",
         },
       });
-      if (existingMembership) {
+      if (existingMembership?.status === "ACTIVE") {
+        // Idempotente: devolver el miembro existente en lugar de 500/conflicto opaco
+        const member = await this.prisma.member.findFirst({
+          where: { id: existingMembership.id },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        });
+        if (member) {
+          // Si pidieron otro rol, actualizarlo (ADMIN/SUPER_ADMIN ya validados arriba)
+          if (String(member.role) !== String(dto.role)) {
+            const updated = await this.prisma.member.update({
+              where: { id: member.id },
+              data: { role: dto.role },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            });
+            return {
+              isNewUser: false,
+              message: "Usuario ya era miembro; rol actualizado",
+              member: this.mapMemberToResponse(updated),
+            };
+          }
+          return {
+            isNewUser: false,
+            message: "Usuario ya es miembro activo de esta organización",
+            member: this.mapMemberToResponse(member),
+          };
+        }
         throw new ConflictException(
           "Este usuario ya es miembro activo de esta organización",
         );
       }
+
+      // Reactivar membresía suspendida / crear si no existe (@@unique userId+org)
       try {
+        if (existingMembership) {
+          const [member] = await this.prisma.$transaction([
+            this.prisma.member.update({
+              where: { id: existingMembership.id },
+              data: {
+                role: dto.role,
+                status: "ACTIVE",
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            }),
+            this.prisma.user.update({
+              where: { id: existingUser.id },
+              data: {
+                isActive: true,
+                ...(dto.fullName?.trim()
+                  ? { fullName: dto.fullName.trim() }
+                  : {}),
+              },
+            }),
+          ]);
+          return {
+            isNewUser: false,
+            message: "Usuario reactivado en la organización",
+            member: this.mapMemberToResponse(member),
+          };
+        }
+
+        if (!existingUser.isActive) {
+          await this.prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              isActive: true,
+              ...(dto.fullName?.trim()
+                ? { fullName: dto.fullName.trim() }
+                : {}),
+            },
+          });
+        }
+
         const member = await this.prisma.member.create({
           data: {
             userId: existingUser.id,
@@ -349,13 +442,12 @@ export class InvitationsService {
           member: this.mapMemberToResponse(member),
         };
       } catch (e: any) {
-        // Unique constraint: membresía ya existe (race condition), buscar y devolver
+        // Unique constraint: membresía ya existe (race), reactivar y devolver
         if (e?.code === "P2002") {
           const existing = await this.prisma.member.findFirst({
             where: {
               userId: existingUser.id,
               organizationId,
-              status: "ACTIVE",
             },
             include: {
               user: {
@@ -369,10 +461,28 @@ export class InvitationsService {
             },
           });
           if (existing) {
+            const member = await this.prisma.member.update({
+              where: { id: existing.id },
+              data: { role: dto.role, status: "ACTIVE" },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            });
+            await this.prisma.user.update({
+              where: { id: existingUser.id },
+              data: { isActive: true },
+            });
             return {
               isNewUser: false,
-              message: "Usuario agregado a la organización",
-              member: this.mapMemberToResponse(existing),
+              message: "Usuario reactivado en la organización",
+              member: this.mapMemberToResponse(member),
             };
           }
         }
