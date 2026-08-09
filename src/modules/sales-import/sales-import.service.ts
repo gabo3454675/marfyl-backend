@@ -13,6 +13,7 @@ import {
   computeInvoiceTaxFromGross,
   type LineTaxInput,
 } from "@/modules/fiscal/helpers/tax-calculator";
+import { isIvaDisabledOrgSlug } from "@/common/founding-orgs";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
 import { requireImportIssueDate } from "@/modules/invoices/issue-date";
@@ -275,6 +276,12 @@ export class SalesImportService {
     invoices: ParsedSaleInvoice[],
     fileCount = 0,
   ): Promise<SalesImportPreviewResult> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true },
+    });
+    const ivaDisabled = isIvaDisabledOrgSlug(org?.slug);
+
     const products = await this.prisma.product.findMany({
       where: { organizationId, isActive: true },
       select: {
@@ -389,9 +396,11 @@ export class SalesImportService {
         if (product.isBundle) issues.push(`Combo no soportado en import: ${product.name}`);
         const unitPrice =
           lp.quantity > 0 ? Number((lp.lineTotal / lp.quantity).toFixed(4)) : 0;
+        const lineExempt = ivaDisabled || product.isExempt;
         taxInputs.push({
           amount: unitPrice * lp.quantity,
-          isExempt: product.isExempt,
+          isExempt: lineExempt,
+          taxRate: lineExempt ? 0 : undefined,
         });
       }
 
@@ -590,9 +599,10 @@ export class SalesImportService {
 
     const org = await this.prisma.organization.findUnique({
       where: { id: params.organizationId },
-      select: { exchangeRate: true },
+      select: { exchangeRate: true, slug: true },
     });
     const rate = Number(org?.exchangeRate ?? 1);
+    const ivaDisabled = isIvaDisabledOrgSlug(org?.slug);
 
     const imported: { legacyKey: string; invoiceId: number }[] = [];
     const failed: { legacyKey: string; error: string }[] = [];
@@ -613,6 +623,7 @@ export class SalesImportService {
           rate,
           skipStockValidation: params.skipStockValidation ?? false,
           useLegacyHeaderTotal: true,
+          ivaDisabled,
         });
         imported.push({ legacyKey: invPreview.legacyKey, invoiceId });
       } catch (err) {
@@ -645,11 +656,13 @@ export class SalesImportService {
     rate: number;
     skipStockValidation: boolean;
     useLegacyHeaderTotal?: boolean;
+    ivaDisabled?: boolean;
   }) {
     const issueDate = requireImportIssueDate(
       params.source.saleDate,
       params.source.legacyKey,
     );
+    const ivaDisabled = params.ivaDisabled === true;
     const taxLineInputs: LineTaxInput[] = [];
     const invoiceItemsData: {
       productId: number;
@@ -672,14 +685,19 @@ export class SalesImportService {
           ? Number((line.lineTotal / line.quantity).toFixed(4))
           : Number(product.salePrice);
       const subtotal = Number((unitPrice * line.quantity).toFixed(2));
+      const lineExempt = ivaDisabled || product.isExempt;
 
-      taxLineInputs.push({ amount: subtotal, isExempt: product.isExempt });
+      taxLineInputs.push({
+        amount: subtotal,
+        isExempt: lineExempt,
+        taxRate: lineExempt ? 0 : undefined,
+      });
       invoiceItemsData.push({
         productId: product.id,
         quantity: line.quantity,
         unitPrice,
         subtotal,
-        taxRate: product.isExempt ? 0 : 16,
+        taxRate: lineExempt ? 0 : 16,
         taxableBase: 0,
         ivaLine: 0,
       });
@@ -715,6 +733,7 @@ export class SalesImportService {
     const headerRounded =
       header != null ? Number(header.toFixed(2)) : null;
     const legacyGrossMode =
+      !ivaDisabled &&
       params.useLegacyHeaderTotal &&
       (headerRounded != null
         ? Math.abs(headerRounded - excelSubtotal) <= 0.15

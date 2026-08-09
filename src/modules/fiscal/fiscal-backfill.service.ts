@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
+import { isIvaDisabledOrgSlug } from "@/common/founding-orgs";
 import { FiscalEngineService } from "./fiscal-engine.service";
 import { computeInvoiceTax } from "./helpers/tax-calculator";
 
@@ -36,6 +37,12 @@ export class FiscalBackfillService {
       where.createdAt = { gte: start, lt: end };
     }
 
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true },
+    });
+    const ivaDisabled = isIvaDisabledOrgSlug(org?.slug);
+
     const invoices = await this.prisma.invoice.findMany({
       where,
       include: {
@@ -61,7 +68,8 @@ export class FiscalBackfillService {
           const taxTotals = computeInvoiceTax(
             inv.items.map((it) => ({
               amount: Number(it.subtotal),
-              isExempt: it.product?.isExempt,
+              isExempt: ivaDisabled || it.product?.isExempt,
+              taxRate: ivaDisabled || it.product?.isExempt ? 0 : undefined,
             })),
           );
           await this.prisma.invoice.update({

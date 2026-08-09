@@ -23,6 +23,7 @@ import {
   computeInvoiceTax,
   type LineTaxInput,
 } from "@/modules/fiscal/helpers/tax-calculator";
+import { isIvaDisabledOrgSlug } from "@/common/founding-orgs";
 import {
   TaskPriority,
   Product,
@@ -103,8 +104,9 @@ export class InvoicesService {
     // Obtener tasa y registrar TasaHistorica fuera de una transacción interactiva
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { exchangeRate: true },
+      select: { exchangeRate: true, slug: true },
     });
+    const ivaDisabled = isIvaDisabledOrgSlug(org?.slug);
     const rate = Number(org?.exchangeRate ?? 1);
     const tasa = await this.prisma.tasaHistorica.create({
       data: {
@@ -225,9 +227,11 @@ export class InvoicesService {
       }
 
       const subtotal = unitPrice * item.quantity;
+      const lineExempt = ivaDisabled || product.isExempt;
       const lineTax = {
         amount: subtotal,
-        isExempt: product.isExempt,
+        isExempt: lineExempt,
+        taxRate: lineExempt ? 0 : undefined,
       };
       taxLineInputs.push(lineTax);
 
@@ -236,7 +240,7 @@ export class InvoicesService {
         quantity: item.quantity,
         unitPrice,
         subtotal,
-        taxRate: product.isExempt ? 0 : 16,
+        taxRate: lineExempt ? 0 : 16,
         taxableBase: 0,
         ivaLine: 0,
         variantId: item.variantId ?? null,
@@ -766,7 +770,7 @@ export class InvoicesService {
 
     const ids = idRows.map((r) => r.id);
     const invoicesUnordered = await this.prisma.invoice.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, organizationId: orgId },
       include: {
         items: {
           where: { lineageStatus: "ACTIVE" },
@@ -1237,7 +1241,7 @@ export class InvoicesService {
       where: { id, organizationId },
       include: {
         customer: { select: { name: true, taxId: true } },
-        organization: { select: { exchangeRate: true } },
+        organization: { select: { exchangeRate: true, slug: true } },
       },
     });
 
@@ -1255,6 +1259,14 @@ export class InvoicesService {
     const difference = currentAmount - newAmount;
     const exchangeRate = Number(invoice.organization?.exchangeRate ?? 1);
     const differenceBs = difference * exchangeRate;
+    const ivaDisabled = isIvaDisabledOrgSlug(invoice.organization?.slug);
+    const adjustedBaseGeneral = ivaDisabled
+      ? 0
+      : Math.round((newAmount / 1.16) * 100) / 100;
+    const adjustedIvaAmount = ivaDisabled
+      ? 0
+      : Math.round(((newAmount * 0.16) / 1.16) * 100) / 100;
+    const adjustedBaseExempt = ivaDisabled ? newAmount : 0;
 
     // Crear nota de crédito en libro de ventas
     const creditNote = await this.prisma.libroVentaLine.create({
@@ -1271,11 +1283,11 @@ export class InvoicesService {
           : null,
         customerTaxId: invoice.customer?.taxId ?? null,
         customerName: invoice.customer?.name ?? "Cliente General",
-        baseExempt: 0,
+        baseExempt: adjustedBaseExempt,
         baseReduced: 0,
-        // newAmount es el NUEVO TOTAL con IVA; calculamos base e IVA contenido
-        baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        // newAmount es el NUEVO TOTAL; sin IVA en Rancho, con desglose 16% en el resto
+        baseGeneral: adjustedBaseGeneral,
+        ivaAmount: adjustedIvaAmount,
         totalAmount: newAmount,
         status: "ACTIVE",
       },
@@ -1286,8 +1298,9 @@ export class InvoicesService {
       where: { id },
       data: {
         totalAmount: newAmount,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
-        baseGeneral: Math.round((newAmount / 1.16) * 100) / 100,
+        ivaAmount: adjustedIvaAmount,
+        baseGeneral: adjustedBaseGeneral,
+        baseExempt: adjustedBaseExempt,
       },
       include: {
         customer: true,
@@ -1308,7 +1321,7 @@ export class InvoicesService {
       },
       newValue: {
         totalAmount: newAmount,
-        ivaAmount: Math.round((newAmount * 0.16 / 1.16) * 100) / 100,
+        ivaAmount: adjustedIvaAmount,
         difference: difference,
         reason: reason,
         creditNoteId: creditNote.id,
@@ -1708,10 +1721,12 @@ export class InvoicesService {
             align: "right",
           });
         y += 14;
-        doc
-          .text("Impuestos:", tx, y, { width: 90, align: "right" })
-          .text(formatMoney(taxVal), 440, y, { width: 110, align: "right" });
-        y += 20;
+        if (taxVal > 0) {
+          doc
+            .text("Impuestos:", tx, y, { width: 90, align: "right" })
+            .text(formatMoney(taxVal), 440, y, { width: 110, align: "right" });
+          y += 20;
+        }
         doc
           .moveTo(tx, y)
           .lineTo(550, y)
