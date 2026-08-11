@@ -123,17 +123,6 @@ export class InvoicesController {
     return this.liquorSalesService.getDailyReport(organizationId, day);
   }
 
-  /**
-   * Limpia el historial de ventas/facturación de la organización (solo super_admin, desarrollo).
-   */
-  @Post("clear-test-data")
-  async clearTestData(
-    @ActiveOrganization() organizationId: number,
-    @ActiveUser() user: { id: number },
-  ) {
-    return this.invoicesService.clearTestData(organizationId, user.id);
-  }
-
   @Delete(":id")
   @Permissions("canDeleteInvoices")
   async remove(

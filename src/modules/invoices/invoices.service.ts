@@ -1035,47 +1035,6 @@ export class InvoicesService {
   }
 
   /**
-   * Borra todo el historial de ventas/facturación de la organización actual.
-   * Solo super_admin. Para dejar el sistema en cero durante el desarrollo.
-   */
-  async clearTestData(organizationId: number, userId: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { isSuperAdmin: true },
-    });
-    if (!user?.isSuperAdmin) {
-      throw new ForbiddenException(
-        "Solo el Super Admin puede borrar el historial de ventas",
-      );
-    }
-
-    const invoices = await this.prisma.invoice.findMany({
-      where: { organizationId },
-      select: { id: true },
-    });
-    const invoiceIds = invoices.map((i) => i.id);
-    if (invoiceIds.length === 0) {
-      return { message: "No hay facturas para eliminar", deleted: 0 };
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.task.updateMany({
-        where: { invoiceId: { in: invoiceIds } },
-        data: { invoiceId: null },
-      }),
-      this.prisma.invoiceItem.deleteMany({
-        where: { invoiceId: { in: invoiceIds } },
-      }),
-      this.prisma.invoice.deleteMany({ where: { organizationId } }),
-    ]);
-
-    return {
-      message: "Historial de ventas/facturación eliminado correctamente",
-      deleted: invoiceIds.length,
-    };
-  }
-
-  /**
    * Elimina una factura. Solo permitido para super_admin.
    * @deprecated En Venezuela las facturas NO se eliminan nunca. Usar voidInvoice() para anular.
    *              La eliminación física de facturas es ilegal según la ley tributaria venezolana.

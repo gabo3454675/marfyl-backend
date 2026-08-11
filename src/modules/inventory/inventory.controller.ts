@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Delete,
   UseGuards,
   UploadedFile,
   UseInterceptors,
@@ -16,9 +15,7 @@ import { memoryStorage } from "multer";
 import { InventoryService } from "./inventory.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
-import { SuperAdminGuard } from "@/common/guards/super-admin.guard";
 import { ActiveOrganization } from "@/common/decorators/active-organization.decorator";
-import { ClearInventoryDto } from "./dto/clear-inventory.dto";
 
 @Controller("inventory")
 export class InventoryController {
@@ -116,16 +113,5 @@ export class InventoryController {
       organizationId,
       confirm: confirmBool,
     });
-  }
-
-  /**
-   * Limpia todo el inventario de una organización (productos y movimientos).
-   * Solo Super Admin global (User.isSuperAdmin). No requiere x-tenant-id.
-   * Body: { tenantId: number }
-   */
-  @Delete("clear")
-  @UseGuards(JwtAuthGuard, SuperAdminGuard)
-  async clear(@Body() dto: ClearInventoryDto) {
-    return this.inventoryService.clearByTenantId(dto.tenantId);
   }
 }

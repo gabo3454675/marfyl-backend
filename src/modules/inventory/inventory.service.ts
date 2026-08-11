@@ -624,48 +624,4 @@ export class InventoryService {
       confirm: true,
     });
   }
-
-  /**
-   * Elimina todos los productos y movimientos de inventario de una organización (tenant).
-   * Solo debe ser llamado por un Super Admin global (SuperAdminGuard).
-   * Si algún producto está referenciado en facturas (InvoiceItem), la operación falla.
-   */
-  async clearByTenantId(tenantId: number): Promise<{
-    deletedMovements: number;
-    deletedProducts: number;
-  }> {
-    const org = await this.prisma.organization.findUnique({
-      where: { id: tenantId },
-      select: { id: true },
-    });
-    if (!org) {
-      throw new BadRequestException(
-        `No existe la organización con tenantId ${tenantId}.`,
-      );
-    }
-
-    try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        const deletedMovements = await tx.inventoryMovement.deleteMany({
-          where: { tenantId },
-        });
-        const deletedProducts = await tx.product.deleteMany({
-          where: { organizationId: tenantId },
-        });
-        return {
-          deletedMovements: deletedMovements.count,
-          deletedProducts: deletedProducts.count,
-        };
-      });
-      return result;
-    } catch (err: any) {
-      if (err?.code === "P2003" || err?.message?.includes("Foreign key")) {
-        throw new BadRequestException(
-          "No se pueden eliminar productos que están referenciados en facturas. " +
-            "Elimine o edite primero las facturas que los contienen.",
-        );
-      }
-      throw err;
-    }
-  }
 }
