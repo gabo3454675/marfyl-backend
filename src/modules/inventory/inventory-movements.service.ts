@@ -105,6 +105,7 @@ export class InventoryMovementsService {
           type: movementType,
           quantity: -dto.quantity,
           reason: dto.reason ?? null,
+          responsible: dto.responsible ?? null,
           unitCostAtTransaction: unitCost,
           consumptionReason,
           product: { connect: { id: dto.productId } },
@@ -333,6 +334,95 @@ export class InventoryMovementsService {
   }
 
   /**
+   * Genera plantilla Excel para carga masiva de consumos/autoconsumo.
+   * Columnas: CODIGO_PRODUCTO, CANTIDAD, MOTIVO, RESPONSABLE, FECHA, OBSERVACION
+   */
+  async generateConsumptionTemplateBuffer(): Promise<Buffer> {
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "MARFYL";
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet("Consumo");
+
+    const headers = [
+      "CODIGO_PRODUCTO",
+      "CANTIDAD",
+      "MOTIVO",
+      "RESPONSABLE",
+      "FECHA",
+      "OBSERVACION",
+    ];
+    worksheet.addRow(headers);
+
+    // Formato de encabezados
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.height = 22;
+
+    // Notas en headers
+    const headerNotes: Record<string, string> = {
+      CODIGO_PRODUCTO:
+        "SKU o código de barras del producto. Debe existir en inventario.",
+      CANTIDAD: "Número entero positivo de unidades a descontar.",
+      MOTIVO:
+        "Tipo de movimiento: AUTOCONSUMO, MERMA_VENCIDO, MERMA_DANADO, USO_TALLER",
+      RESPONSABLE:
+        "Nombre de la persona a quien se le descuenta el consumo (opcional).",
+      FECHA:
+        "Fecha del consumo en formato AAAA-MM-DD (opcional, si se omite usa fecha actual).",
+      OBSERVACION: "Detalle adicional del movimiento (opcional).",
+    };
+    headers.forEach((header, idx) => {
+      const cell = worksheet.getRow(1).getCell(idx + 1);
+      cell.note = headerNotes[header];
+    });
+
+    // Fila de ejemplo
+    worksheet.addRow([
+      "ABC-001",
+      5,
+      "AUTOCONSUMO",
+      "Juan Pérez",
+      "2025-01-15",
+      "Uso interno oficina",
+    ]);
+
+    // Validación de datos en columna C (MOTIVO)
+    const listValidation = {
+      type: "list" as const,
+      allowBlank: true,
+      formulae: ['"AUTOCONSUMO,MERMA_VENCIDO,MERMA_DANADO,USO_TALLER"'],
+      showErrorMessage: true,
+      errorTitle: "Valor no permitido",
+      error:
+        "Seleccione AUTOCONSUMO, MERMA_VENCIDO, MERMA_DANADO o USO_TALLER.",
+    };
+    for (let i = 2; i <= 1001; i++) {
+      const cell = worksheet.getCell("C" + i);
+      (cell as any).dataValidation = listValidation;
+    }
+
+    // Anchos de columna
+    worksheet.getColumn(1).width = 20; // CODIGO_PRODUCTO
+    worksheet.getColumn(2).width = 12; // CANTIDAD
+    worksheet.getColumn(3).width = 18; // MOTIVO
+    worksheet.getColumn(4).width = 22; // RESPONSABLE
+    worksheet.getColumn(5).width = 14; // FECHA
+    worksheet.getColumn(6).width = 40; // OBSERVACION
+
+    // Formato numérico
+    worksheet.getColumn(2).numFmt = "0"; // CANTIDAD
+
+    // Freeze de encabezados
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    const buf = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buf as ArrayBuffer);
+  }
+
+  /**
    * Lista los movimientos de inventario de la organización (útil para historial).
    */
   async findByOrganization(
@@ -354,6 +444,351 @@ export class InventoryMovementsService {
         user: { select: { id: true, email: true, fullName: true } },
       },
     });
+  }
+
+  /**
+   * Importa consumos/autoconsumos masivamente desde Excel.
+   * Soporta preview (dry-run) y confirm.
+   */
+  async importConsumptionsFromExcel(params: {
+    file: Express.Multer.File;
+    organizationId: number;
+    userId: number;
+    confirm?: boolean;
+  }) {
+    const { file, organizationId, userId, confirm = false } = params;
+
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("Archivo no válido");
+    }
+
+    const ext = (file.originalname || "").toLowerCase().split(".").pop() || "";
+    if (ext !== "xlsx" && ext !== "xls") {
+      throw new BadRequestException("Use un archivo Excel (.xlsx, .xls).");
+    }
+
+    // Parse Excel
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file.buffer as any);
+    const worksheet = workbook.worksheets[0];
+
+    if (!worksheet || worksheet.rowCount < 2) {
+      throw new BadRequestException(
+        "El Excel debe tener encabezados y al menos una fila de datos.",
+      );
+    }
+
+    // Detectar columnas
+    const headerRow = worksheet.getRow(1);
+    const headers: string[] = [];
+    const lastCol = Math.min(headerRow.cellCount || 20, 30);
+    for (let c = 1; c <= lastCol; c++) {
+      headers[c - 1] = String(headerRow.getCell(c).value ?? "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+    }
+
+    const findCol = (candidates: string[]): number => {
+      for (let i = 0; i < headers.length; i++) {
+        const h = headers[i] || "";
+        if (!h) continue;
+        for (const c of candidates) {
+          if (h === c || h.includes(c)) return i;
+        }
+      }
+      return -1;
+    };
+
+    const colCode = findCol(["codigo_producto", "codigo", "sku", "codigo de barras", "barcode"]);
+    const colQty = findCol(["cantidad", "qty", "quantity"]);
+    const colMotivo = findCol(["motivo", "tipo", "type"]);
+    const colResponsible = findCol(["responsable", "responsible", "a nombre"]);
+    const colDate = findCol(["fecha", "date"]);
+    const colObs = findCol(["observacion", "observaciones", "nota", "notas", "reason"]);
+
+    if (colCode < 0 || colQty < 0) {
+      throw new BadRequestException(
+        "No se encontraron columnas obligatorias. Incluya: CODIGO_PRODUCTO y CANTIDAD.",
+      );
+    }
+
+    // Parse rows
+    type RawRow = {
+      rowNum: number;
+      code: string;
+      qty: number;
+      motivo: string;
+      responsible: string | null;
+      date: string | null;
+      observation: string | null;
+    };
+    const rawRows: RawRow[] = [];
+    const parseErrors: { row: number; message: string }[] = [];
+
+    for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+      const row = worksheet.getRow(rowNum);
+      const code = String(row.getCell(colCode + 1)?.value ?? "").trim();
+      const qtyNum = this.parseFlexibleNumber(row.getCell(colQty + 1)?.value);
+      const motivo = colMotivo >= 0 ? String(row.getCell(colMotivo + 1)?.value ?? "").trim().toUpperCase() : "AUTOCONSUMO";
+      const responsible = colResponsible >= 0 ? String(row.getCell(colResponsible + 1)?.value ?? "").trim() || null : null;
+      const dateRaw = colDate >= 0 ? String(row.getCell(colDate + 1)?.value ?? "").trim() || null : null;
+      const observation = colObs >= 0 ? String(row.getCell(colObs + 1)?.value ?? "").trim() || null : null;
+
+      if (!code && (qtyNum == null || qtyNum === 0)) continue;
+
+      if (!code) {
+        parseErrors.push({ row: rowNum, message: "Falta código/SKU." });
+        continue;
+      }
+      if (qtyNum == null || qtyNum < 1 || !Number.isFinite(qtyNum)) {
+        parseErrors.push({ row: rowNum, message: `Cantidad inválida para "${code}"` });
+        continue;
+      }
+      const qty = Math.floor(qtyNum);
+
+      const validMotivos = ["AUTOCONSUMO", "MERMA_VENCIDO", "MERMA_DANADO", "USO_TALLER"];
+      if (motivo && !validMotivos.includes(motivo)) {
+        parseErrors.push({ row: rowNum, message: `Motivo inválido "${motivo}". Use: ${validMotivos.join(", ")}` });
+        continue;
+      }
+
+      rawRows.push({
+        rowNum,
+        code,
+        qty,
+        motivo: motivo || "AUTOCONSUMO",
+        responsible,
+        date: dateRaw,
+        observation,
+      });
+    }
+
+    // Match products
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true, sku: true, barcode: true, stock: true, costPrice: true, isBundle: true, isService: true },
+    });
+
+    const bySku = new Map<string, (typeof products)[0]>();
+    const byBarcode = new Map<string, (typeof products)[0]>();
+    for (const p of products) {
+      if (p.sku) bySku.set(p.sku.trim().toUpperCase(), p);
+      if (p.barcode) byBarcode.set(p.barcode.trim().toUpperCase(), p);
+    }
+
+    type PreviewLine = {
+      lineIndex: number;
+      rowNum: number;
+      originalCode: string;
+      quantity: number;
+      motivo: string;
+      responsible: string | null;
+      date: string | null;
+      observation: string | null;
+      productId: number | null;
+      productName: string | null;
+      currentStock: number | null;
+      unitCost: number;
+      status: "matched" | "unmatched" | "error";
+      error?: string;
+    };
+
+    const resultLines: PreviewLine[] = [];
+    const unmatched: { row: number; code: string; reason: string }[] = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const r = rawRows[i];
+      const skuKey = r.code.trim().toUpperCase();
+      let product = bySku.get(skuKey) ?? byBarcode.get(skuKey) ?? null;
+
+      if (!product) {
+        unmatched.push({ row: r.rowNum, code: r.code, reason: "No hay producto con ese SKU o código de barras" });
+        resultLines.push({
+          lineIndex: i,
+          rowNum: r.rowNum,
+          originalCode: r.code,
+          quantity: r.qty,
+          motivo: r.motivo,
+          responsible: r.responsible,
+          date: r.date,
+          observation: r.observation,
+          productId: null,
+          productName: null,
+          currentStock: null,
+          unitCost: 0,
+          status: "unmatched",
+          error: "Producto no encontrado",
+        });
+        continue;
+      }
+
+      if (product.isBundle) {
+        resultLines.push({
+          lineIndex: i,
+          rowNum: r.rowNum,
+          originalCode: r.code,
+          quantity: r.qty,
+          motivo: r.motivo,
+          responsible: r.responsible,
+          date: r.date,
+          observation: r.observation,
+          productId: product.id,
+          productName: product.name,
+          currentStock: product.stock,
+          unitCost: Number(product.costPrice ?? 0),
+          status: "error",
+          error: "Es un combo; use productos sueltos",
+        });
+        continue;
+      }
+
+      if (product.stock < r.qty) {
+        resultLines.push({
+          lineIndex: i,
+          rowNum: r.rowNum,
+          originalCode: r.code,
+          quantity: r.qty,
+          motivo: r.motivo,
+          responsible: r.responsible,
+          date: r.date,
+          observation: r.observation,
+          productId: product.id,
+          productName: product.name,
+          currentStock: product.stock,
+          unitCost: Number(product.costPrice ?? 0),
+          status: "error",
+          error: `Stock insuficiente: ${product.stock} disponible, ${r.qty} solicitado`,
+        });
+        continue;
+      }
+
+      resultLines.push({
+        lineIndex: i,
+        rowNum: r.rowNum,
+        originalCode: r.code,
+        quantity: r.qty,
+        motivo: r.motivo,
+        responsible: r.responsible,
+        date: r.date,
+        observation: r.observation,
+        productId: product.id,
+        productName: product.name,
+        currentStock: product.stock,
+        unitCost: Number(product.costPrice ?? 0),
+        status: "matched",
+      });
+    }
+
+    const matchedLines = resultLines.filter((l) => l.status === "matched").length;
+    const errorLines = resultLines.filter((l) => l.status === "error" || l.status === "unmatched").length;
+    const totalCost = resultLines
+      .filter((l) => l.status === "matched")
+      .reduce((sum, l) => sum + l.quantity * l.unitCost, 0);
+
+    const preview = {
+      dryRun: true as const,
+      fileName: file.originalname || "",
+      totalLines: resultLines.length,
+      matchedLines,
+      errorLines,
+      totalCost: Math.round(totalCost * 100) / 100,
+      lines: resultLines,
+      errors: parseErrors,
+      unmatched,
+      canConfirm: matchedLines > 0 && parseErrors.length === 0,
+    };
+
+    if (!confirm) {
+      return preview;
+    }
+
+    // Confirm: execute movements
+    if (!preview.canConfirm) {
+      throw new BadRequestException("No se puede confirmar: hay errores en el archivo.");
+    }
+
+    const companyId = await getCompanyIdFromOrganization(this.prisma, organizationId);
+    const category = await this.getOrCreateAutoconsumoCategory(
+      this.prisma as any,
+      organizationId,
+      companyId,
+    );
+
+    let movementsCreated = 0;
+    const results: { productId: number; productName: string; quantity: number; newStock: number }[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const line of resultLines) {
+        if (line.status !== "matched" || !line.productId) continue;
+
+        const movementType = line.motivo as any;
+        const consumptionReason = line.motivo === "MERMA_VENCIDO" || line.motivo === "MERMA_DANADO" ? "MERMA" : "USO_OPERATIVO";
+        const movementDate = line.date ? new Date(line.date + "T12:00:00.000Z") : new Date();
+
+        await tx.inventoryMovement.create({
+          data: {
+            type: movementType,
+            quantity: -line.quantity,
+            reason: line.observation ?? null,
+            responsible: line.responsible ?? null,
+            unitCostAtTransaction: line.unitCost,
+            consumptionReason,
+            createdAt: movementDate,
+            product: { connect: { id: line.productId } },
+            user: { connect: { id: userId } },
+            tenant: { connect: { id: organizationId } },
+          },
+        });
+
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { stock: { decrement: line.quantity } },
+        });
+
+        await tx.expense.create({
+          data: {
+            companyId,
+            organizationId,
+            date: movementDate,
+            amount: line.quantity * line.unitCost,
+            description: `Consumo importado: ${line.productName} x ${line.quantity} (${line.motivo})${line.responsible ? ` - ${line.responsible}` : ""}`,
+            status: "PAID",
+            categoryId: category.id,
+          },
+        });
+
+        const updated = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { stock: true },
+        });
+
+        results.push({
+          productId: line.productId,
+          productName: line.productName!,
+          quantity: line.quantity,
+          newStock: updated!.stock,
+        });
+        movementsCreated++;
+      }
+    });
+
+    return {
+      dryRun: false as const,
+      movementsCreated,
+      totalCost: preview.totalCost,
+      lines: results,
+    };
+  }
+
+  private parseFlexibleNumber(value: unknown): number | null {
+    if (value == null) return null;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const raw = String(value).trim().replace(/\s/g, "").replace(",", ".");
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : null;
   }
 
   /**

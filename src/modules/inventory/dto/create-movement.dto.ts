@@ -63,4 +63,10 @@ export class CreateMovementDto {
   @IsInt()
   @Min(1, { message: "variantId debe ser un entero positivo" })
   variantId?: number;
+
+  /** Nombre de la persona a quien se le descuenta el consumo (opcional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: "responsible no puede superar 200 caracteres" })
+  responsible?: string;
 }

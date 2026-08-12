@@ -10,15 +10,15 @@ export type FoundingOrgSlug = (typeof FOUNDING_ORG_SLUGS)[number];
 /** Única org con módulo de concierto / boletería temporal. */
 export const CONCERT_ORG_SLUG = "monddy";
 
-/** Org sin cálculo ni cobro de IVA en ventas (precio = total). */
-export const IVA_DISABLED_ORG_SLUG = "el-rancho-de-german";
+/** Orgs sin cálculo ni cobro de IVA en ventas (precio = total). */
+export const IVA_DISABLED_ORG_SLUGS = ["el-rancho-de-german", "davean"] as const;
 
 export function isFoundingOrgSlug(slug: string): boolean {
   return (FOUNDING_ORG_SLUGS as readonly string[]).includes(slug);
 }
 
 export function isIvaDisabledOrgSlug(slug: string | null | undefined): boolean {
-  return slug === IVA_DISABLED_ORG_SLUG;
+  return (IVA_DISABLED_ORG_SLUGS as readonly string[]).includes(slug ?? "");
 }
 
 export function isBillingExemptOrg(org: {

@@ -531,6 +531,7 @@ model InventoryMovement {
   type                  MovementType       // Tipo de movimiento
   quantity              Int                // Cantidad (positiva o negativa según el tipo)
   reason                String?           // Detalles opcionales del movimiento
+  responsible           String?           // Nombre de la persona a quien se le descuenta (consumo)
   productId             Int                // Producto afectado
   variantId             Int?               // Opcional: variante que generó el movimiento
   userId                Int                // Responsable del movimiento

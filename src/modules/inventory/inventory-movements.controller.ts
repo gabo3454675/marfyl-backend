@@ -1,4 +1,7 @@
-import { Controller, Post, Get, UseGuards, Body, Query } from "@nestjs/common";
+import { Controller, Post, Get, UseGuards, UseInterceptors, Body, Query, Res, BadRequestException, UploadedFile } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
+import { Response } from "express";
 import { InventoryMovementsService } from "./inventory-movements.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
@@ -55,6 +58,38 @@ export class InventoryMovementsController {
   }
 
   /**
+   * Importa consumos/autoconsumos masivamente desde Excel.
+   * confirm=false: preview (dry-run). confirm=true: ejecuta.
+   */
+  @Post("import")
+  @Permissions("canManageInventory")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  async importConsumptions(
+    @UploadedFile() file: Express.Multer.File,
+    @Body("confirm") confirm: string | boolean,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    if (!file) {
+      throw new BadRequestException("Archivo requerido");
+    }
+    const confirmBool =
+      confirm === true ||
+      String(confirm || "").toLowerCase().trim() === "true";
+    return this.inventoryMovementsService.importConsumptionsFromExcel({
+      file,
+      organizationId,
+      userId: user.id,
+      confirm: confirmBool,
+    });
+  }
+
+  /**
    * KPIs para dashboard de Autoconsumo: impacto económico por día, productos más consumidos, distribución por motivo.
    * Query opcionales: dateFrom, dateTo (YYYY-MM-DD).
    */
@@ -68,6 +103,25 @@ export class InventoryMovementsController {
       dateFrom,
       dateTo,
     });
+  }
+
+  /**
+   * Descarga plantilla Excel para carga masiva de consumos/autoconsumo.
+   */
+  @Get("template")
+  @Permissions("canManageInventory")
+  async downloadTemplate(@Res() res: Response) {
+    const buffer =
+      await this.inventoryMovementsService.generateConsumptionTemplateBuffer();
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="consumo-plantilla.xlsx"',
+    );
+    res.send(buffer);
   }
 
   /**

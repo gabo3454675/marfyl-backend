@@ -1,12 +1,15 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
+  Res,
   UseGuards,
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
 } from "@nestjs/common";
+import { Response } from "express";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { SalesImportService } from "./sales-import.service";
@@ -63,6 +66,24 @@ export class SalesImportController {
       organizationId: organizationId!,
       files,
     });
+  }
+
+  /**
+   * Descarga plantilla Excel genérica para importar ventas.
+   */
+  @Get("template")
+  @Permissions("canManageInventory")
+  async downloadTemplate(@Res() res: Response) {
+    const buffer = await this.salesImportService.generateSalesTemplateBuffer();
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="ventas-plantilla.xlsx"',
+    );
+    res.send(buffer);
   }
 
   @Post("confirm")

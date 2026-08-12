@@ -645,6 +645,77 @@ export class SalesImportService {
     };
   }
 
+  /**
+   * Genera plantilla Excel genérica para importación de ventas.
+   * Columnas: FECHA, CODIGO_PRODUCTO, CANTIDAD, PRECIO_UNITARIO, CLIENTE, OBSERVACION
+   */
+  async generateSalesTemplateBuffer(): Promise<Buffer> {
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "MARFYL";
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet("Ventas");
+
+    const headers = [
+      "FECHA",
+      "CODIGO_PRODUCTO",
+      "CANTIDAD",
+      "PRECIO_UNITARIO",
+      "CLIENTE",
+      "OBSERVACION",
+    ];
+    worksheet.addRow(headers);
+
+    // Formato de encabezados
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.height = 22;
+
+    // Notas en headers
+    const headerNotes: Record<string, string> = {
+      FECHA: "Fecha de la venta en formato AAAA-MM-DD.",
+      CODIGO_PRODUCTO: "SKU o código de barras del producto. Debe existir en inventario.",
+      CANTIDAD: "Número entero positivo de unidades vendidas.",
+      PRECIO_UNITARIO: "Precio de venta unitario en USD (ej: 10.50).",
+      CLIENTE: "Nombre del cliente (opcional, si se omite usa 'CLIENTE NATURAL CONTADO').",
+      OBSERVACION: "Detalle adicional de la venta (opcional).",
+    };
+    headers.forEach((header, idx) => {
+      const cell = worksheet.getRow(1).getCell(idx + 1);
+      cell.note = headerNotes[header];
+    });
+
+    // Fila de ejemplo
+    worksheet.addRow([
+      "2025-01-15",
+      "ABC-001",
+      3,
+      10.50,
+      "Juan Pérez",
+      "Venta mostrador",
+    ]);
+
+    // Anchos de columna
+    worksheet.getColumn(1).width = 14; // FECHA
+    worksheet.getColumn(2).width = 20; // CODIGO_PRODUCTO
+    worksheet.getColumn(3).width = 12; // CANTIDAD
+    worksheet.getColumn(4).width = 16; // PRECIO_UNITARIO
+    worksheet.getColumn(5).width = 22; // CLIENTE
+    worksheet.getColumn(6).width = 40; // OBSERVACION
+
+    // Formato numérico
+    worksheet.getColumn(3).numFmt = "0"; // CANTIDAD
+    worksheet.getColumn(4).numFmt = "#,##0.00"; // PRECIO_UNITARIO
+
+    // Freeze de encabezados
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    const buf = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buf as ArrayBuffer);
+  }
+
   private async importSingleInvoice(params: {
     organizationId: number;
     companyId: number;
