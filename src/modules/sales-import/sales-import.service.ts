@@ -678,13 +678,45 @@ export class SalesImportService {
   /**
    * Genera plantilla Excel genérica para importación de ventas.
    * Columnas: FECHA, CODIGO_PRODUCTO, CANTIDAD, PRECIO_UNITARIO, CLIENTE, OBSERVACION
+   * Incluye hoja "Productos" con catálogo de la organización y hoja "Instrucciones".
    */
-  async generateSalesTemplateBuffer(): Promise<Buffer> {
+  async generateSalesTemplateBuffer(organizationId: number): Promise<Buffer> {
     const ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "MARFYL";
     workbook.created = new Date();
 
+    // ── Hoja de productos ──
+    const productsWs = workbook.addWorksheet("Productos");
+    productsWs.addRow(["SKU", "NOMBRE", "PRECIO_VENTA", "STOCK", "CODIGO_BARRAS"]);
+    const productsHeaderRow = productsWs.getRow(1);
+    productsHeaderRow.font = { bold: true };
+
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true },
+      select: { sku: true, name: true, salePrice: true, stock: true, barcode: true },
+      orderBy: { name: "asc" },
+    });
+
+    for (const p of products) {
+      productsWs.addRow([
+        p.sku ?? "",
+        p.name,
+        Number(p.salePrice),
+        p.stock,
+        p.barcode ?? "",
+      ]);
+    }
+
+    productsWs.getColumn(1).width = 16; // SKU
+    productsWs.getColumn(2).width = 40; // NOMBRE
+    productsWs.getColumn(3).width = 14; // PRECIO_VENTA
+    productsWs.getColumn(4).width = 10; // STOCK
+    productsWs.getColumn(5).width = 18; // CODIGO_BARRAS
+    productsWs.getColumn(3).numFmt = "#,##0.00";
+    productsWs.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de ventas ──
     const worksheet = workbook.addWorksheet("Ventas");
 
     const headers = [
@@ -741,6 +773,42 @@ export class SalesImportService {
 
     // Freeze de encabezados
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de instrucciones ──
+    const instructionsWs = workbook.addWorksheet("Instrucciones");
+    instructionsWs.getColumn(1).width = 80;
+
+    const instructions = [
+      "PLANTILLA DE IMPORTACIÓN DE VENTAS - MARFYL",
+      "",
+      "Esta plantilla te permite importar ventas masivamente al sistema.",
+      "",
+      "HOJA 'VENTAS' - Columnas:",
+      "  • FECHA: Fecha de la venta (formato AAAA-MM-DD, ej: 2025-01-15)",
+      "  • CODIGO_PRODUCTO: SKU o código de barras del producto (ver hoja 'Productos')",
+      "  • CANTIDAD: Número entero de unidades vendidas",
+      "  • PRECIO_UNITARIO: Precio de venta en USD (ej: 10.50)",
+      "  • CLIENTE: Nombre del cliente (opcional, si se omite usa 'CLIENTE NATURAL CONTADO')",
+      "  • OBSERVACION: Detalle adicional (opcional)",
+      "",
+      "HOJA 'PRODUCTOS':",
+      "  • Aquí puedes ver todos los productos disponibles con su SKU y precio",
+      "  • Usa el SKU de esta hoja para llenar la columna CODIGO_PRODUCTO",
+      "  • Si el producto no tiene SKU, usa el código de barras",
+      "",
+      "CONSEJOS:",
+      "  • No modifiques los encabezados de la hoja 'Ventas'",
+      "  • El SKU debe coincidir exactamente (mayúsculas/minúsculas importan)",
+      "  • Si no encuentras un producto, agrégalo primero desde Inventario",
+      "  • El sistema validará stock disponible antes de importar",
+    ];
+
+    for (let i = 0; i < instructions.length; i++) {
+      const cell = instructionsWs.getCell(`A${i + 1}`);
+      cell.value = instructions[i];
+      if (i === 0) cell.font = { bold: true, size: 14 };
+      else if (instructions[i].startsWith("HOJA") || instructions[i].startsWith("CONSEJOS")) cell.font = { bold: true };
+    }
 
     const buf = await workbook.xlsx.writeBuffer();
     return Buffer.from(buf as ArrayBuffer);

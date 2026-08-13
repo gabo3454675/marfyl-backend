@@ -32,26 +32,27 @@ describe("SalesImportService - Template", () => {
 
   describe("generateSalesTemplateBuffer", () => {
     it("should return a Buffer", async () => {
-      const buffer = await service.generateSalesTemplateBuffer();
+      const buffer = await service.generateSalesTemplateBuffer(1);
       expect(buffer).toBeInstanceOf(Buffer);
       expect(buffer.length).toBeGreaterThan(0);
     });
 
-    it("should generate a valid Excel file", async () => {
-      const buffer = await service.generateSalesTemplateBuffer();
+    it("should generate a valid Excel file with 3 worksheets", async () => {
+      const buffer = await service.generateSalesTemplateBuffer(1);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer as any);
 
-      expect(workbook.worksheets.length).toBe(1);
-      const ws = workbook.worksheets[0];
-      expect(ws.name).toBe("Ventas");
+      expect(workbook.worksheets.length).toBe(3);
+      expect(workbook.worksheets[0].name).toBe("Productos");
+      expect(workbook.worksheets[1].name).toBe("Ventas");
+      expect(workbook.worksheets[2].name).toBe("Instrucciones");
     });
 
-    it("should have correct headers", async () => {
-      const buffer = await service.generateSalesTemplateBuffer();
+    it("should have correct headers on Ventas sheet", async () => {
+      const buffer = await service.generateSalesTemplateBuffer(1);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer as any);
-      const ws = workbook.worksheets[0];
+      const ws = workbook.worksheets[1]; // "Ventas"
 
       const headerRow = ws.getRow(1);
       const headers: string[] = [];
@@ -69,11 +70,11 @@ describe("SalesImportService - Template", () => {
       ]);
     });
 
-    it("should have an example row", async () => {
-      const buffer = await service.generateSalesTemplateBuffer();
+    it("should have an example row on Ventas sheet", async () => {
+      const buffer = await service.generateSalesTemplateBuffer(1);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer as any);
-      const ws = workbook.worksheets[0];
+      const ws = workbook.worksheets[1]; // "Ventas"
 
       // Row 1 = headers, Row 2 = example
       expect(ws.rowCount).toBe(2);
@@ -83,11 +84,32 @@ describe("SalesImportService - Template", () => {
       expect(Number(exampleRow.getCell(3).value)).toBe(3);
     });
 
-    it("should have frozen header row", async () => {
-      const buffer = await service.generateSalesTemplateBuffer();
+    it("should have correct headers on Productos sheet", async () => {
+      const buffer = await service.generateSalesTemplateBuffer(1);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer as any);
-      const ws = workbook.worksheets[0];
+      const ws = workbook.worksheets[0]; // "Productos"
+
+      const headerRow = ws.getRow(1);
+      const headers: string[] = [];
+      for (let c = 1; c <= 5; c++) {
+        headers.push(String(headerRow.getCell(c).value ?? ""));
+      }
+
+      expect(headers).toEqual([
+        "SKU",
+        "NOMBRE",
+        "PRECIO_VENTA",
+        "STOCK",
+        "CODIGO_BARRAS",
+      ]);
+    });
+
+    it("should have frozen header row on Ventas sheet", async () => {
+      const buffer = await service.generateSalesTemplateBuffer(1);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as any);
+      const ws = workbook.worksheets[1]; // "Ventas"
 
       expect(ws.views).toMatchObject([
         expect.objectContaining({ state: "frozen", ySplit: 1 }),

@@ -107,12 +107,16 @@ export class InventoryMovementsController {
 
   /**
    * Descarga plantilla Excel para carga masiva de consumos/autoconsumo.
+   * Incluye hoja de productos de la organización y hoja de instrucciones.
    */
   @Get("template")
   @Permissions("canManageInventory")
-  async downloadTemplate(@Res() res: Response) {
+  async downloadTemplate(
+    @Res() res: Response,
+    @ActiveOrganization() organizationId: number,
+  ) {
     const buffer =
-      await this.inventoryMovementsService.generateConsumptionTemplateBuffer();
+      await this.inventoryMovementsService.generateConsumptionTemplateBuffer(organizationId);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

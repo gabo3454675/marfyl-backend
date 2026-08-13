@@ -81,11 +81,16 @@ export class ExpensesController {
     return this.expensesService.listAccountsPayable(organizationId);
   }
 
-  /** Plantilla Excel para importar factura de compra (SKU, cantidad, costo USD). */
+  /** Plantilla Excel para importar factura de compra (SKU, cantidad, costo USD).
+   *  Incluye hoja de productos de la organización y hoja de instrucciones. */
   @Get("purchase-invoice-template")
-  downloadPurchaseInvoiceTemplate(@Res() res: Response) {
+  @Permissions("canManageExpenses")
+  downloadPurchaseInvoiceTemplate(
+    @Res() res: Response,
+    @ActiveOrganization() organizationId: number,
+  ) {
     return this.expensesService
-      .generatePurchaseInvoiceTemplateBuffer()
+      .generatePurchaseInvoiceTemplateBuffer(organizationId)
       .then((buffer) => {
         res.setHeader(
           "Content-Type",

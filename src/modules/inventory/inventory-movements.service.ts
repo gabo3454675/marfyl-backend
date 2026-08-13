@@ -336,13 +336,42 @@ export class InventoryMovementsService {
   /**
    * Genera plantilla Excel para carga masiva de consumos/autoconsumo.
    * Columnas: CODIGO_PRODUCTO, CANTIDAD, MOTIVO, RESPONSABLE, FECHA, OBSERVACION
+   * Incluye hoja "Productos" con catálogo de la organización y hoja "Instrucciones".
    */
-  async generateConsumptionTemplateBuffer(): Promise<Buffer> {
+  async generateConsumptionTemplateBuffer(organizationId: number): Promise<Buffer> {
     const ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "MARFYL";
     workbook.created = new Date();
 
+    // ── Hoja de productos ──
+    const productsWs = workbook.addWorksheet("Productos");
+    productsWs.addRow(["SKU", "NOMBRE", "STOCK", "CODIGO_BARRAS"]);
+    const productsHeaderRow = productsWs.getRow(1);
+    productsHeaderRow.font = { bold: true };
+
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true },
+      select: { sku: true, name: true, stock: true, barcode: true },
+      orderBy: { name: "asc" },
+    });
+
+    for (const p of products) {
+      productsWs.addRow([
+        p.sku ?? "",
+        p.name,
+        p.stock,
+        p.barcode ?? "",
+      ]);
+    }
+
+    productsWs.getColumn(1).width = 16; // SKU
+    productsWs.getColumn(2).width = 40; // NOMBRE
+    productsWs.getColumn(3).width = 10; // STOCK
+    productsWs.getColumn(4).width = 18; // CODIGO_BARRAS
+    productsWs.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de consumo ──
     const worksheet = workbook.addWorksheet("Consumo");
 
     const headers = [
@@ -417,6 +446,42 @@ export class InventoryMovementsService {
 
     // Freeze de encabezados
     worksheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de instrucciones ──
+    const instructionsWs = workbook.addWorksheet("Instrucciones");
+    instructionsWs.getColumn(1).width = 80;
+
+    const instructions = [
+      "PLANTILLA DE IMPORTACIÓN DE CONSUMOS - MARFYL",
+      "",
+      "Esta plantilla te permite registrar consumos/autoconsumos masivamente al sistema.",
+      "",
+      "HOJA 'CONSUMO' - Columnas:",
+      "  • CODIGO_PRODUCTO: SKU o código de barras del producto (ver hoja 'Productos')",
+      "  • CANTIDAD: Número entero de unidades a descontar del inventario",
+      "  • MOTIVO: Tipo de movimiento (AUTOCONSUMO, MERMA_VENCIDO, MERMA_DANADO, USO_TALLER)",
+      "  • RESPONSABLE: Nombre de la persona responsable (opcional)",
+      "  • FECHA: Fecha del consumo en formato AAAA-MM-DD (opcional, usa fecha actual si se omite)",
+      "  • OBSERVACION: Detalle adicional del movimiento (opcional)",
+      "",
+      "HOJA 'PRODUCTOS':",
+      "  • Aquí puedes ver todos los productos disponibles con su SKU y stock actual",
+      "  • Usa el SKU de esta hoja para llenar la columna CODIGO_PRODUCTO",
+      "  • Si el producto no tiene SKU, usa el código de barras",
+      "",
+      "CONSEJOS:",
+      "  • No modifiques los encabezados de la hoja 'Consumo'",
+      "  • El SKU debe coincidir exactamente (mayúsculas/minúsculas importan)",
+      "  • El sistema validará stock disponible antes de descontar",
+      "  • Los combos no se pueden usar; utilice los productos sueltos",
+    ];
+
+    for (let i = 0; i < instructions.length; i++) {
+      const cell = instructionsWs.getCell(`A${i + 1}`);
+      cell.value = instructions[i];
+      if (i === 0) cell.font = { bold: true, size: 14 };
+      else if (instructions[i].startsWith("HOJA") || instructions[i].startsWith("CONSEJOS")) cell.font = { bold: true };
+    }
 
     const buf = await workbook.xlsx.writeBuffer();
     return Buffer.from(buf as ArrayBuffer);

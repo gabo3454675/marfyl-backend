@@ -2,21 +2,16 @@ import {
   Controller,
   Get,
   Post,
-  Get,
   Body,
   Res,
   UseGuards,
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
-  Res,
-  NotFoundException,
 } from "@nestjs/common";
 import { Response } from "express";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
-import { Response } from "express";
-import { readFileSync, existsSync } from "fs";
 import { SalesImportService } from "./sales-import.service";
 import { ConfirmSalesImportDto } from "./dto/confirm-sales-import.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -31,23 +26,24 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 export class SalesImportController {
   constructor(private readonly salesImportService: SalesImportService) {}
 
+  /**
+   * Descarga plantilla Excel genérica para importar ventas.
+   * Incluye hoja de productos de la organización y hoja de instrucciones.
+   */
   @Get("template")
   @Permissions("canManageInventory")
-  async downloadTemplate(@Res() res: Response) {
-    const path = this.salesImportService.getMarfylTemplatePath();
-    if (!existsSync(path)) {
-      throw new NotFoundException(
-        "Plantilla no generada. Ejecute: pnpm exec tsx scripts/generate-import-templates.ts",
-      );
-    }
-    const buffer = readFileSync(path);
+  async downloadTemplate(
+    @Res() res: Response,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    const buffer = await this.salesImportService.generateSalesTemplateBuffer(organizationId);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="MARFYL-plantilla-VENTAS.xlsx"',
+      'attachment; filename="ventas-plantilla.xlsx"',
     );
     res.send(buffer);
   }
@@ -92,24 +88,6 @@ export class SalesImportController {
       organizationId: organizationId!,
       files,
     });
-  }
-
-  /**
-   * Descarga plantilla Excel genérica para importar ventas.
-   */
-  @Get("template")
-  @Permissions("canManageInventory")
-  async downloadTemplate(@Res() res: Response) {
-    const buffer = await this.salesImportService.generateSalesTemplateBuffer();
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="ventas-plantilla.xlsx"',
-    );
-    res.send(buffer);
   }
 
   @Post("confirm")

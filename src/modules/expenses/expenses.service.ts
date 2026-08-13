@@ -553,10 +553,43 @@ export class ExpensesService {
     };
   }
 
-  /** Plantilla Excel para importar facturas de compra (SKU o código de barras, cantidad, costo USD). */
-  async generatePurchaseInvoiceTemplateBuffer(): Promise<Buffer> {
+  /** Plantilla Excel para importar facturas de compra (SKU o código de barras, cantidad, costo USD).
+   *  Incluye hoja "Productos" con catálogo de la organización y hoja "Instrucciones". */
+  async generatePurchaseInvoiceTemplateBuffer(organizationId: number): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "DISIS";
+    workbook.creator = "MARFYL";
+
+    // ── Hoja de productos ──
+    const productsWs = workbook.addWorksheet("Productos");
+    productsWs.addRow(["SKU", "NOMBRE", "COSTO", "STOCK", "CODIGO_BARRAS"]);
+    const productsHeaderRow = productsWs.getRow(1);
+    productsHeaderRow.font = { bold: true };
+
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true },
+      select: { sku: true, name: true, costPrice: true, stock: true, barcode: true },
+      orderBy: { name: "asc" },
+    });
+
+    for (const p of products) {
+      productsWs.addRow([
+        p.sku ?? "",
+        p.name,
+        Number(p.costPrice),
+        p.stock,
+        p.barcode ?? "",
+      ]);
+    }
+
+    productsWs.getColumn(1).width = 16; // SKU
+    productsWs.getColumn(2).width = 40; // NOMBRE
+    productsWs.getColumn(3).width = 14; // COSTO
+    productsWs.getColumn(4).width = 10; // STOCK
+    productsWs.getColumn(5).width = 18; // CODIGO_BARRAS
+    productsWs.getColumn(3).numFmt = "#,##0.00";
+    productsWs.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de factura compra ──
     const ws = workbook.addWorksheet("Factura compra");
     const headers = ["SKU_O_CODIGO_BARRAS", "CANTIDAD", "COSTO_UNITARIO_USD"];
     ws.addRow(headers);
@@ -566,6 +599,41 @@ export class ExpensesService {
     ws.columns = [{ width: 22 }, { width: 12 }, { width: 18 }];
     ws.getCell("A1").note =
       "Use el mismo SKU o código de barras que en Inventario. Si omite costo, se usa el costo actual del producto.";
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja de instrucciones ──
+    const instructionsWs = workbook.addWorksheet("Instrucciones");
+    instructionsWs.getColumn(1).width = 80;
+
+    const instructions = [
+      "PLANTILLA DE IMPORTACIÓN DE COMPRAS - MARFYL",
+      "",
+      "Esta plantilla te permite importar facturas de compra masivamente al sistema.",
+      "",
+      "HOJA 'FACTURA COMPRA' - Columnas:",
+      "  • SKU_O_CODIGO_BARRAS: SKU o código de barras del producto (ver hoja 'Productos')",
+      "  • CANTIDAD: Número entero de unidades compradas",
+      "  • COSTO_UNITARIO_USD: Costo de compra unitario en USD (ej: 4.50)",
+      "",
+      "HOJA 'PRODUCTOS':",
+      "  • Aquí puedes ver todos los productos disponibles con su SKU y costo",
+      "  • Usa el SKU de esta hoja para llenar la columna SKU_O_CODIGO_BARRAS",
+      "  • Si el producto no tiene SKU, usa el código de barras",
+      "",
+      "CONSEJOS:",
+      "  • No modifiques los encabezados de la hoja 'Factura compra'",
+      "  • El SKU debe coincidir exactamente (mayúsculas/minúsculas importan)",
+      "  • Si no encuentras un producto, agrégalo primero desde Inventario",
+      "  • Si omite el costo, se usará el costo actual del producto en el sistema",
+    ];
+
+    for (let i = 0; i < instructions.length; i++) {
+      const cell = instructionsWs.getCell(`A${i + 1}`);
+      cell.value = instructions[i];
+      if (i === 0) cell.font = { bold: true, size: 14 };
+      else if (instructions[i].startsWith("HOJA") || instructions[i].startsWith("CONSEJOS")) cell.font = { bold: true };
+    }
+
     const buf = await workbook.xlsx.writeBuffer();
     return Buffer.from(buf as ArrayBuffer);
   }
