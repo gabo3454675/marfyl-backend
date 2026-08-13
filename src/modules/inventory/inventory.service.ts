@@ -65,19 +65,51 @@ export class InventoryService {
 
   /**
    * Genera un archivo Excel (.xlsx) de plantilla descargable.
+   * 3 hojas: Productos (catálogo), Inventario (datos), Instrucciones.
    * Columnas: A–H según INVENTORY_IMPORT_HEADERS.
-   * Incluye:
-   * - Headers exactos en negrita
-   * - Validación lista en H (EXENTO): "SI", "NO" para 1000 filas (dropdown)
-   * - Notas en headers, anchos de columna ajustados, freeze de encabezados
    */
-  async generateTemplateXlsxBuffer() {
+  async generateTemplateXlsxBuffer(organizationId: number) {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "DISIS";
+    workbook.creator = "MARFYL";
     workbook.created = new Date();
 
-    const worksheet = workbook.addWorksheet("Inventario");
+    // ── Hoja 1: Productos (catálogo actual) ──
+    const productsWs = workbook.addWorksheet("Productos");
+    productsWs.addRow(["SKU", "NOMBRE", "COSTO", "PRECIO_VENTA", "STOCK", "CODIGO_BARRAS"]);
+    const productsHeaderRow = productsWs.getRow(1);
+    productsHeaderRow.font = { bold: true };
+    productsHeaderRow.alignment = { vertical: "middle", horizontal: "center" };
+    productsHeaderRow.height = 22;
 
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true },
+      select: { sku: true, name: true, costPrice: true, salePrice: true, stock: true, barcode: true },
+      orderBy: { name: "asc" },
+    });
+
+    for (const p of products) {
+      productsWs.addRow([
+        p.sku ?? "",
+        p.name,
+        Number(p.costPrice),
+        Number(p.salePrice),
+        p.stock,
+        p.barcode ?? "",
+      ]);
+    }
+
+    productsWs.getColumn(1).width = 16;
+    productsWs.getColumn(2).width = 40;
+    productsWs.getColumn(3).width = 14;
+    productsWs.getColumn(4).width = 14;
+    productsWs.getColumn(5).width = 10;
+    productsWs.getColumn(6).width = 18;
+    productsWs.getColumn(3).numFmt = "#,##0.00";
+    productsWs.getColumn(4).numFmt = "#,##0.00";
+    productsWs.views = [{ state: "frozen", ySplit: 1 }];
+
+    // ── Hoja 2: Inventario (datos) ──
+    const worksheet = workbook.addWorksheet("Inventario");
     const headers = [...InventoryService.INVENTORY_IMPORT_HEADERS];
     worksheet.addRow(headers);
 
@@ -134,6 +166,44 @@ export class InventoryService {
     worksheet.getColumn(4).numFmt = "#,##0.00"; // PRECIO VENTA
     worksheet.getColumn(5).numFmt = "#,##0.00"; // GANANCIA
     worksheet.getColumn(6).numFmt = "0"; // STOCK
+
+    // ── Hoja 3: Instrucciones ──
+    const instructionsWs = workbook.addWorksheet("Instrucciones");
+    instructionsWs.getColumn(1).width = 80;
+
+    const instructions = [
+      "PLANTILLA DE IMPORTACIÓN DE INVENTARIO - MARFYL",
+      "",
+      "Esta plantilla te permite cargar o actualizar productos en tu inventario.",
+      "",
+      "HOJA 'INVENTARIO' - Columnas:",
+      "  • SKU: Código interno del producto (ej: ABC-001). Si ya existe, actualiza el producto.",
+      "  • NOMBRE DEL PRODUCTO: Nombre del producto (obligatorio para productos nuevos).",
+      "  • COSTO: Precio de costo en USD (ej: 3.50).",
+      "  • PRECIO VENTA: Precio de venta en USD (ej: 4.99).",
+      "  • GANANCIA: Diferencia entre precio venta y costo (ej: 1.49).",
+      "  • STOCK: Cantidad en inventario (entero >= 0).",
+      "  • DESCRIPCION: Descripción detallada del producto (opcional).",
+      "  • EXENTO: SI si está exento de IVA, NO si aplica IVA. También acepta EXENTO/GRAVADO.",
+      "",
+      "HOJA 'PRODUCTOS':",
+      "  • Muestra los productos actuales de tu inventario",
+      "  • Usa el SKU de esta hoja para actualizar productos existentes",
+      "  • Si agregas un SKU nuevo, se creará un nuevo producto",
+      "",
+      "CONSEJOS:",
+      "  • No modifiques los encabezados de la hoja 'Inventario'",
+      "  • El SKU debe ser único por organización",
+      "  • Si el SKU ya existe, se actualizan costo, precio y stock",
+      "  • Si es un SKU nuevo, se crea el producto con los datos proporcionados",
+    ];
+
+    for (let i = 0; i < instructions.length; i++) {
+      const cell = instructionsWs.getCell(`A${i + 1}`);
+      cell.value = instructions[i];
+      if (i === 0) cell.font = { bold: true, size: 14 };
+      else if (instructions[i].startsWith("HOJA") || instructions[i].startsWith("CONSEJOS")) cell.font = { bold: true };
+    }
 
     return workbook.xlsx.writeBuffer();
   }

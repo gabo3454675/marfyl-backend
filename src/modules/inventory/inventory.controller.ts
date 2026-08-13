@@ -43,8 +43,11 @@ export class InventoryController {
    */
   @Get("template")
   @UseGuards(JwtAuthGuard, OrganizationGuard)
-  async downloadTemplate(@Res() res: Response) {
-    const buffer = await this.inventoryService.generateTemplateXlsxBuffer();
+  async downloadTemplate(
+    @Res() res: Response,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    const buffer = await this.inventoryService.generateTemplateXlsxBuffer(organizationId);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
