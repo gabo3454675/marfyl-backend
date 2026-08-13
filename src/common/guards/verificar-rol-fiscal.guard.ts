@@ -16,7 +16,7 @@ import {
  * @UseGuards(JwtAuthGuard, OrganizationGuard, VerificarRolFiscalGuard)
  * o con el alias exportado `verificarRolFiscal`.
  */
-const ROLES_FISCAL_ACCESO = new Set(["ADMIN", "FISCAL"]);
+const ROLES_FISCAL_ACCESO = new Set(["ADMIN", "FISCAL", "SUPER_ADMIN"]);
 
 @Injectable()
 export class VerificarRolFiscalGuard implements CanActivate {
@@ -24,7 +24,7 @@ export class VerificarRolFiscalGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    if (user?.isSuperAdmin === true) {
+    if (user?.isSuperAdmin === true || user?.isInternalAgent === true) {
       return true;
     }
 

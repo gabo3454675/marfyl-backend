@@ -11,7 +11,10 @@ export interface ParsedFiscalQuery {
 const ARTICULO_RE =
   /\b(?:art[ií]culo|art\.?)\s*(?:n[°º.]?\s*)?(\d{1,4})\b/i;
 
-/** Alias de normas que el usuario puede mencionar en lenguaje natural */
+/**
+ * Alias de normas (orden importa: más específico primero).
+ * RIVA / RET_IVA deben ir antes que LIVA para no caer en el alias genérico "IVA".
+ */
 const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
   {
     ley: "COT",
@@ -22,20 +25,45 @@ const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
     ],
   },
   {
-    ley: "LIVA",
-    patterns: [/\bliva\b/i, /\biva\b/i, /impuesto\s+al\s+valor\s+agregado/i],
+    ley: "RET_IVA_2025",
+    patterns: [
+      /\bret_iva_2025\b/i,
+      /\bsnat[\s/_-]*2025[\s/_-]*0*00054\b/i,
+      /\b000054\b/,
+      /providencia\s+snat[\s/_-]*2025/i,
+      /agentes?\s+de\s+retenci[oó]n\s+iva\s+personas?\s+naturales?/i,
+    ],
   },
   {
     ley: "RIVA",
-    patterns: [/\briva\b/i, /reglamento\s+(?:de\s+la\s+)?ley\s+(?:del\s+)?iva/i],
-  },
-  {
-    ley: "LISLR",
-    patterns: [/\blislr\b/i, /ley\s+(?:del\s+)?islr/i, /ley\s+impuesto\s+sobre\s+la\s+renta/i],
+    patterns: [
+      /\briva\b/i,
+      /reglamento\s+(?:de\s+la\s+)?ley\s+(?:del\s+)?iva/i,
+      /reglamento\s+del\s+iva/i,
+    ],
   },
   {
     ley: "RISLR",
     patterns: [/\brislr\b/i, /reglamento\s+(?:de\s+la\s+)?(?:ley\s+)?islr/i],
+  },
+  {
+    ley: "LISLR",
+    patterns: [
+      /\blislr\b/i,
+      /ley\s+(?:del\s+)?islr/i,
+      /ley\s+impuesto\s+sobre\s+la\s+renta/i,
+      /impuesto\s+sobre\s+la\s+renta/i,
+    ],
+  },
+  {
+    ley: "LIVA",
+    patterns: [
+      /\bliva\b/i,
+      /ley\s+del\s+iva\b/i,
+      /impuesto\s+al\s+valor\s+agregado/i,
+      // Tras RIVA/RET_IVA_2025 en la lista: "IVA" genérico es LIVA
+      /\biva\b/i,
+    ],
   },
   {
     ley: "LIGTF",
@@ -56,6 +84,26 @@ const LEY_ALIASES: Array<{ ley: string; patterns: RegExp[] }> = [
   {
     ley: "CALENDARIO_2026",
     patterns: [/calendario\s+fiscal/i, /calendario\s+tributario/i],
+  },
+  {
+    ley: "CIERRE2025",
+    patterns: [/cierres?\s+contables?\s+2025/i, /\bfccpv\b.*cierre/i],
+  },
+  {
+    ley: "BA2",
+    patterns: [/\bba\s*ven-?nif\s*2\b/i, /\bven-?nif\s*2\b/i],
+  },
+  {
+    ley: "BA0",
+    patterns: [/\bba\s*ven-?nif\s*0\b/i],
+  },
+  {
+    ley: "BA8",
+    patterns: [/\bba\s*ven-?nif\s*8\b/i],
+  },
+  {
+    ley: "LOA",
+    patterns: [/\bloa\b/i, /ley\s+org[aá]nica\s+de\s+aduanas/i],
   },
 ];
 
@@ -79,10 +127,41 @@ function detectArticulo(query: string): number | null {
  * Reescribe consultas meta ("qué dice el artículo 120") hacia texto
  * más cercano al lenguaje de los chunks indexados.
  */
+/** Temas frecuentes → artículo típico cuando el usuario no lo cita. */
+function inferTopicArticulo(query: string, ley: string | null): number | null {
+  const q = query.toLowerCase();
+  if (
+    (ley === "COT" || /\bcot\b|c[oó]digo\s+org[aá]nico\s+tributario/i.test(query)) &&
+    /agente[s]?\s+de\s+retenci[oó]n|responsables?\s+directos?/i.test(query)
+  ) {
+    return 27;
+  }
+  if (
+    (ley === "LIVA" || /\biva\b|\bliva\b/i.test(query)) &&
+    /contribuyentes?\s+ordinarios?/i.test(q)
+  ) {
+    return 5;
+  }
+  if (
+    (ley === "LIVA" || /\biva\b|\bliva\b/i.test(query)) &&
+    /sujetos?\s+pasivos?|qui[eé]nes\s+deben\s+pagar/i.test(q)
+  ) {
+    return 1;
+  }
+  if (
+    (ley === "LIGTF" || /\bigtf\b/i.test(query)) &&
+    /al[ií]cuota|dos\s+por\s+ciento|2\s*%/i.test(q)
+  ) {
+    return 24;
+  }
+  return null;
+}
+
 export function rewriteFiscalQuery(raw: string): ParsedFiscalQuery {
   const originalQuery = raw.trim();
   const ley = detectLey(originalQuery);
-  const articulo = detectArticulo(originalQuery);
+  const articulo =
+    detectArticulo(originalQuery) ?? inferTopicArticulo(originalQuery, ley);
 
   const parts: string[] = [];
 

@@ -25,7 +25,9 @@ export class HttpCacheTenantInterceptor extends CacheInterceptor {
     }
     const baseUrl = httpAdapter.getRequestUrl(request);
     const tenantId =
-      request.headers["x-tenant-id"] ?? request.activeOrganizationId;
+      request.activeOrganizationId ??
+      request.headers["x-organization-id"] ??
+      request.headers["x-tenant-id"];
     if (
       tenantId !== undefined &&
       tenantId !== null &&
@@ -33,6 +35,7 @@ export class HttpCacheTenantInterceptor extends CacheInterceptor {
     ) {
       return `${baseUrl}:tenant:${tenantId}`;
     }
-    return baseUrl;
+    // Sin tenant no cachear: evita servir respuesta de otra org.
+    return undefined;
   }
 }

@@ -2,6 +2,11 @@ import { Body, Controller, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
+import {
+  buildDevPreviewUser,
+  devPreviewAgentUserId,
+  isDevPreviewAuthEnabled,
+} from "@/common/dev-preview";
 import { AssistantService } from "./assistant.service";
 import { AssistantChatDto } from "./dto/chat.dto";
 
@@ -21,7 +26,16 @@ export class AssistantController {
   private buildContext(req: AssistantRequest) {
     const organizationId =
       req.activeOrganizationId ?? req.activeOrganization?.id;
-    const userId = req.user?.sub ?? req.user?.id ?? 0;
+    // JwtStrategy expone `id` (no `sub`). Preferir id.
+    let userId = Number(req.user?.id ?? req.user?.sub ?? 0);
+    // Vista previa usa id=0 (reservado); el agente Python exige userId > 0.
+    if (
+      userId === 0 &&
+      isDevPreviewAuthEnabled() &&
+      req.user?.id === buildDevPreviewUser().id
+    ) {
+      userId = devPreviewAgentUserId();
+    }
     const userRole = req.activeOrganizationMembership?.role;
     const authorization =
       typeof req.headers?.authorization === "string"
@@ -29,7 +43,7 @@ export class AssistantController {
         : undefined;
     return {
       organizationId: Number(organizationId),
-      userId: Number(userId),
+      userId,
       orgName: req.activeOrganization?.nombre,
       userRole: userRole ? String(userRole) : undefined,
       authorization,

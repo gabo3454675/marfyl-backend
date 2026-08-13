@@ -20,6 +20,20 @@ describe("rewriteFiscalQuery", () => {
     expect(parsed.articulo).toBe(17);
   });
 
+  it("prioriza RIVA sobre LIVA en reglamento del IVA", () => {
+    const parsed = rewriteFiscalQuery(
+      "reglamento de la ley del IVA momento en que nace la obligación tributaria",
+    );
+    expect(parsed.ley).toBe("RIVA");
+  });
+
+  it("detecta RET_IVA_2025 por providencia SNAT 2025", () => {
+    const parsed = rewriteFiscalQuery(
+      "providencia SNAT 2025 000054 agentes de retención IVA personas naturales",
+    );
+    expect(parsed.ley).toBe("RET_IVA_2025");
+  });
+
   it("conserva la pregunta original cuando no hay señales", () => {
     const parsed = rewriteFiscalQuery("sanción por no retener ISLR");
     expect(parsed.embeddingQuery).toContain("sanción por no retener ISLR");
@@ -60,6 +74,33 @@ describe("rerankFiscalHits", () => {
 
     expect(ranked[0]!.articulo).toBe(120);
     expect(ranked[0]!.rerankScore).toBeGreaterThan(ranked[1]!.rerankScore);
+  });
+
+  it("boost léxico favorece contenido con keywords de la consulta", () => {
+    const hits = [
+      baseHit({
+        ley: "LIVA",
+        articulo: 72,
+        content: "Artículo 72. Entrada en vigencia de la reforma...",
+        similarity: 0.74,
+      }),
+      baseHit({
+        ley: "LIVA",
+        articulo: 5,
+        content:
+          "Artículo 5. Son contribuyentes ordinarios de este impuesto los importadores habituales...",
+        similarity: 0.7,
+      }),
+    ];
+    const ranked = rerankFiscalHits(
+      hits,
+      {
+        ley: "LIVA",
+        queryText: "quiénes son contribuyentes ordinarios del IVA",
+      },
+      2,
+    );
+    expect(ranked[0]!.articulo).toBe(5);
   });
 });
 

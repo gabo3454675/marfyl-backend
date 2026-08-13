@@ -104,14 +104,24 @@ export class FiscalKnowledgeService {
         (articuloHint != null ? ` [art=${articuloHint}]` : ""),
     );
 
-    const candidates = await this.vectorSearch(embeddingQuery, {
+    let candidates = await this.vectorSearch(embeddingQuery, {
       leyFilter: leyHint,
       limit: candidateLimit,
     });
 
+    // Si la query pide un artículo concreto, inyectarlo aunque el vector lo omita.
+    if (leyHint && articuloHint != null) {
+      const exact = await this.fetchExactArticles(leyHint, articuloHint);
+      candidates = this.mergeHits(exact, candidates);
+    }
+
     const ranked = rerankFiscalHits(
       candidates,
-      { ley: leyHint, articulo: articuloHint },
+      {
+        ley: leyHint,
+        articulo: articuloHint,
+        queryText: parsed.originalQuery,
+      },
       finalLimit,
     );
 
@@ -135,6 +145,59 @@ export class FiscalKnowledgeService {
     return result.hits.map((hit) => ({
       ...hit,
       rerankScore: hit.rerankScore,
+    }));
+  }
+
+  private mergeHits(
+    primary: FiscalKnowledgeSearchHit[],
+    secondary: FiscalKnowledgeSearchHit[],
+  ): FiscalKnowledgeSearchHit[] {
+    const seen = new Set<string>();
+    const out: FiscalKnowledgeSearchHit[] = [];
+    for (const hit of [...primary, ...secondary]) {
+      const key = `${hit.ley}:${hit.articulo}:${hit.chunkIndex}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(hit);
+    }
+    return out;
+  }
+
+  private async fetchExactArticles(
+    ley: string,
+    articulo: number,
+  ): Promise<FiscalKnowledgeSearchHit[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        ley: string;
+        articulo: number;
+        chunk_index: number;
+        titulo: string | null;
+        content: string;
+        metadata: Record<string, unknown>;
+      }>
+    >(
+      `
+      SELECT ley, articulo, chunk_index, titulo, content, metadata
+      FROM marfyl_knowledge_embeddings
+      WHERE ley = $1 AND articulo = $2
+      ORDER BY chunk_index ASC
+      LIMIT 5
+      `,
+      ley,
+      articulo,
+    );
+
+    return rows.map((row) => ({
+      ley: row.ley,
+      leyLabel: FISCAL_LEY_LABELS[row.ley] ?? row.ley,
+      articulo: row.articulo,
+      chunkIndex: row.chunk_index,
+      titulo: row.titulo,
+      content: row.content,
+      metadata: row.metadata ?? {},
+      // Base alta para que el boost de artículo lo deje primero tras rerank
+      similarity: 0.78,
     }));
   }
 
