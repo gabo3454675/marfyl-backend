@@ -333,6 +333,117 @@ export class InventoryMovementsService {
   }
 
   /**
+   * Import masivo de autoconsumo/merma desde plantilla Excel MARFYL.
+   * Preview (confirm=false) no escribe; confirm=true aplica línea a línea.
+   */
+  async importAutoconsumoExcel(params: {
+    organizationId: number;
+    userId: number;
+    buffer: Buffer;
+    confirm: boolean;
+  }) {
+    const { parseAutoconsumoExcel } = await import(
+      "./autoconsumo-import.parser"
+    );
+    const lines = parseAutoconsumoExcel(params.buffer);
+    if (lines.length === 0) {
+      throw new BadRequestException("El Excel no tiene líneas válidas");
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { organizationId: params.organizationId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        barcode: true,
+        stock: true,
+        isBundle: true,
+        isService: true,
+      },
+    });
+    const bySku = new Map<string, (typeof products)[0]>();
+    for (const p of products) {
+      if (p.sku) bySku.set(p.sku.trim().toUpperCase().replace(/\s+/g, ""), p);
+      if (p.barcode)
+        bySku.set(p.barcode.trim().toUpperCase().replace(/\s+/g, ""), p);
+    }
+
+    const preview = lines.map((line) => {
+      const key = line.sku.trim().toUpperCase().replace(/\s+/g, "");
+      const product = bySku.get(key);
+      const issues: string[] = [];
+      if (!product) issues.push("SKU no encontrado");
+      else if (product.isBundle || product.isService)
+        issues.push("No aplica a combo/servicio");
+      else if (product.stock < line.quantity)
+        issues.push(`Stock insuficiente (${product.stock} < ${line.quantity})`);
+      return {
+        rowNum: line.rowNum,
+        sku: line.sku,
+        productName: product?.name ?? line.productName,
+        productId: product?.id ?? null,
+        quantity: line.quantity,
+        type: line.type,
+        consumptionReason: line.consumptionReason ?? null,
+        reason: line.reason,
+        stock: product?.stock ?? null,
+        ok: issues.length === 0,
+        issues,
+      };
+    });
+
+    const ready = preview.filter((p) => p.ok);
+    const errors = preview.filter((p) => !p.ok);
+
+    if (!params.confirm) {
+      return {
+        confirm: false,
+        total: preview.length,
+        ready: ready.length,
+        errors: errors.length,
+        lines: preview,
+      };
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException(
+        `Hay ${errors.length} líneas con error. Corrija el Excel o use preview primero.`,
+      );
+    }
+
+    const applied: { rowNum: number; movementId: number; sku: string }[] = [];
+    for (const line of lines) {
+      const key = line.sku.trim().toUpperCase().replace(/\s+/g, "");
+      const product = bySku.get(key)!;
+      const result = await this.createOutflow({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        dto: {
+          type: line.type,
+          quantity: line.quantity,
+          productId: product.id,
+          reason: [line.dateLabel, line.reason].filter(Boolean).join(" — "),
+          consumptionReason: line.consumptionReason,
+        },
+      });
+      applied.push({
+        rowNum: line.rowNum,
+        movementId: result.movement.id,
+        sku: line.sku,
+      });
+      // refresh stock cache for subsequent lines of same SKU
+      product.stock -= line.quantity;
+    }
+
+    return {
+      confirm: true,
+      applied: applied.length,
+      movements: applied,
+    };
+  }
+
+  /**
    * Lista los movimientos de inventario de la organización (útil para historial).
    */
   async findByOrganization(

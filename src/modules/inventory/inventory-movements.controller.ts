@@ -1,4 +1,21 @@
-import { Controller, Post, Get, UseGuards, Body, Query } from "@nestjs/common";
+import {
+  Controller,
+  Post,
+  Get,
+  UseGuards,
+  Body,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
+  Res,
+  NotFoundException,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
+import { Response } from "express";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 import { InventoryMovementsService } from "./inventory-movements.service";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
@@ -16,6 +33,63 @@ export class InventoryMovementsController {
   constructor(
     private readonly inventoryMovementsService: InventoryMovementsService,
   ) {}
+
+  @Get("template-autoconsumo")
+  @Permissions("canManageInventory")
+  async downloadAutoconsumoTemplate(@Res() res: Response) {
+    const path = join(
+      process.cwd(),
+      "templates/imports/MARFYL-plantilla-AUTOCONSUMO.xlsx",
+    );
+    if (!existsSync(path)) {
+      throw new NotFoundException(
+        "Plantilla no generada. Ejecute: pnpm exec tsx scripts/generate-import-templates.ts",
+      );
+    }
+    const buffer = readFileSync(path);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="MARFYL-plantilla-AUTOCONSUMO.xlsx"',
+    );
+    res.send(buffer);
+  }
+
+  @Post("import-autoconsumo")
+  @Permissions("canManageInventory")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async importAutoconsumo(
+    @UploadedFile() file: Express.Multer.File,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+    @Body("confirm") confirm?: string | boolean,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("Archivo requerido");
+    }
+    if (!/\.(xlsx|xls)$/i.test(file.originalname ?? "")) {
+      throw new BadRequestException("Solo Excel (.xlsx, .xls)");
+    }
+    const confirmBool =
+      confirm === true ||
+      String(confirm || "")
+        .toLowerCase()
+        .trim() === "true";
+    return this.inventoryMovementsService.importAutoconsumoExcel({
+      organizationId,
+      userId: user.id,
+      buffer: file.buffer,
+      confirm: confirmBool,
+    });
+  }
 
   /**
    * Registra una salida por Autoconsumo o Merma (vencido/dañado).
