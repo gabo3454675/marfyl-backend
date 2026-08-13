@@ -32,7 +32,8 @@ export function isConcertModuleEnabledForOrg(org: {
   slug: string;
   concertModuleEnabled?: boolean;
 }): boolean {
-  return org.concertModuleEnabled === true || org.slug === CONCERT_ORG_SLUG;
+  // Solo el flag de la org. El slug monddy ya no fuerza el módulo encendido.
+  return org.concertModuleEnabled === true;
 }
 
 /** Todos los usuarios ven TODAS sus membresías. */

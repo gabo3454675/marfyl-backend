@@ -65,7 +65,8 @@ function findHeaderRow(rows: unknown[][]): number {
 
 export function parseMonddyPurchasesExcel(buffer: Buffer): ParsedPurchaseGroup[] {
   const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const sheet =
+    workbook.Sheets["DATOS"] ?? workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("El Excel no tiene hojas");
 
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {

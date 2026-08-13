@@ -2,16 +2,21 @@ import {
   Controller,
   Get,
   Post,
+  Get,
   Body,
   Res,
   UseGuards,
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
+  Res,
+  NotFoundException,
 } from "@nestjs/common";
 import { Response } from "express";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
+import { Response } from "express";
+import { readFileSync, existsSync } from "fs";
 import { SalesImportService } from "./sales-import.service";
 import { ConfirmSalesImportDto } from "./dto/confirm-sales-import.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -25,6 +30,27 @@ import { ActiveUser } from "@/common/decorators/active-user.decorator";
 @UseGuards(JwtAuthGuard, OrganizationGuard, PermissionsGuard)
 export class SalesImportController {
   constructor(private readonly salesImportService: SalesImportService) {}
+
+  @Get("template")
+  @Permissions("canManageInventory")
+  async downloadTemplate(@Res() res: Response) {
+    const path = this.salesImportService.getMarfylTemplatePath();
+    if (!existsSync(path)) {
+      throw new NotFoundException(
+        "Plantilla no generada. Ejecute: pnpm exec tsx scripts/generate-import-templates.ts",
+      );
+    }
+    const buffer = readFileSync(path);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="MARFYL-plantilla-VENTAS.xlsx"',
+    );
+    res.send(buffer);
+  }
 
   @Post("preview")
   @Permissions("canManageInventory")

@@ -9,7 +9,10 @@ import type { AssistantToolContext } from "./assistant-tools.service";
 import type { AssistantStreamEvent } from "./assistant.service";
 
 const DEFAULT_PYTHON_AGENT_URL = "http://localhost:8000";
-const PROXY_TIMEOUT_MS = 30_000;
+/** Absolute ceiling for a full agent turn (tools + Nemotron). */
+const DEFAULT_PROXY_TIMEOUT_MS = 180_000;
+/** Abort if no SSE bytes arrive for this long (stuck LLM/tool). */
+const DEFAULT_PROXY_IDLE_TIMEOUT_MS = 90_000;
 
 export type PythonAgentChatResponse = {
   reply: string;
@@ -26,6 +29,8 @@ export type PythonAgentChatResponse = {
  *   PYTHON_AGENT_URL=http://localhost:8000   # sin /api
  *   AGENT_SECRET=<mismo valor que agent-marfyl>
  *   PYTHON_AGENT_FALLBACK=false              # true = si Python falla, AssistantService usa Groq
+ *   PYTHON_AGENT_TIMEOUT_MS=180000           # techo absoluto por turn
+ *   PYTHON_AGENT_IDLE_TIMEOUT_MS=90000       # idle entre chunks SSE
  *
  * Endpoints: POST /chat , POST /chat/stream (SSE: delta | tool_round | done | error)
  */
@@ -54,8 +59,9 @@ export class AgentProxyService {
   ): Promise<{ reply: string; model: string }> {
     this.assertIdentity(context);
     const url = `${this.baseUrl()}/chat`;
+    const timeoutMs = this.timeoutMs();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch(url, {
@@ -81,7 +87,7 @@ export class AgentProxyService {
             : "python-agent",
       };
     } catch (e: unknown) {
-      throw this.toProxyError(e);
+      throw this.toProxyError(e, timeoutMs);
     } finally {
       clearTimeout(timer);
     }
@@ -93,8 +99,16 @@ export class AgentProxyService {
   ): AsyncGenerator<AssistantStreamEvent> {
     this.assertIdentity(context);
     const url = `${this.baseUrl()}/chat/stream`;
+    const timeoutMs = this.timeoutMs();
+    const idleMs = this.idleTimeoutMs();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const absoluteTimer = setTimeout(() => controller.abort(), timeoutMs);
+    const bumpIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => controller.abort(), idleMs);
+    };
+    bumpIdle();
 
     try {
       const res = await fetch(url, {
@@ -103,6 +117,7 @@ export class AgentProxyService {
         body: JSON.stringify(this.buildBody(dto, context)),
         signal: controller.signal,
       });
+      bumpIdle();
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -121,12 +136,13 @@ export class AgentProxyService {
         return;
       }
 
-      yield* this.parseSseStream(res.body);
+      yield* this.parseSseStream(res.body, bumpIdle);
     } catch (e: unknown) {
-      const err = this.toProxyError(e);
+      const err = this.toProxyError(e, timeoutMs);
       yield { type: "error", message: err.message };
     } finally {
-      clearTimeout(timer);
+      clearTimeout(absoluteTimer);
+      if (idleTimer) clearTimeout(idleTimer);
     }
   }
 
@@ -140,6 +156,18 @@ export class AgentProxyService {
       this.config.get<string>("PYTHON_AGENT_URL")?.trim() ||
       DEFAULT_PYTHON_AGENT_URL;
     return raw.replace(/\/+$/, "");
+  }
+
+  private timeoutMs(): number {
+    const raw = this.config.get<string>("PYTHON_AGENT_TIMEOUT_MS")?.trim();
+    const n = raw ? Number.parseInt(raw, 10) : DEFAULT_PROXY_TIMEOUT_MS;
+    return Number.isFinite(n) && n >= 10_000 ? n : DEFAULT_PROXY_TIMEOUT_MS;
+  }
+
+  private idleTimeoutMs(): number {
+    const raw = this.config.get<string>("PYTHON_AGENT_IDLE_TIMEOUT_MS")?.trim();
+    const n = raw ? Number.parseInt(raw, 10) : DEFAULT_PROXY_IDLE_TIMEOUT_MS;
+    return Number.isFinite(n) && n >= 5_000 ? n : DEFAULT_PROXY_IDLE_TIMEOUT_MS;
   }
 
   private buildHeaders(context: AssistantToolContext): Record<string, string> {
@@ -193,6 +221,7 @@ export class AgentProxyService {
 
   private async *parseSseStream(
     body: ReadableStream<Uint8Array>,
+    onChunk?: () => void,
   ): AsyncGenerator<AssistantStreamEvent> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
@@ -202,6 +231,7 @@ export class AgentProxyService {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        onChunk?.();
         buffer += decoder.decode(value, { stream: true });
 
         let sep = buffer.indexOf("\n\n");
@@ -274,10 +304,11 @@ export class AgentProxyService {
     return null;
   }
 
-  private toProxyError(e: unknown): Error {
+  private toProxyError(e: unknown, timeoutMs = DEFAULT_PROXY_TIMEOUT_MS): Error {
     if (e instanceof Error && e.name === "AbortError") {
+      const secs = Math.round(timeoutMs / 1000);
       return new Error(
-        "Agent Python: timeout (~30s). Verifique PYTHON_AGENT_URL y que agent-marfyl esté en marcha.",
+        `Agent Python: timeout (~${secs}s). El turno con tools/Nemotron superó el límite; reintente o suba PYTHON_AGENT_TIMEOUT_MS.`,
       );
     }
     if (e instanceof ServiceUnavailableException) {

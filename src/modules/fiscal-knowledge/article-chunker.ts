@@ -14,8 +14,9 @@ export interface FiscalArticleChunk {
   };
 }
 
+// Acepta PDF plano y Markdown (**Artículo 1º.** / Artículo 1.)
 const ARTICLE_HEADER_RE =
-  /(?:^|\n)\s*(?:Art[ií]culo|ART[IÍ]CULO|Art\.)\s*(\d+)\s*[°º.:]?\s*/gi;
+  /(?:^|\n)\s*(?:\*\*)?(?:Art[ií]culo|ART[IÍ]CULO|Art\.)\s*(\d+)\s*[°º.:]?(?:\*\*)?\.?\s*/gi;
 
 const PARAGRAPH_MARKERS =
   /(?:Parágrafo\s+Único|Parágrafo\s+Primero|Parágrafo\s+Segundo|Parágrafo\s+Tercero|Párrafo\s+Único)/i;
@@ -48,17 +49,35 @@ function extractTitle(body: string): string | null {
   return firstLine.slice(0, 500);
 }
 
+function splitLongContent(content: string, maxLen = 3_500): string[] {
+  if (content.length <= maxLen) return [content];
+  const parts: string[] = [];
+  let i = 0;
+  while (i < content.length) {
+    let end = Math.min(i + maxLen, content.length);
+    if (end < content.length) {
+      const slice = content.slice(i, end);
+      const breakAt = Math.max(
+        slice.lastIndexOf("\n\n"),
+        slice.lastIndexOf(". "),
+        slice.lastIndexOf(".\n"),
+      );
+      if (breakAt > maxLen * 0.4) end = i + breakAt + 1;
+    }
+    parts.push(content.slice(i, end).trim());
+    i = end;
+  }
+  return parts.filter(Boolean);
+}
+
 function fallbackChunks(
   text: string,
   ley: string,
   title: string,
   sourceFile: string,
 ): FiscalArticleChunk[] {
-  const maxLen = 12_000;
-  const parts: string[] = [];
-  for (let i = 0; i < text.length; i += maxLen) {
-    parts.push(text.slice(i, i + maxLen));
-  }
+  // Chunks más cortos = mejor recall en embeddings 384d
+  const parts = splitLongContent(text, 3_500);
   return parts.map((content, idx) => ({
     ley,
     articulo: 0,
@@ -119,25 +138,32 @@ export function chunkByArticles(
 
     const prev = seen.get(articulo) ?? 0;
     const chunkIndex = prev;
-    seen.set(articulo, prev + 1);
-
     const titulo = extractTitle(body);
+    const pieces = splitLongContent(body, 3_500);
 
-    chunks.push({
-      ley,
-      articulo,
-      chunkIndex,
-      titulo,
-      content: body.slice(0, 16_000),
-      metadata: {
+    for (let p = 0; p < pieces.length; p++) {
+      const pieceIndex = chunkIndex + p;
+      const pieceTitle =
+        pieces.length > 1
+          ? `${titulo ?? `Artículo ${articulo}`} (parte ${p + 1})`
+          : titulo;
+      chunks.push({
         ley,
         articulo,
-        chunkIndex,
-        titulo,
-        title,
-        sourceFile,
-      },
-    });
+        chunkIndex: pieceIndex,
+        titulo: pieceTitle,
+        content: pieces[p]!,
+        metadata: {
+          ley,
+          articulo,
+          chunkIndex: pieceIndex,
+          titulo: pieceTitle,
+          title,
+          sourceFile,
+        },
+      });
+    }
+    seen.set(articulo, chunkIndex + pieces.length);
   }
 
   return chunks;

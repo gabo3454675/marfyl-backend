@@ -33,8 +33,6 @@ export class DashboardController {
   }
 
   @Get("low-stock")
-  @UseInterceptors(HttpCacheTenantInterceptor)
-  @CacheTTL(15)
   async getLowStock(@ActiveOrganization() organizationId: number) {
     return this.dashboardService.getLowStock(organizationId, 5);
   }

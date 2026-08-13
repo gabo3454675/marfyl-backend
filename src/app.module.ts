@@ -36,6 +36,7 @@ import { EmailModule } from "./modules/email/email.module";
 import { HealthModule } from "./modules/health/health.module";
 import { AiModule } from "./modules/ai/ai.module";
 import { FiscalAdvisorModule } from "./modules/fiscal-advisor/fiscal-advisor.module";
+import { FiscalKnowledgeModule } from "./modules/fiscal-knowledge/fiscal-knowledge.module";
 import { ExchangeRateModule } from "./modules/exchange-rate/exchange-rate.module";
 import { PlanModule } from "./modules/plan/plan.module";
 import { PayrollModule } from "./modules/payroll/payroll.module";
@@ -79,6 +80,7 @@ import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
     AuditoriaModule,
     FiscalModule,
     AssistantModule,
+    FiscalKnowledgeModule,
     FiscalAdvisorModule,
     EmailModule,
     ConcertModule,

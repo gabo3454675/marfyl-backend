@@ -14,6 +14,16 @@ export function devPreviewOrgId(): number {
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
+/**
+ * userId real (> 0) usado al proxyar al agente Python desde vista previa.
+ * El usuario sintético de preview sigue siendo id=0 (reservado); el agente
+ * exige enteros positivos, así que el controller remapea 0 → este valor.
+ */
+export function devPreviewAgentUserId(): number {
+  const n = parseInt(process.env.DEV_PREVIEW_USER_ID ?? "1", 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 export function buildDevPreviewUser() {
   const organizationId = devPreviewOrgId();
   return {

@@ -16,12 +16,17 @@ import {
 import { isIvaDisabledOrgSlug } from "@/common/founding-orgs";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
+import { join } from "path";
 import { requireImportIssueDate } from "@/modules/invoices/issue-date";
 import {
   mergeInvoicesByLegacyKey,
   parseFastReportSalesFile,
   type ParsedSaleInvoice,
 } from "./fastreport.parser";
+import {
+  isMarfylSalesWorkbook,
+  parseMarfylSalesExcel,
+} from "./marfyl-sales.parser";
 
 export interface SalesImportPreviewResult {
   batchId: string;
@@ -135,14 +140,30 @@ export class SalesImportService {
     return {};
   }
 
+  private parseSalesUpload(
+    buffer: Buffer,
+    originalname: string,
+  ): ParsedSaleInvoice[] {
+    if (isMarfylSalesWorkbook(buffer)) {
+      return parseMarfylSalesExcel(buffer, originalname);
+    }
+    const xml = buffer.toString("utf8");
+    return parseFastReportSalesFile(xml, originalname);
+  }
+
   async previewFromPaths(params: {
     organizationId: number;
     filePaths: string[];
   }): Promise<SalesImportPreviewResult> {
     const parsed: ParsedSaleInvoice[] = [];
     for (const filePath of params.filePaths) {
-      const xml = readFileSync(filePath, "utf8");
-      parsed.push(...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath));
+      const buffer = readFileSync(filePath);
+      parsed.push(
+        ...this.parseSalesUpload(
+          buffer,
+          filePath.split("/").pop() ?? filePath,
+        ),
+      );
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
     return this.buildPreview(params.organizationId, invoices, params.filePaths.length);
@@ -154,10 +175,7 @@ export class SalesImportService {
   }): Promise<SalesImportPreviewResult> {
     const parsed: ParsedSaleInvoice[] = [];
     for (const file of params.files) {
-      const xml = file.buffer.toString("utf8");
-      parsed.push(
-        ...parseFastReportSalesFile(xml, file.originalname),
-      );
+      parsed.push(...this.parseSalesUpload(file.buffer, file.originalname));
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
     return this.buildPreview(params.organizationId, invoices, params.files.length);
@@ -169,8 +187,7 @@ export class SalesImportService {
   }) {
     const parsed: ParsedSaleInvoice[] = [];
     for (const file of params.files) {
-      const xml = file.buffer.toString("utf8");
-      parsed.push(...parseFastReportSalesFile(xml, file.originalname));
+      parsed.push(...this.parseSalesUpload(file.buffer, file.originalname));
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
     return this.provisionMissingFromInvoices(params.organizationId, invoices);
@@ -182,11 +199,24 @@ export class SalesImportService {
   }) {
     const parsed: ParsedSaleInvoice[] = [];
     for (const filePath of params.filePaths) {
-      const xml = readFileSync(filePath, "utf8");
-      parsed.push(...parseFastReportSalesFile(xml, filePath.split("/").pop() ?? filePath));
+      const buffer = readFileSync(filePath);
+      parsed.push(
+        ...this.parseSalesUpload(
+          buffer,
+          filePath.split("/").pop() ?? filePath,
+        ),
+      );
     }
     const invoices = mergeInvoicesByLegacyKey(parsed);
     return this.provisionMissingFromInvoices(params.organizationId, invoices);
+  }
+
+  /** Plantilla Excel MARFYL para ventas manuales. */
+  getMarfylTemplatePath() {
+    return join(
+      process.cwd(),
+      "templates/imports/MARFYL-plantilla-VENTAS.xlsx",
+    );
   }
 
   private async provisionMissingFromInvoices(

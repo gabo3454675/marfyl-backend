@@ -36,10 +36,19 @@ export class OrganizationGuard implements CanActivate {
         );
       }
 
+      // Select mínimo: evita fallar si staging aún no tiene columnas nuevas del schema.
       const organization = await this.prisma.organization.findUnique({
         where: { id: organizationId },
+        select: {
+          id: true,
+          slug: true,
+          nombre: true,
+          plan: true,
+          billingExempt: true,
+          deletedAt: true,
+        },
       });
-      if (!organization) {
+      if (!organization || organization.deletedAt != null) {
         throw new NotFoundException(
           `La organización con ID ${organizationId} no existe`,
         );

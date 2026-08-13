@@ -14,8 +14,6 @@ import {
   Query,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { CacheTTL } from "@nestjs/cache-manager";
-import { HttpCacheTenantInterceptor } from "@/common/interceptors/http-cache-tenant.interceptor";
 import { ActiveUser } from "@/common/decorators/active-user.decorator";
 import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
@@ -56,8 +54,6 @@ export class ProductsController {
 
   @Get()
   @Permissions("canViewProducts")
-  @UseInterceptors(HttpCacheTenantInterceptor)
-  @CacheTTL(60)
   findAll(
     @ActiveOrganization() organizationId: number,
     @Query("page") page?: string,

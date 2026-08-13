@@ -199,6 +199,14 @@ describe("internal-agent-auth", () => {
       ).toBe("SUPER_ADMIN");
       expect(prisma.organization.findUnique).toHaveBeenCalledWith({
         where: { id: 9 },
+        select: {
+          id: true,
+          slug: true,
+          nombre: true,
+          plan: true,
+          billingExempt: true,
+          deletedAt: true,
+        },
       });
     });
   });
