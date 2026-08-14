@@ -10,6 +10,7 @@ import { Groq } from "groq-sdk";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ExpensesService } from "./expenses.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { renderPdfBufferToJpegs } from "./receipt-pdf-pages";
 
 /** Modelos Groq con visión (OCR). llama-3.1-8b-instant NO soporta imágenes. */
 const DEFAULT_GROQ_VISION_PRIMARY = "meta-llama/llama-4-scout-17b-16e-instruct";
@@ -84,6 +85,11 @@ export class ReceiptScanService {
       throw new BadRequestException("Imagen no válida");
     }
     const mime = file.mimetype || "image/jpeg";
+    if (mime === "image/heic" || mime === "image/heif") {
+      throw new BadRequestException(
+        "Usa JPEG o PNG. En el iPhone: Foto → Opciones → Más compatible.",
+      );
+    }
     if (!mime.startsWith("image/")) {
       throw new BadRequestException("Solo se admiten imágenes (JPEG, PNG, WebP).");
     }
@@ -103,12 +109,59 @@ export class ReceiptScanService {
     }
   }
 
+  /** Foto o PDF escaneado (sin texto seleccionable). */
+  async scanReceiptFile(file: Express.Multer.File): Promise<ScannedReceiptResult> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException("Archivo no válido");
+    }
+    const name = (file.originalname || "").toLowerCase();
+    const mime = (file.mimetype || "").toLowerCase();
+    const isPdf = mime === "application/pdf" || name.endsWith(".pdf");
+    if (!isPdf) {
+      return this.scanReceiptImage(file);
+    }
+
+    let pages: Buffer[];
+    try {
+      pages = await renderPdfBufferToJpegs(file.buffer);
+    } catch (err) {
+      this.logger.warn(`PDF rasterize failed: ${String(err)}`);
+      throw new BadRequestException(
+        "No se pudo leer el PDF. Prueba una foto nítida de la factura.",
+      );
+    }
+    if (!pages.length) {
+      throw new BadRequestException("El PDF no tiene páginas para leer.");
+    }
+
+    const scans: ScannedReceiptResult[] = [];
+    for (let i = 0; i < pages.length; i++) {
+      const pageFile = {
+        ...file,
+        buffer: pages[i],
+        mimetype: "image/jpeg",
+        originalname: `pagina-${i + 1}.jpg`,
+      } as Express.Multer.File;
+      scans.push(await this.scanReceiptImage(pageFile));
+    }
+
+    const first = scans[0];
+    const lines = scans.flatMap((s) => s.lines);
+    const warnings = [
+      ...scans.flatMap((s) => s.warnings),
+      pages.length > 1 ? `Se leyeron ${pages.length} páginas del PDF.` : "",
+    ].filter(Boolean);
+    return { ...first, lines, warnings };
+  }
+
   /** Groq Vision (Scout → Maverick) → Gemini Vision (fallback opcional). */
   private async extractReceiptJsonText(
     file: Express.Multer.File,
     mime: string,
   ): Promise<string> {
-    const groqKey = this.config.get<string>("GROQ_API_KEY")?.trim();
+    const groqKey =
+      this.config.get<string>("GROQ_VISION_API_KEY")?.trim() ||
+      this.config.get<string>("GROQ_API_KEY")?.trim();
     if (groqKey) {
       const visionModels = this.resolveGroqVisionModels();
       let lastErr: unknown;
@@ -134,7 +187,7 @@ export class ReceiptScanService {
     }
 
     throw new ServiceUnavailableException(
-      "OCR no configurado. Defina GROQ_API_KEY (visión: Scout/Maverick) o GEMINI_API_KEY en el servidor.",
+      "OCR no configurado. Defina GROQ_VISION_API_KEY (o GROQ_API_KEY) o GEMINI_API_KEY en el servidor.",
     );
   }
 

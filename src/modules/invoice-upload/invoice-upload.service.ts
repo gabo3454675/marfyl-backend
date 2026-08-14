@@ -7,6 +7,7 @@ import { buildMovementReason } from "./invoice-upload.constants";
 import { num } from "@/common/helpers/number.helper";
 import * as ExcelJS from "exceljs";
 import pdfParse from "pdf-parse";
+import { ReceiptScanService } from "@/modules/expenses/receipt-scan.service";
 
 @Injectable()
 export class InvoiceUploadService {
@@ -15,6 +16,7 @@ export class InvoiceUploadService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLog: ActivityLogService,
+    private readonly receiptScan: ReceiptScanService,
   ) {}
 
   async preview(params: {
@@ -30,13 +32,21 @@ export class InvoiceUploadService {
     }
 
     const ext = (file.originalname || "").toLowerCase().split(".").pop() || "";
+    const mime = (file.mimetype || "").toLowerCase();
     const isExcel = ext === "xlsx" || ext === "xls";
-    const isPdf = ext === "pdf";
+    const isPdf = ext === "pdf" || mime === "application/pdf";
+    const isImage =
+      mime.startsWith("image/") ||
+      ["jpg", "jpeg", "png", "webp"].includes(ext);
 
-    if (!isExcel && !isPdf) {
+    if (!isExcel && !isPdf && !isImage) {
       throw new BadRequestException(
-        "Use un archivo Excel (.xlsx, .xls) o PDF (.pdf).",
+        "Usa una foto (JPEG/PNG), un PDF o un Excel (.xlsx).",
       );
+    }
+
+    if (isImage) {
+      return this.previewFromOcr(file, organizationId);
     }
 
     // ── 2. Load active products ───────────────────────────────────────
@@ -222,9 +232,8 @@ export class InvoiceUploadService {
       }
 
       if (rawRows.length === 0 && parseErrors.length === 0) {
-        throw new BadRequestException(
-          "No se pudieron leer líneas de compra desde el PDF. Use la plantilla Excel o un PDF con una línea por ítem: CODIGO CANTIDAD COSTO (separados por espacios o tabuladores).",
-        );
+        this.logger.log("PDF sin líneas de texto; intentando OCR de páginas");
+        return this.previewFromOcr(file, organizationId);
       }
     }
 
@@ -457,6 +466,153 @@ export class InvoiceUploadService {
       unmatched,
       canConfirm: matchedLines > 0 && !hasBlockingErrors,
     };
+  }
+
+  private async previewFromOcr(
+    file: Express.Multer.File,
+    organizationId: number,
+  ) {
+    const scan = await this.receiptScan.matchLinesToCatalog(
+      organizationId,
+      await this.receiptScan.scanReceiptFile(file),
+    );
+
+    const productIds = scan.lines
+      .map((l) => l.matchedProductId)
+      .filter((id): id is number => id != null);
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: { organizationId, id: { in: productIds } },
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            costPrice: true,
+            salePrice: true,
+            stock: true,
+            isBundle: true,
+            isService: true,
+          },
+        })
+      : [];
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const resultLines = scan.lines.map((line, i) => {
+      const qty = Math.max(1, line.quantity || 1);
+      const unitCost =
+        line.unitCostUsd != null && line.unitCostUsd >= 0
+          ? line.unitCostUsd
+          : line.lineTotalUsd != null && qty > 0
+            ? line.lineTotalUsd / qty
+            : 0;
+      const product = line.matchedProductId
+        ? byId.get(line.matchedProductId)
+        : undefined;
+      const blocked =
+        product && (product.isBundle || product.isService)
+          ? product.isBundle
+            ? "Es un combo; cargue los productos sueltos"
+            : "Es un servicio (sin inventario)"
+          : null;
+      const matched = !!product && !blocked;
+      const lineTotal = Math.round(qty * unitCost * 100) / 100;
+      return {
+        lineIndex: i,
+        originalCode: line.name,
+        originalName: line.name,
+        quantity: qty,
+        unitCost,
+        productId: matched ? product.id : null,
+        productName: matched ? product.name : null,
+        productSku: matched ? product.sku : null,
+        salePrice: matched ? num(product.salePrice) : null,
+        currentStock: matched ? num(product.stock) : null,
+        currentCostPrice: matched ? num(product.costPrice) : null,
+        matchType: matched
+          ? ("name_fuzzy" as const)
+          : null,
+        matchConfidence: matched ? 75 : 0,
+        status: (blocked ? "error" : matched ? "matched" : "unmatched") as
+          | "matched"
+          | "unmatched"
+          | "error",
+        error: blocked || undefined,
+        lineTotal,
+      };
+    });
+
+    const matchedLines = resultLines.filter((l) => l.status === "matched").length;
+    const unmatchedLines = resultLines.length - matchedLines;
+    const totalAmount = Math.round(
+      resultLines
+        .filter((l) => l.status === "matched")
+        .reduce((s, l) => s + l.lineTotal, 0) * 100,
+    ) / 100;
+
+    const suggestedSupplierId = await this.suggestSupplierId(
+      organizationId,
+      scan.vendorTaxId,
+      scan.vendorName,
+    );
+
+    const warnings = [...(scan.warnings ?? [])];
+    if (scan.vendorName) warnings.unshift(`Proveedor leído: ${scan.vendorName}`);
+
+    return {
+      dryRun: true as const,
+      fileName: file.originalname || "",
+      fileType: "photo" as const,
+      totalLines: resultLines.length,
+      matchedLines,
+      unmatchedLines,
+      totalAmount,
+      lines: resultLines,
+      errors: [],
+      unmatched: resultLines
+        .filter((l) => l.status !== "matched")
+        .map((l) => ({
+          line: l.lineIndex + 1,
+          code: l.originalName,
+          reason: l.error || "Revisa el nombre; no está en el catálogo",
+        })),
+      canConfirm: matchedLines > 0,
+      vendorName: scan.vendorName,
+      vendorTaxId: scan.vendorTaxId,
+      documentNumber: scan.documentNumber,
+      issueDate: scan.issueDate,
+      suggestedSupplierId,
+      warnings,
+    };
+  }
+
+  private async suggestSupplierId(
+    organizationId: number,
+    taxId: string | null,
+    name: string | null,
+  ): Promise<number | null> {
+    const rif = taxId?.replace(/[\s.-]/g, "").toUpperCase();
+    if (rif && rif.length >= 5) {
+      const byRif = await this.prisma.supplier.findFirst({
+        where: {
+          organizationId,
+          taxId: { contains: rif.slice(-8), mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (byRif) return byRif.id;
+    }
+    const n = name?.trim();
+    if (n && n.length >= 4) {
+      const byName = await this.prisma.supplier.findFirst({
+        where: {
+          organizationId,
+          name: { contains: n.slice(0, 24), mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (byName) return byName.id;
+    }
+    return null;
   }
 
   async confirm(params: {

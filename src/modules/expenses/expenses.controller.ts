@@ -161,19 +161,19 @@ export class ExpensesController {
     });
   }
 
-  /** Escaneo OCR de factura/recibo desde foto (Gemini Vision). */
+  /** Escaneo OCR de factura/recibo desde foto o PDF escaneado. */
   @Post("scan-receipt")
   @UseInterceptors(
     FileInterceptor("file", {
       storage: memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 15 * 1024 * 1024 },
     }),
   )
   async scanReceipt(
     @UploadedFile() file: Express.Multer.File,
     @ActiveOrganization() organizationId: number,
   ) {
-    const scan = await this.receiptScanService.scanReceiptImage(file);
+    const scan = await this.receiptScanService.scanReceiptFile(file);
     return this.receiptScanService.matchLinesToCatalog(organizationId, scan);
   }
 
