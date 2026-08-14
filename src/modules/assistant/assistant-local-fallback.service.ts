@@ -10,6 +10,8 @@ type LocalIntent =
   | { type: "switch_org"; ref: string }
   | { type: "list_orgs" }
   | { type: "org_status" }
+  | { type: "cash_status" }
+  | { type: "restock" }
   | { type: "inventory"; product?: string }
   | { type: "fiscal_calendar" };
 
@@ -50,7 +52,7 @@ export class AssistantLocalFallbackService {
     if (answers.length === 0) return null;
 
     const suffix =
-        "\n\n_(Respuesta generada localmente por MARFYL; la IA de Groq no estuvo disponible.)_";
+        "\n\n_(Respuesta generada localmente por MARFYL; Nemotron no estuvo disponible.)_";
     return { reply: answers.join("\n\n") + suffix };
   }
 
@@ -82,8 +84,10 @@ export class AssistantLocalFallbackService {
       list_orgs: 2,
       invoice_count: 3,
       org_status: 4,
-      inventory: 5,
-      fiscal_calendar: 6,
+      cash_status: 5,
+      restock: 6,
+      inventory: 7,
+      fiscal_calendar: 8,
       switch_org: 9,
     };
     return [...intents].sort((a, b) => priority[a.type] - priority[b.type]);
@@ -143,11 +147,27 @@ export class AssistantLocalFallbackService {
     }
 
     if (
-      /estado de la empresa|resumen|dashboard|como va la empresa|metricas/.test(
+      /estado de la empresa|resumen|dashboard|como va la empresa|como vamos|como va el dia|que se vendio|que falta|metricas/.test(
         lower,
       )
     ) {
       intents.push({ type: "org_status" });
+    }
+
+    if (
+      /como esta la caja|caja abierta|turno de caja|cuadre de caja|interruptor de caja/.test(
+        lower,
+      )
+    ) {
+      intents.push({ type: "cash_status" });
+    }
+
+    if (
+      /que (debo |tengo que )?comprar|reponer|restock|que se acaba|por agotarse/.test(
+        lower,
+      )
+    ) {
+      intents.push({ type: "restock" });
     }
 
     if (/inventario|stock|productos|existencia/.test(lower)) {
@@ -276,20 +296,76 @@ export class AssistantLocalFallbackService {
         if (res.error) throw new Error(res.error);
         const data = res.result as {
           organization?: string;
-          summary?: {
-            totalInvoices?: number;
-            totalRevenue?: number;
-            pendingInvoices?: number;
+          sales?: {
+            todayUsd?: number;
+            yesterdayUsd?: number;
+            invoicesToday?: number;
+            vsYesterdayPct?: number | null;
           };
-          lowStockCount?: number;
+          cash?: { open?: boolean };
+          floor?: { pendingTotal?: number; openAccounts?: number };
+          lowStock?: { count?: number };
         };
-        const s = data.summary;
+        const s = data.sales;
+        const vs =
+          s?.vsYesterdayPct == null
+            ? "sin base de ayer"
+            : `${s.vsYesterdayPct > 0 ? "+" : ""}${s.vsYesterdayPct}% vs ayer`;
         return (
-          `Estado de **${data.organization ?? ctx.orgName}**:\n` +
-          `• Facturas: ${s?.totalInvoices ?? "—"}\n` +
-          `• Pendientes: ${s?.pendingInvoices ?? "—"}\n` +
-          `• Productos bajo stock: ${data.lowStockCount ?? 0}`
+          `**${data.organization ?? ctx.orgName}** hoy:\n` +
+          `• Ventas: **$${s?.todayUsd ?? 0}** (${s?.invoicesToday ?? 0} tickets, ${vs})\n` +
+          `• Caja: ${data.cash?.open ? "abierta" : "cerrada"}\n` +
+          `• Comandas pendientes: ${data.floor?.pendingTotal ?? 0} · cuentas abiertas: ${data.floor?.openAccounts ?? 0}\n` +
+          `• Stock bajo: ${data.lowStock?.count ?? 0}`
         );
+      }
+
+      case "cash_status": {
+        const res = await this.tools.execute(
+          "get_cash_register_status",
+          {},
+          ctx,
+        );
+        if (res.error) throw new Error(res.error);
+        const data = res.result as {
+          open?: boolean;
+          message?: string;
+          montoInicialUsd?: number;
+          montoInicialBs?: number;
+          ventasEfectivoUsd?: number;
+          ventasEfectivoBs?: number;
+          efectivoEsperadoUsd?: number;
+          efectivoEsperadoBs?: number;
+        };
+        if (!data.open) return data.message ?? "Caja cerrada para este usuario.";
+        return (
+          `Caja **abierta**:\n` +
+          `• Inicial: **$${data.montoInicialUsd ?? 0}** / **Bs ${data.montoInicialBs ?? 0}**\n` +
+          `• Efectivo vendido: $${data.ventasEfectivoUsd ?? 0} / Bs ${data.ventasEfectivoBs ?? 0}\n` +
+          `• Esperado en gaveta: **$${data.efectivoEsperadoUsd ?? 0}** / **Bs ${data.efectivoEsperadoBs ?? 0}**`
+        );
+      }
+
+      case "restock": {
+        const res = await this.tools.execute("suggest_restock", {}, ctx);
+        if (res.error) throw new Error(res.error);
+        const data = res.result as {
+          items?: Array<{
+            name: string;
+            stock: number;
+            minStock: number;
+            suggestedBuy: number;
+          }>;
+        };
+        const items = data.items ?? [];
+        if (items.length === 0) return "No hay productos bajo el mínimo ahora.";
+        const lines = items
+          .slice(0, 8)
+          .map(
+            (p) =>
+              `• **${p.name}** — stock ${p.stock} (mín ${p.minStock}), pedir ~${p.suggestedBuy}`,
+          );
+        return `Conviene reponer:\n${lines.join("\n")}`;
       }
 
       case "inventory": {

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
@@ -8,6 +8,7 @@ import {
   isDevPreviewAuthEnabled,
 } from "@/common/dev-preview";
 import { AssistantService } from "./assistant.service";
+import { AssistantToolsService } from "./assistant-tools.service";
 import { AssistantChatDto } from "./dto/chat.dto";
 
 type AssistantRequest = {
@@ -21,7 +22,10 @@ type AssistantRequest = {
 @Controller("assistant")
 @UseGuards(JwtAuthGuard, OrganizationGuard)
 export class AssistantController {
-  constructor(private readonly assistant: AssistantService) {}
+  constructor(
+    private readonly assistant: AssistantService,
+    private readonly tools: AssistantToolsService,
+  ) {}
 
   private buildContext(req: AssistantRequest) {
     const organizationId =
@@ -48,6 +52,28 @@ export class AssistantController {
       userRole: userRole ? String(userRole) : undefined,
       authorization,
     };
+  }
+
+  @Get("ops-briefing")
+  opsBriefing(@Req() req: AssistantRequest) {
+    return this.tools.getOpsBriefing(this.buildContext(req));
+  }
+
+  @Get("cash-status")
+  cashStatus(@Req() req: AssistantRequest) {
+    return this.tools.getCashRegisterStatus(this.buildContext(req));
+  }
+
+  @Get("restock-suggestions")
+  restockSuggestions(
+    @Req() req: AssistantRequest,
+    @Query("limit") limit?: string,
+  ) {
+    const parsed = limit ? Number(limit) : 12;
+    return this.tools.suggestRestock(
+      { limit: Number.isFinite(parsed) ? parsed : 12 },
+      this.buildContext(req),
+    );
   }
 
   @Post("chat")

@@ -12,6 +12,7 @@ import { CierreCajaService } from "@/modules/cierre-caja/cierre-caja.service";
 import { InventoryMovementsService } from "@/modules/inventory/inventory-movements.service";
 import { CustomersService } from "@/modules/customers/customers.service";
 import { FiscalKnowledgeService } from "@/modules/fiscal-knowledge/fiscal-knowledge.service";
+import { LiquorSalesService } from "@/modules/invoices/liquor-sales.service";
 import { AssistantSecurityService } from "./assistant-security.service";
 import { TenantContext } from "@/common/context/tenant.context";
 
@@ -50,6 +51,33 @@ const OUTFLOW_TYPES = [
   "USO_TALLER",
 ] as const;
 
+function todayCaracas(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function addCalendarDays(day: string, delta: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10);
+}
+
+/** Medianoche Caracas = 04:00 UTC (Venezuela UTC−4, sin DST). */
+function caracasDayUtcRange(day: string): { gte: Date; lt: Date } {
+  return {
+    gte: new Date(`${day}T04:00:00.000Z`),
+    lt: new Date(`${addCalendarDays(day, 1)}T04:00:00.000Z`),
+  };
+}
+
+function asNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 @Injectable()
 export class AssistantToolsService {
   private readonly logger = new Logger(AssistantToolsService.name);
@@ -70,6 +98,7 @@ export class AssistantToolsService {
     private readonly inventoryMovements: InventoryMovementsService,
     private readonly customers: CustomersService,
     private readonly fiscalKnowledge: FiscalKnowledgeService,
+    private readonly liquorSales: LiquorSalesService,
   ) {
     this.registerHandlers();
   }
@@ -143,7 +172,13 @@ export class AssistantToolsService {
       this.searchCustomers(args, ctx),
     );
     this.handlers.set("get_organization_status", (_args, ctx) =>
-      this.getOrganizationStatus(ctx),
+      this.getOpsBriefing(ctx),
+    );
+    this.handlers.set("get_ops_briefing", (_args, ctx) =>
+      this.getOpsBriefing(ctx),
+    );
+    this.handlers.set("suggest_restock", (args, ctx) =>
+      this.suggestRestock(args, ctx),
     );
     this.handlers.set("get_fiscal_calendar", (args, ctx) =>
       this.getFiscalCalendar(args, ctx),
@@ -525,19 +560,263 @@ export class AssistantToolsService {
     return { count: customers.length, customers };
   }
 
-  private async getOrganizationStatus(ctx: AssistantToolContext) {
+  async getOpsBriefing(ctx: AssistantToolContext) {
     await this.guardOrg(ctx);
-    const [summary, lowStock] = await Promise.all([
-      this.dashboard.getSummary(ctx.organizationId),
-      this.dashboard.getLowStock(ctx.organizationId, 5),
+    const today = todayCaracas();
+    const yesterday = addCalendarDays(today, -1);
+    const todayRange = caracasDayUtcRange(today);
+    const yesterdayRange = caracasDayUtcRange(yesterday);
+    const orgId = ctx.organizationId;
+
+    const [
+      salesToday,
+      salesYesterday,
+      lowStock,
+      floorSent,
+      floorInPrep,
+      floorReady,
+      openTabs,
+      topProducts,
+      cash,
+      liquor,
+    ] = await Promise.all([
+      this.prisma.invoice.aggregate({
+        where: {
+          organizationId: orgId,
+          status: "PAID",
+          deletedAt: null,
+          issueDate: { gte: todayRange.gte, lt: todayRange.lt },
+        },
+        _sum: { totalAmount: true },
+        _count: true,
+      }),
+      this.prisma.invoice.aggregate({
+        where: {
+          organizationId: orgId,
+          status: "PAID",
+          deletedAt: null,
+          issueDate: { gte: yesterdayRange.gte, lt: yesterdayRange.lt },
+        },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.product.findMany({
+        where: {
+          organizationId: orgId,
+          isActive: true,
+          isService: false,
+          stock: { lte: 5 },
+        },
+        take: 8,
+        orderBy: [{ stock: "asc" }, { name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          stock: true,
+          minStock: true,
+        },
+      }),
+      this.prisma.floorOrder.count({
+        where: { organizationId: orgId, status: "SENT" },
+      }),
+      this.prisma.floorOrder.count({
+        where: { organizationId: orgId, status: "IN_PREP" },
+      }),
+      this.prisma.floorOrder.count({
+        where: { organizationId: orgId, status: "READY" },
+      }),
+      this.prisma.floorOrder.count({
+        where: {
+          organizationId: orgId,
+          isOpen: true,
+          status: { notIn: ["CHARGED", "CANCELLED"] },
+        },
+      }),
+      this.loadTopProductsToday(orgId, today),
+      this.getCashRegisterStatus(ctx),
+      this.loadLiquorBrief(orgId, today),
     ]);
+
+    const todayUsd = asNumber(salesToday._sum.totalAmount);
+    const yesterdayUsd = asNumber(salesYesterday._sum.totalAmount);
+    const vsYesterdayPct =
+      yesterdayUsd > 0
+        ? Math.round(((todayUsd - yesterdayUsd) / yesterdayUsd) * 100)
+        : null;
+    const floorPending = floorSent + floorInPrep + floorReady;
+
     return {
-      organizationId: ctx.organizationId,
+      day: today,
+      timezone: "America/Caracas",
+      organizationId: orgId,
       organization: ctx.orgName,
-      summary,
-      lowStockCount: lowStock.length,
-      lowStockPreview: lowStock.slice(0, 5),
+      sales: {
+        todayUsd: Math.round(todayUsd * 100) / 100,
+        yesterdayUsd: Math.round(yesterdayUsd * 100) / 100,
+        invoicesToday: salesToday._count,
+        vsYesterdayPct,
+      },
+      cash,
+      floor: {
+        sent: floorSent,
+        inPrep: floorInPrep,
+        ready: floorReady,
+        pendingTotal: floorPending,
+        openAccounts: openTabs,
+      },
+      lowStock: {
+        count: lowStock.length,
+        items: lowStock,
+      },
+      topProductsToday: topProducts,
+      liquor,
+      guidance:
+        "Habla como encargado: cifras en **negrita**, qué urge (stock, caja, comandas). Si la caja está cerrada, recuérdalo. Foto de factura → Inventario → Compras → Foto/PDF.",
     };
+  }
+
+  async suggestRestock(
+    args: Record<string, unknown>,
+    ctx: AssistantToolContext,
+  ) {
+    await this.guardOrg(ctx);
+    const limit = Math.min(20, Math.max(1, Number(args.limit) || 12));
+    const today = todayCaracas();
+    const rows = (await this.prisma.$queryRawUnsafe(
+      `
+      SELECT
+        p.id,
+        p.name,
+        p.sku,
+        p.stock,
+        p."minStock",
+        GREATEST(0, COALESCE(p."minStock", 5) - p.stock) AS deficit,
+        COALESCE(s.sold, 0)::float AS "soldToday"
+      FROM products p
+      LEFT JOIN (
+        SELECT
+          ii."productId" AS product_id,
+          SUM(COALESCE(ii.quantity::numeric, ii."effectiveQuantity", 0)) AS sold
+        FROM invoice_items ii
+        JOIN invoices i ON i.id = ii."invoiceId"
+        WHERE i."organizationId" = $1
+          AND i.status = 'PAID'
+          AND i."deletedAt" IS NULL
+          AND ii."lineageStatus" = 'ACTIVE'
+          AND ii."productId" IS NOT NULL
+          AND ((i."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Caracas')::date = $2::date
+        GROUP BY ii."productId"
+      ) s ON s.product_id = p.id
+      WHERE p."organizationId" = $1
+        AND p."isActive" = true
+        AND p."isService" = false
+        AND p."isBundle" = false
+        AND p.stock <= COALESCE(p."minStock", 5)
+      ORDER BY deficit DESC, p.stock ASC, "soldToday" DESC
+      LIMIT $3
+      `,
+      ctx.organizationId,
+      today,
+      limit,
+    )) as Array<{
+      id: number;
+      name: string;
+      sku: string | null;
+      stock: number;
+      minStock: number;
+      deficit: number;
+      soldToday: number;
+    }>;
+
+    return {
+      day: today,
+      count: rows.length,
+      items: rows.map((r) => ({
+        id: Number(r.id),
+        name: r.name,
+        sku: r.sku,
+        stock: Number(r.stock),
+        minStock: Number(r.minStock),
+        deficit: Number(r.deficit),
+        soldToday: Number(r.soldToday),
+        suggestedBuy: Math.max(Number(r.deficit), Number(r.soldToday) || 0),
+      })),
+      hint:
+        "Prioriza deficit más alto. suggestedBuy es una guía (cubrir mínimo o reponer lo vendido hoy). Confirmar en Inventario antes de pedir al proveedor.",
+    };
+  }
+
+  private async loadTopProductsToday(organizationId: number, day: string) {
+    const rows = (await this.prisma.$queryRawUnsafe(
+      `
+      SELECT
+        p.id AS "productId",
+        p.name,
+        SUM(COALESCE(ii.quantity::numeric, ii."effectiveQuantity", 0))::float AS quantity,
+        ROUND(COALESCE(SUM(ii.subtotal), 0)::numeric, 2) AS usd
+      FROM invoice_items ii
+      JOIN invoices i ON i.id = ii."invoiceId"
+      JOIN products p ON p.id = ii."productId"
+      WHERE i."organizationId" = $1
+        AND i.status = 'PAID'
+        AND i."deletedAt" IS NULL
+        AND ii."lineageStatus" = 'ACTIVE'
+        AND ii."productId" IS NOT NULL
+        AND p."isBundle" = false
+        AND ((i."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Caracas')::date = $2::date
+      GROUP BY p.id, p.name
+      ORDER BY SUM(ii.subtotal) DESC
+      LIMIT 8
+      `,
+      organizationId,
+      day,
+    )) as Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      usd: string | number;
+    }>;
+
+    return rows.map((r) => ({
+      productId: Number(r.productId),
+      name: r.name,
+      quantity: Number(r.quantity),
+      usd: asNumber(r.usd),
+    }));
+  }
+
+  private async loadLiquorBrief(organizationId: number, day: string) {
+    try {
+      const report = await this.liquorSales.getDailyReport(organizationId, day);
+      const products = Array.isArray(report.products) ? report.products : [];
+      const lowRemaining = products
+        .filter((p) => Number(p.remainingTheoretical) <= 12)
+        .sort(
+          (a, b) =>
+            Number(a.remainingTheoretical) - Number(b.remainingTheoretical),
+        )
+        .slice(0, 8)
+        .map((p) => ({
+          name: p.name,
+          sold: Number(p.quantity),
+          remaining: Number(p.remainingTheoretical),
+          bucket: p.bucketLabel,
+        }));
+      return {
+        day: report.day,
+        beerSold: report.beer.bottles,
+        beerRemaining: report.beer.remainingTheoretical,
+        whiskySold: report.whisky.bottles,
+        whiskyRemaining: report.whisky.remainingTheoretical,
+        otrosSold: report.otros.bottles,
+        otrosRemaining: report.otros.remainingTheoretical,
+        lowRemaining,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Liquor brief failed: ${message}`);
+      return null;
+    }
   }
 
   private periodArgs(args: Record<string, unknown>) {
@@ -599,7 +878,7 @@ export class AssistantToolsService {
     };
   }
 
-  private async getCashRegisterStatus(ctx: AssistantToolContext) {
+  async getCashRegisterStatus(ctx: AssistantToolContext) {
     await this.guardOrg(ctx);
     const cierre = await this.cierreCaja.getCierreAbierto(
       ctx.organizationId,
@@ -610,12 +889,26 @@ export class AssistantToolsService {
         open: false,
         message: "No hay turno de caja abierto para este usuario",
       };
+    const montoInicialUsd = asNumber(cierre.montoInicial);
+    const montoInicialBs = asNumber(cierre.montoInicialBs);
+    const ventasEfectivoUsd = asNumber(cierre.ventasEfectivoUsd);
+    const ventasEfectivoBs = asNumber(cierre.ventasEfectivoBs);
+    const ventasPagoMovil = asNumber(cierre.ventasPagoMovil);
+    const ventasPos = asNumber(cierre.ventasPos);
     return {
       open: true,
       fechaApertura: cierre.fechaApertura,
-      ventasEfectivo: cierre.ventasEfectivo,
-      ventasDigitales: cierre.ventasDigitales,
-      autoconsumos: cierre.autoconsumos,
+      montoInicialUsd,
+      montoInicialBs,
+      ventasEfectivoUsd,
+      ventasEfectivoBs,
+      ventasPagoMovil,
+      ventasPos,
+      efectivoEsperadoUsd: Math.round((montoInicialUsd + ventasEfectivoUsd) * 100) / 100,
+      efectivoEsperadoBs: Math.round((montoInicialBs + ventasEfectivoBs) * 100) / 100,
+      autoconsumos: asNumber(cierre.autoconsumos),
+      notaAutoconsumos:
+        "Salida no monetaria (mermas, muestras). No suma al efectivo.",
     };
   }
 

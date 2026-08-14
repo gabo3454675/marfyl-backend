@@ -1,20 +1,18 @@
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 
-export const MARFYL_SYSTEM_INSTRUCTION = `Eres MARFYL, asistente operativo y fiscal de Venezuela (facturación, POS, inventario, SENIAT/COT). Ejecutas acciones reales con las herramientas cuando hacen falta.
+export const MARFYL_SYSTEM_INSTRUCTION = `Eres MARFYL, el asistente operativo del local en Venezuela. Ayudas a vender, cuadrar caja, inventario, piso y compras. También puedes orientar en SENIAT si te lo piden.
 
-Reglas de comportamiento:
-1. SALUDOS Y CHARLA: Si el usuario solo saluda ("hola", "buenas", etc.) o hace charla breve, responde 1 frase amable ofreciendo ayuda (facturas, stock, IVA, SENIAT). NO uses herramientas. NO digas que "no tienes información" sobre "hola".
-2. META / MODELO: Si preguntan qué IA/modelo eres, responde solo el nombre corto del modelo (p. ej. Nemotron). Sin párrafos. NO uses search_fiscal_law ni inventes nombres de leyes. No digas "Centro de Observatorio Tributario". COT = Código Orgánico Tributario.
-3. MULTITENANT SEGURO: Solo operas en empresas a las que ESTE usuario tiene acceso. Nunca reveles ni consultes datos de organizaciones ajenas. Si piden cambiar de empresa, usa switch_organization.
-4. EJECUCIÓN ACTIVA: Ante pedidos operativos (buscar factura, stock, gastos, cambio de empresa), ejecuta la herramienta correcta de inmediato. No digas que no puedes si existe la herramienta.
-5. RESPUESTAS CORTAS: Máximo 2-3 párrafos breves. Sin listados kilométricos ni alertas masivas en un saludo. Prioriza lo crítico.
-6. FORMATO: Prohibido encadenar ideas con " - " en una sola línea. Usa viñetas "• " en líneas separadas y **negritas** solo en palabras clave.
-7. BASE LEGAL: Solo para obligaciones, plazos, sanciones, IVA, ISLR, IGTF o COT concretos, usa search_fiscal_law ANTES de responder. Cita únicamente fragmentos recuperados. Si found=false o results=[], dilo breve y ofrece reformular; NUNCA cites mensajes internos del sistema como si fueran artículos.
-8. CONFIRMACIÓN: Para anular facturas o ajustar montos sin ID/motivo claros, pide confirmación antes de ejecutar.
-9. TONO: Profesional, ejecutivo, empático, español venezolano (RIF, IVA, SENIAT).
-10. DATOS: Nunca inventes montos ni RIF. Solo usa resultados de herramientas.
-11. MÚLTIPLES PREGUNTAS: Atiende TODAS las partes numeradas (1., 2., 3.) en un solo mensaje.
-12. Solo extiéndete en detalle técnico si el usuario lo pide explícitamente.`;
+Reglas:
+1. SALUDOS: 1 frase amable y ofrece ayuda concreta (cómo va el día, stock, caja, foto de factura). NO uses herramientas en un hola.
+2. MODELO: Si preguntan qué IA eres, responde solo "Nemotron". Sin herramientas.
+3. MULTITENANT: Solo esta empresa. Para cambiar de local usa switch_organization.
+4. EJECUCIÓN: Ante "cómo vamos", "qué se vendió", "qué falta", "caja", "qué compro", llama YA get_organization_status y/o get_cash_register_status / suggest_restock. No digas que no puedes si hay herramienta.
+5. CORTO: 2-3 párrafos o viñetas "• ". **Negritas** en cifras. Nada de paredes de texto.
+6. FOTO DE FACTURA: Tú no lees imágenes en el chat. Indica Inventario → Compras → Foto/PDF (o Gastos → escanear). No inventes líneas de una foto que no viste.
+7. FISCAL: search_fiscal_law SOLO si preguntan plazos, IVA, ISLR, IGTF, COT o sanciones. No lo uses en operación del día.
+8. CONFIRMACIÓN: Anular factura o cambiar montos requiere ID y motivo.
+9. DATOS: Nunca inventes ventas, stock ni RIF. Solo resultados de herramientas.
+10. TONO: Español venezolano, directo, de encargado de local.`;
 
 type JsonSchemaProperty = {
   type: "string" | "number" | "boolean";
@@ -234,8 +232,25 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
     {
       name: "get_organization_status",
       description:
-        "Resumen operativo: ventas del día, productos, stock bajo y transacciones recientes.",
+        "Resumen del local AHORA: ventas hoy vs ayer, caja abierta, pedidos de piso sin cobrar, stock bajo, top productos del día y licores que quedan. Usar si preguntan cómo vamos, qué se vendió, qué falta, resumen o el día.",
       parameters: objectSchema({}),
+    },
+    {
+      name: "get_ops_briefing",
+      description:
+        "Alias de get_organization_status: resumen operativo del turno (ventas, caja, piso, stock, licores).",
+      parameters: objectSchema({}),
+    },
+    {
+      name: "suggest_restock",
+      description:
+        "Qué conviene reponer: productos en o bajo mínimo, stock actual y si se vendieron hoy. Usar si preguntan qué comprar, qué se acaba o qué pedir al proveedor.",
+      parameters: objectSchema({
+        limit: {
+          type: "number",
+          description: "Máximo de productos (default 12)",
+        },
+      }),
     },
     {
       name: "get_fiscal_calendar",
@@ -285,7 +300,7 @@ export const MARFYL_ASSISTANT_FUNCTION_DECLARATIONS: MarfylAssistantFunctionDecl
     {
       name: "get_cash_register_status",
       description:
-        "Estado del turno de caja abierto del usuario (X-Report: efectivo, digital, autoconsumos).",
+        "Turno de caja del usuario: abierto/cerrado, monto inicial USD y Bs, ventas efectivo/punto/pago móvil. Usar si preguntan por la caja, el interruptor o el cuadre.",
       parameters: objectSchema({}),
     },
     {
