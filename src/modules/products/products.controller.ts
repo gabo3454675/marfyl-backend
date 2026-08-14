@@ -100,6 +100,13 @@ export class ProductsController {
     return this.productsService.getAlertasStock(organizationId);
   }
 
+  /** Receta de combos + cuántos se pueden armar con el stock actual. */
+  @Get("bom")
+  @Permissions("canViewProducts")
+  getBom(@ActiveOrganization() organizationId: number) {
+    return this.productsService.getBomOverview(organizationId);
+  }
+
   @Get(":id")
   findOne(
     @Param("id", ParseIntPipe) id: number,

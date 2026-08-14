@@ -8,13 +8,10 @@ import {
   UseInterceptors,
   BadRequestException,
   Res,
-  NotFoundException,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { Response } from "express";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
 import { PurchasesImportService } from "./purchases-import.service";
 import { ConfirmPurchasesImportDto } from "./dto/confirm-purchases-import.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -42,17 +39,14 @@ export class PurchasesImportController {
 
   @Get("template")
   @Permissions("canManageInventory")
-  async downloadTemplate(@Res() res: Response) {
-    const path = join(
-      process.cwd(),
-      "templates/imports/MARFYL-plantilla-COMPRAS.xlsx",
-    );
-    if (!existsSync(path)) {
-      throw new NotFoundException(
-        "Plantilla no generada. Ejecute: pnpm exec tsx scripts/generate-import-templates.ts",
+  async downloadTemplate(
+    @Res() res: Response,
+    @ActiveOrganization() organizationId: number,
+  ) {
+    const buffer =
+      await this.purchasesImportService.generatePurchasesTemplateBuffer(
+        organizationId,
       );
-    }
-    const buffer = readFileSync(path);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

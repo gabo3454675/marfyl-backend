@@ -16,6 +16,7 @@ import { getCompanyIdFromOrganization } from "@/common/helpers/organization.help
 import { UploadService } from "@/common/services/upload.service";
 import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 import { parseMonddyExcel } from "./monddy-excel.parser";
+import { parseBomLines, maxBuildable, type BomLine } from "@/common/bom/bundle-bom";
 
 @Injectable()
 export class ProductsService {
@@ -79,12 +80,15 @@ export class ProductsService {
     const bundle = isBundle ?? false;
     const srv = bundle ? false : (isService ?? false);
     const compsRaw = bundleComponents as unknown;
-    const compsArr = Array.isArray(compsRaw) ? compsRaw : [];
-    let storedComponents: object | undefined;
+    let storedComponents: BomLine[] | undefined;
     if (bundle) {
-      storedComponents = compsArr.length > 0 ? (compsRaw as object) : [];
-    } else if (srv && compsArr.length > 0) {
-      storedComponents = compsRaw as object;
+      storedComponents = await this.resolveBomLines(organizationId, compsRaw, {
+        requireNonEmpty: true,
+      });
+    } else if (srv && parseBomLines(compsRaw).length > 0) {
+      storedComponents = await this.resolveBomLines(organizationId, compsRaw, {
+        requireNonEmpty: false,
+      });
     } else {
       storedComponents = undefined;
     }
@@ -293,14 +297,30 @@ export class ProductsService {
 
     if (updateProductDto.bundleComponents !== undefined) {
       const bc = updateProductDto.bundleComponents as unknown;
-      const arr = Array.isArray(bc) ? bc : [];
       if (nextBundle) {
-        data.bundleComponents = arr.length > 0 ? bc : [];
+        data.bundleComponents = await this.resolveBomLines(
+          organizationId,
+          bc,
+          { requireNonEmpty: true, parentProductId: id },
+        );
       } else if (nextService) {
-        data.bundleComponents = arr.length > 0 ? bc : null;
+        const lines = parseBomLines(bc);
+        data.bundleComponents =
+          lines.length > 0
+            ? await this.resolveBomLines(organizationId, bc, {
+                requireNonEmpty: false,
+                parentProductId: id,
+              })
+            : null;
       } else {
         data.bundleComponents = null;
       }
+    } else if (nextBundle && !existingProduct.isBundle) {
+      data.bundleComponents = await this.resolveBomLines(
+        organizationId,
+        existingProduct.bundleComponents,
+        { requireNonEmpty: true, parentProductId: id },
+      );
     }
 
     const updated = await this.prisma.product.update({
@@ -413,6 +433,109 @@ export class ProductsService {
         minStock: p.minStock ?? minStockDefault,
         salePrice: Number(p.salePrice),
       }));
+  }
+
+  /**
+   * BOM de combos: receta, cuántos se pueden armar y qué componente los bloquea.
+   */
+  async getBomOverview(organizationId: number) {
+    const products = await this.prisma.product.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        isBundle: true,
+        isActive: true,
+        bundleComponents: true,
+        stock: true,
+        reservedStock: true,
+        salePrice: true,
+      },
+    });
+
+    const availableOf = (p: {
+      stock: number;
+      reservedStock: number;
+    }) => Math.max(0, p.stock - (p.reservedStock ?? 0));
+
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const stockById = new Map(products.map((p) => [p.id, availableOf(p)]));
+
+    const combos = products
+      .filter((p) => p.isBundle && p.isActive)
+      .map((combo) => {
+        const lines = parseBomLines(combo.bundleComponents);
+        const { max, bottleneckProductId } = maxBuildable(lines, stockById);
+        const resolvedLines = lines.map((line) => {
+          const child = byId.get(line.productId);
+          return {
+            productId: line.productId,
+            name: child?.name ?? `#${line.productId}`,
+            sku: child?.sku ?? null,
+            quantity: line.quantity,
+            availableStock: stockById.get(line.productId) ?? 0,
+            missing: !child,
+            inactive: child ? !child.isActive : false,
+          };
+        });
+        const bottleneckChild = bottleneckProductId
+          ? byId.get(bottleneckProductId)
+          : undefined;
+        return {
+          id: combo.id,
+          name: combo.name,
+          salePrice: Number(combo.salePrice),
+          recipeOk:
+            lines.length > 0 &&
+            resolvedLines.every((l) => !l.missing && !l.inactive),
+          buildable: lines.length === 0 ? 0 : max,
+          bottleneck: bottleneckProductId
+            ? {
+                productId: bottleneckProductId,
+                name: bottleneckChild?.name ?? `#${bottleneckProductId}`,
+                availableStock: stockById.get(bottleneckProductId) ?? 0,
+              }
+            : null,
+          lines: resolvedLines,
+        };
+      });
+
+    const blockedByMap = new Map<
+      number,
+      {
+        productId: number;
+        name: string;
+        availableStock: number;
+        comboIds: number[];
+        comboNames: string[];
+      }
+    >();
+    for (const combo of combos) {
+      for (const line of combo.lines) {
+        if (line.quantity > 0 && line.availableStock >= line.quantity) continue;
+        let entry = blockedByMap.get(line.productId);
+        if (!entry) {
+          entry = {
+            productId: line.productId,
+            name: line.name,
+            availableStock: line.availableStock,
+            comboIds: [],
+            comboNames: [],
+          };
+          blockedByMap.set(line.productId, entry);
+        }
+        entry.comboIds.push(combo.id);
+        entry.comboNames.push(combo.name);
+      }
+    }
+
+    return {
+      combos,
+      blockedBy: [...blockedByMap.values()].sort(
+        (a, b) => b.comboIds.length - a.comboIds.length,
+      ),
+    };
   }
 
   /**
@@ -884,5 +1007,54 @@ export class ProductsService {
     });
 
     return { success: true };
+  }
+
+  private async resolveBomLines(
+    organizationId: number,
+    raw: unknown,
+    opts: { requireNonEmpty: boolean; parentProductId?: number },
+  ): Promise<BomLine[]> {
+    const lines = parseBomLines(raw);
+    if (opts.requireNonEmpty && lines.length === 0) {
+      throw new BadRequestException(
+        "El combo necesita al menos un producto en la receta.",
+      );
+    }
+    if (lines.length === 0) return [];
+
+    if (
+      opts.parentProductId != null &&
+      lines.some((l) => l.productId === opts.parentProductId)
+    ) {
+      throw new BadRequestException(
+        "Un combo no puede incluirse a sí mismo en la receta.",
+      );
+    }
+
+    const ids = lines.map((l) => l.productId);
+    const children = await this.prisma.product.findMany({
+      where: { id: { in: ids }, organizationId },
+      select: { id: true, name: true, isBundle: true, isActive: true },
+    });
+    const childById = new Map(children.map((p) => [p.id, p]));
+    for (const line of lines) {
+      const child = childById.get(line.productId);
+      if (!child) {
+        throw new BadRequestException(
+          `El producto #${line.productId} de la receta no existe en esta organización.`,
+        );
+      }
+      if (child.isBundle) {
+        throw new BadRequestException(
+          `"${child.name}" es un combo. La receta solo admite productos sueltos (un nivel).`,
+        );
+      }
+      if (!child.isActive) {
+        throw new BadRequestException(
+          `"${child.name}" está inactivo y no puede formar parte de la receta.`,
+        );
+      }
+    }
+    return lines;
   }
 }

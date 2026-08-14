@@ -676,9 +676,8 @@ export class SalesImportService {
   }
 
   /**
-   * Genera plantilla Excel genérica para importación de ventas.
-   * Columnas: FECHA, CODIGO_PRODUCTO, CANTIDAD, PRECIO_UNITARIO, CLIENTE, OBSERVACION
-   * Incluye hoja "Productos" con catálogo de la organización y hoja "Instrucciones".
+   * Plantilla que el importador sí lee: hoja DATOS
+   * (FECHA, DOCUMENTO, SKU, CANTIDAD, TOTAL LINEA USD).
    */
   async generateSalesTemplateBuffer(organizationId: number): Promise<Buffer> {
     const ExcelJS = require("exceljs");
@@ -686,18 +685,75 @@ export class SalesImportService {
     workbook.creator = "MARFYL";
     workbook.created = new Date();
 
-    // ── Hoja de productos ──
+    const datos = workbook.addWorksheet("DATOS");
+    const headers = [
+      "FECHA",
+      "DOCUMENTO",
+      "SKU",
+      "NOMBRE DEL PRODUCTO",
+      "CANTIDAD",
+      "TOTAL LINEA USD",
+      "METODO PAGO",
+      "CLIENTE",
+    ];
+    datos.addRow(headers);
+    const headerRow = datos.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1F4E79" },
+    };
+    headerRow.alignment = {
+      vertical: "middle",
+      horizontal: "center",
+      wrapText: true,
+    };
+    headerRow.height = 32;
+    const notes: Record<string, string> = {
+      FECHA: "Obligatoria. DD/MM/AAAA (ej. 11/08/2026).",
+      DOCUMENTO: "ID del ticket. Mismo valor = misma factura. Ej: CAJA-20260811-001",
+      SKU: "SKU o código de barras. Debe existir (hoja Productos).",
+      "NOMBRE DEL PRODUCTO": "Opcional, ayuda a revisar.",
+      CANTIDAD: "Unidades vendidas (entero > 0).",
+      "TOTAL LINEA USD": "Total cobrado de esa línea en USD.",
+      "METODO PAGO": "EFECTIVO_USD / PUNTO / PAGO_MOVIL / ZELLE / EFECTIVO_BS",
+      CLIENTE: "Opcional. Vacío = CLIENTE NATURAL CONTADO.",
+    };
+    headers.forEach((h, i) => {
+      datos.getCell(1, i + 1).note = notes[h];
+    });
+    datos.addRow([
+      "11/08/2026",
+      "CAJA-20260811-001",
+      "ABC-001",
+      "Producto ejemplo",
+      2,
+      4.06,
+      "EFECTIVO_USD",
+      "",
+    ]);
+    [14, 22, 18, 32, 12, 16, 16, 24].forEach((w, i) => {
+      datos.getColumn(i + 1).width = w;
+    });
+    datos.getColumn(5).numFmt = "0";
+    datos.getColumn(6).numFmt = "#,##0.00";
+    datos.views = [{ state: "frozen", ySplit: 1 }];
+
     const productsWs = workbook.addWorksheet("Productos");
     productsWs.addRow(["SKU", "NOMBRE", "PRECIO_VENTA", "STOCK", "CODIGO_BARRAS"]);
-    const productsHeaderRow = productsWs.getRow(1);
-    productsHeaderRow.font = { bold: true };
-
+    productsWs.getRow(1).font = { bold: true };
     const products = await this.prisma.product.findMany({
       where: { organizationId, isActive: true },
-      select: { sku: true, name: true, salePrice: true, stock: true, barcode: true },
+      select: {
+        sku: true,
+        name: true,
+        salePrice: true,
+        stock: true,
+        barcode: true,
+      },
       orderBy: { name: "asc" },
     });
-
     for (const p of products) {
       productsWs.addRow([
         p.sku ?? "",
@@ -707,107 +763,35 @@ export class SalesImportService {
         p.barcode ?? "",
       ]);
     }
-
-    productsWs.getColumn(1).width = 16; // SKU
-    productsWs.getColumn(2).width = 40; // NOMBRE
-    productsWs.getColumn(3).width = 14; // PRECIO_VENTA
-    productsWs.getColumn(4).width = 10; // STOCK
-    productsWs.getColumn(5).width = 18; // CODIGO_BARRAS
+    productsWs.getColumn(1).width = 16;
+    productsWs.getColumn(2).width = 40;
+    productsWs.getColumn(3).width = 14;
+    productsWs.getColumn(4).width = 10;
+    productsWs.getColumn(5).width = 18;
     productsWs.getColumn(3).numFmt = "#,##0.00";
     productsWs.views = [{ state: "frozen", ySplit: 1 }];
 
-    // ── Hoja de ventas ──
-    const worksheet = workbook.addWorksheet("Ventas");
-
-    const headers = [
-      "FECHA",
-      "CODIGO_PRODUCTO",
-      "CANTIDAD",
-      "PRECIO_UNITARIO",
-      "CLIENTE",
-      "OBSERVACION",
-    ];
-    worksheet.addRow(headers);
-
-    // Formato de encabezados
-    const headerRow = worksheet.getRow(1);
-    headerRow.font = { bold: true };
-    headerRow.alignment = { vertical: "middle", horizontal: "center" };
-    headerRow.height = 22;
-
-    // Notas en headers
-    const headerNotes: Record<string, string> = {
-      FECHA: "Fecha de la venta en formato AAAA-MM-DD.",
-      CODIGO_PRODUCTO: "SKU o código de barras del producto. Debe existir en inventario.",
-      CANTIDAD: "Número entero positivo de unidades vendidas.",
-      PRECIO_UNITARIO: "Precio de venta unitario en USD (ej: 10.50).",
-      CLIENTE: "Nombre del cliente (opcional, si se omite usa 'CLIENTE NATURAL CONTADO').",
-      OBSERVACION: "Detalle adicional de la venta (opcional).",
-    };
-    headers.forEach((header, idx) => {
-      const cell = worksheet.getRow(1).getCell(idx + 1);
-      cell.note = headerNotes[header];
-    });
-
-    // Fila de ejemplo
-    worksheet.addRow([
-      "2025-01-15",
-      "ABC-001",
-      3,
-      10.50,
-      "Juan Pérez",
-      "Venta mostrador",
-    ]);
-
-    // Anchos de columna
-    worksheet.getColumn(1).width = 14; // FECHA
-    worksheet.getColumn(2).width = 20; // CODIGO_PRODUCTO
-    worksheet.getColumn(3).width = 12; // CANTIDAD
-    worksheet.getColumn(4).width = 16; // PRECIO_UNITARIO
-    worksheet.getColumn(5).width = 22; // CLIENTE
-    worksheet.getColumn(6).width = 40; // OBSERVACION
-
-    // Formato numérico
-    worksheet.getColumn(3).numFmt = "0"; // CANTIDAD
-    worksheet.getColumn(4).numFmt = "#,##0.00"; // PRECIO_UNITARIO
-
-    // Freeze de encabezados
-    worksheet.views = [{ state: "frozen", ySplit: 1 }];
-
-    // ── Hoja de instrucciones ──
     const instructionsWs = workbook.addWorksheet("Instrucciones");
-    instructionsWs.getColumn(1).width = 80;
-
+    instructionsWs.getColumn(1).width = 90;
     const instructions = [
-      "PLANTILLA DE IMPORTACIÓN DE VENTAS - MARFYL",
+      "PLANTILLA MARFYL — VENTAS",
       "",
-      "Esta plantilla te permite importar ventas masivamente al sistema.",
+      "Dónde subir: Ventas → Importar Excel (o Importar → Ventas).",
+      "Llena la hoja DATOS. No borres la fila de encabezados. Puedes borrar la fila de ejemplo.",
       "",
-      "HOJA 'VENTAS' - Columnas:",
-      "  • FECHA: Fecha de la venta (formato AAAA-MM-DD, ej: 2025-01-15)",
-      "  • CODIGO_PRODUCTO: SKU o código de barras del producto (ver hoja 'Productos')",
-      "  • CANTIDAD: Número entero de unidades vendidas",
-      "  • PRECIO_UNITARIO: Precio de venta en USD (ej: 10.50)",
-      "  • CLIENTE: Nombre del cliente (opcional, si se omite usa 'CLIENTE NATURAL CONTADO')",
-      "  • OBSERVACION: Detalle adicional (opcional)",
+      "HOJA DATOS:",
+      "  • FECHA: DD/MM/AAAA",
+      "  • DOCUMENTO: mismo código = mismo ticket/factura",
+      "  • SKU: cópialo de la hoja Productos",
+      "  • CANTIDAD y TOTAL LINEA USD: de esa línea",
+      "  • METODO PAGO: EFECTIVO_USD, PUNTO, PAGO_MOVIL, ZELLE o EFECTIVO_BS",
       "",
-      "HOJA 'PRODUCTOS':",
-      "  • Aquí puedes ver todos los productos disponibles con su SKU y precio",
-      "  • Usa el SKU de esta hoja para llenar la columna CODIGO_PRODUCTO",
-      "  • Si el producto no tiene SKU, usa el código de barras",
-      "",
-      "CONSEJOS:",
-      "  • No modifiques los encabezados de la hoja 'Ventas'",
-      "  • El SKU debe coincidir exactamente (mayúsculas/minúsculas importan)",
-      "  • Si no encuentras un producto, agrégalo primero desde Inventario",
-      "  • El sistema validará stock disponible antes de importar",
+      "También acepta el reporte FastReport del POS (XML/.xls legado).",
     ];
-
     for (let i = 0; i < instructions.length; i++) {
       const cell = instructionsWs.getCell(`A${i + 1}`);
       cell.value = instructions[i];
       if (i === 0) cell.font = { bold: true, size: 14 };
-      else if (instructions[i].startsWith("HOJA") || instructions[i].startsWith("CONSEJOS")) cell.font = { bold: true };
     }
 
     const buf = await workbook.xlsx.writeBuffer();

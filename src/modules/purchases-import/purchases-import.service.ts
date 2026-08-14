@@ -460,4 +460,112 @@ export class PurchasesImportService {
     });
     return { productId: created.id, created: true };
   }
+
+  async generatePurchasesTemplateBuffer(organizationId: number): Promise<Buffer> {
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "MARFYL";
+    workbook.created = new Date();
+
+    const datos = workbook.addWorksheet("DATOS");
+    const headers = [
+      "MES",
+      "FECHA",
+      "FACTURA",
+      "PROVEEDOR",
+      "STATUS",
+      "CANTIDAD",
+      "SKU",
+      "NOMBRE DEL PRODUCTO",
+      "COSTO",
+      "PRECIO VENTA",
+      "DESCRIPCION",
+      "EXENTO",
+    ];
+    datos.addRow(headers);
+    const headerRow = datos.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1F4E79" },
+    };
+    headerRow.alignment = {
+      vertical: "middle",
+      horizontal: "center",
+      wrapText: true,
+    };
+    headerRow.height = 32;
+    datos.addRow([
+      "AGOSTO",
+      "11/08/2026",
+      "FACT-001",
+      "PROVEEDOR EJEMPLO, C.A.",
+      "",
+      12,
+      "ABC-001",
+      "Producto ejemplo",
+      1.5,
+      2.5,
+      "BEBIDAS",
+      "EXENTO",
+    ]);
+    [12, 14, 16, 36, 14, 12, 18, 32, 12, 14, 18, 12].forEach((w, i) => {
+      datos.getColumn(i + 1).width = w;
+    });
+    datos.getColumn(6).numFmt = "0";
+    datos.getColumn(9).numFmt = "#,##0.00";
+    datos.getColumn(10).numFmt = "#,##0.00";
+    datos.views = [{ state: "frozen", ySplit: 1 }];
+
+    const productsWs = workbook.addWorksheet("Productos");
+    productsWs.addRow(["SKU", "NOMBRE", "COSTO", "PRECIO_VENTA", "STOCK"]);
+    productsWs.getRow(1).font = { bold: true };
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, isActive: true, isService: false },
+      select: {
+        sku: true,
+        name: true,
+        costPrice: true,
+        salePrice: true,
+        stock: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    for (const p of products) {
+      productsWs.addRow([
+        p.sku ?? "",
+        p.name,
+        Number(p.costPrice),
+        Number(p.salePrice),
+        p.stock,
+      ]);
+    }
+    productsWs.getColumn(1).width = 16;
+    productsWs.getColumn(2).width = 40;
+    productsWs.getColumn(3).width = 14;
+    productsWs.getColumn(4).width = 14;
+    productsWs.getColumn(5).width = 10;
+    productsWs.views = [{ state: "frozen", ySplit: 1 }];
+
+    const instructionsWs = workbook.addWorksheet("Instrucciones");
+    instructionsWs.getColumn(1).width = 90;
+    const lines = [
+      "PLANTILLA MARFYL — COMPRAS",
+      "",
+      "Dónde subir: Inventario → Importar Excel (o Importar → Compras).",
+      "Llena la hoja DATOS. Montos en USD. No borres los encabezados.",
+      "Una compra = mismo bloque FECHA + FACTURA + PROVEEDOR en la primera línea.",
+      "SKU: cópialo de la hoja Productos. Si no existe, el preview puede crearlo.",
+      "EXENTO: EXENTO o GRAVADO.",
+    ];
+    for (let i = 0; i < lines.length; i++) {
+      const cell = instructionsWs.getCell(`A${i + 1}`);
+      cell.value = lines[i];
+      if (i === 0) cell.font = { bold: true, size: 14 };
+    }
+
+    const buf = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buf as ArrayBuffer);
+  }
 }

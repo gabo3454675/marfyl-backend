@@ -33,6 +33,7 @@ import {
   FiscalDocumentType,
   MovementType,
 } from "@prisma/client";
+import { parseBomLines } from "@/common/bom/bundle-bom";
 import { LiquorSalesService } from "./liquor-sales.service";
 import {
   displayQuantity,
@@ -146,16 +147,9 @@ export class InvoicesService {
     });
     const allIdSet = new Set<number>(lineProductIds);
     for (const p of firstProducts) {
-      const comps = p.bundleComponents as unknown;
-      if (Array.isArray(comps)) {
-        for (const c of comps as { productId?: number }[]) {
-          if (c?.productId == null) continue;
-          if (p.isBundle) {
-            allIdSet.add(c.productId);
-          } else if (p.isService) {
-            allIdSet.add(c.productId);
-          }
-        }
+      if (!p.isBundle && !p.isService) continue;
+      for (const c of parseBomLines(p.bundleComponents)) {
+        allIdSet.add(c.productId);
       }
     }
 
@@ -269,14 +263,10 @@ export class InvoicesService {
         variantId: item.variantId ?? null,
       });
 
-      const compsUnknown = product.bundleComponents as unknown;
-      const compsList =
-        Array.isArray(compsUnknown) && compsUnknown.length > 0
-          ? (compsUnknown as { productId: number; quantity: number }[])
-          : null;
+      const compsList = parseBomLines(product.bundleComponents);
 
       if (product.isBundle) {
-        if (!compsList) {
+        if (compsList.length === 0) {
           throw new BadRequestException(
             `El combo "${product.name}" no tiene componentes configurados`,
           );
@@ -291,7 +281,7 @@ export class InvoicesService {
           releaseMap,
         );
       } else if (product.isService) {
-        if (compsList) {
+        if (compsList.length > 0) {
           this.applyInvoiceBundleComponents(
             compsList,
             item.quantity,
@@ -621,18 +611,12 @@ export class InvoicesService {
 
     for (const item of items) {
       const product = item.product;
-      const compsUnknown = product.bundleComponents as unknown;
-      const compsList =
-        Array.isArray(compsUnknown) && compsUnknown.length > 0
-          ? (compsUnknown as { productId: number; quantity: number }[])
-          : null;
+      const compsList = parseBomLines(product.bundleComponents);
 
       if (product.isBundle || product.isService) {
-        if (compsList) {
-          for (const comp of compsList) {
-            if (!productById.has(comp.productId)) continue;
-            push(comp.productId, item.quantity * (comp.quantity ?? 1));
-          }
+        for (const comp of compsList) {
+          if (!productById.has(comp.productId)) continue;
+          push(comp.productId, item.quantity * comp.quantity);
         }
       } else {
         push(product.id, item.quantity);
@@ -1267,11 +1251,8 @@ export class InvoicesService {
     const allProductIds = new Set<number>();
     for (const item of invoice.items) {
       allProductIds.add(item.productId);
-      const compsUnknown = item.product?.bundleComponents as unknown;
-      if (Array.isArray(compsUnknown)) {
-        for (const c of compsUnknown as { productId?: number }[]) {
-          if (c?.productId != null) allProductIds.add(c.productId);
-        }
+      for (const c of parseBomLines(item.product?.bundleComponents)) {
+        allProductIds.add(c.productId);
       }
     }
     const relatedProducts = await this.prisma.product.findMany({
