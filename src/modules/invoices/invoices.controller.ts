@@ -21,6 +21,7 @@ import { LiquorSalesService } from "./liquor-sales.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { InvoiceHistoryQueryDto } from "./dto/history-query.dto";
 import { VoidInvoiceDto, AdjustAmountDto } from "./dto/void-invoice.dto";
+import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { OrganizationGuard } from "@/common/guards/organization.guard";
 import { PermissionsGuard } from "@/common/guards/permissions.guard";
@@ -184,6 +185,20 @@ export class InvoicesController {
   }
 
   /**
+   * Corrección operativa: notas y/o método de pago (misma moneda, sin cambiar el total).
+   */
+  @Patch(":id")
+  @Permissions("canManageInvoices")
+  async update(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateInvoiceDto,
+    @ActiveOrganization() organizationId: number,
+    @ActiveUser() user: { id: number },
+  ) {
+    return this.invoicesService.update(id, organizationId, user.id, dto);
+  }
+
+  /**
    * Anula una factura (soft-delete). Cumple con la normativa tributaria venezolana.
    * La factura pasa a estado CANCELLED, se preservan todos los datos y se registra en auditoría.
    */
@@ -209,6 +224,7 @@ export class InvoicesController {
    * Crea un registro de nota de crédito y actualiza el total de la factura original.
    */
   @Patch(":id/adjust-amount")
+  @Permissions("canAnulateInvoices")
   @HttpCode(HttpStatus.OK)
   async adjustAmount(
     @Param("id", ParseIntPipe) id: number,

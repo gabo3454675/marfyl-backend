@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { Invitation } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
-import { getPermissions, ROLES } from "@/common/constants/roles.constants";
+import { getPermissions, ROLES, canManageStaffRole } from "@/common/constants/roles.constants";
 import { EmailService } from "@/modules/email/email.service";
 import { InviteMemberDto } from "./dto/invite-member.dto";
 import { ProvisionMemberDto } from "./dto/provision-member.dto";
@@ -63,9 +63,14 @@ export class InvitationsService {
       }
     }
     const perms = getPermissions(inviterRole);
-    if (!perms.canManageUsers) {
+    if (!perms.canManageStaff) {
       throw new ForbiddenException(
-        "Solo los SUPER_ADMIN y ADMIN pueden invitar miembros",
+        "No tienes permiso para invitar miembros",
+      );
+    }
+    if (!canManageStaffRole(inviterRole, inviteDto.role)) {
+      throw new ForbiddenException(
+        "No puedes asignar ese rol. El gerente solo cubre caja, piso y almacén.",
       );
     }
 
@@ -289,21 +294,16 @@ export class InvitationsService {
     }
 
     const perms = getPermissions(inviterRole);
-    if (!perms.canManageUsers) {
+    if (!perms.canManageStaff) {
       throw new ForbiddenException(
-        "Solo SUPER_ADMIN y ADMIN pueden agregar miembros directamente",
+        "No tienes permiso para agregar miembros",
       );
     }
 
     const targetRole = String(dto.role).toUpperCase();
-    if (inviterRole === ROLES.ADMIN && targetRole === ROLES.ADMIN) {
+    if (!canManageStaffRole(inviterRole, targetRole)) {
       throw new ForbiddenException(
-        "Los ADMIN no pueden crear otros ADMIN. Solo el SUPER_ADMIN puede asignar roles ADMIN.",
-      );
-    }
-    if (inviterRole === ROLES.ADMIN && targetRole === ROLES.SUPER_ADMIN) {
-      throw new ForbiddenException(
-        "Los ADMIN no pueden crear SUPER_ADMIN. Solo el SUPER_ADMIN puede asignar este rol.",
+        "No puedes asignar ese rol. El gerente solo cubre caja, piso y almacén.",
       );
     }
 

@@ -132,6 +132,7 @@ export const ROLE_PERMISSIONS_MAP = {
     'canManageFiscal',
   ] as const,
 
+  /** Administrador del local: opera y arma el equipo. No es Super Admin ni fiscal. */
   MANAGER: [
     'canViewDashboard',
     'canViewFinancialCharts',
@@ -146,9 +147,14 @@ export const ROLE_PERMISSIONS_MAP = {
     'canManageInventory',
     'canManageCustomers',
     'canManageInvoices',
+    'canAnulateInvoices',
     'canViewCredits',
+    'canManageCredits',
     'canManageCierreCaja',
     'canManageExpenses',
+    'canManageTeam',
+    'canManageSettings',
+    'canInviteMembers',
     'canAssignTasks',
   ] as const,
 

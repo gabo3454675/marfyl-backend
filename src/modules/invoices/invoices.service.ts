@@ -7,6 +7,7 @@ import {
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ActivityLogService } from "@/modules/activity-log/activity-log.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
+import { UpdateInvoiceDto } from "./dto/update-invoice.dto";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import { parseQueryDate } from "@/common/helpers/parse-query-date";
 import { randomBytes } from "crypto";
@@ -50,6 +51,28 @@ function availableUnits(
 ): number {
   const reserved = Math.max(0, Number(product.reservedStock ?? 0) - releaseQty);
   return Math.max(0, product.stock - reserved);
+}
+
+function mapToPagoMetodo(method: string): string {
+  const m = method.toUpperCase();
+  if (m === "CASH_USD" || m === "CASH_BS") return "EFECTIVO";
+  if (m === "PAGO_MOVIL") return "PAGO_MOVIL";
+  if (m === "ZELLE") return "ZELLE";
+  if (m === "CARD" || m === "CREDIT") return "PUNTO";
+  return "EFECTIVO";
+}
+
+function paymentCurrencyGroup(method: string): "USD" | "VES" | "CREDIT" {
+  const m = method.toUpperCase();
+  if (m === "CREDIT") return "CREDIT";
+  if (m === "CASH_BS" || m === "PAGO_MOVIL") return "VES";
+  return "USD";
+}
+
+function normalizePaymentMethod(method: string): string {
+  const m = (method || "CASH").toUpperCase();
+  if (m === "CASH") return "CASH_USD";
+  return m;
 }
 
 @Injectable()
@@ -412,15 +435,6 @@ export class InvoicesService {
     const controlNumber =
       await this.fiscalControlNumber.allocateControlNumber(organizationId);
 
-    const mapToMetodo = (method: string): string => {
-      const m = method.toUpperCase();
-      if (m === "CASH_USD" || m === "CASH_BS") return "EFECTIVO";
-      if (m === "PAGO_MOVIL") return "PAGO_MOVIL";
-      if (m === "ZELLE") return "ZELLE";
-      if (m === "CARD" || m === "CREDIT") return "PUNTO";
-      return "EFECTIVO";
-    };
-
     const invoice = await this.prisma.$transaction(async (tx) => {
       const nextConsecutive = await this.invoiceSequence.allocateNext(
         organizationId,
@@ -485,7 +499,7 @@ export class InvoicesService {
           pagos: {
             create: paymentLinesData.map((p) => ({
               moneda: p.currency,
-              metodo: mapToMetodo(p.method),
+              metodo: mapToPagoMetodo(p.method),
               monto: p.amount,
               tasaCambio: tasaReferencia,
               tenantId: organizationId,
@@ -1048,6 +1062,169 @@ export class InvoicesService {
   }
 
   /**
+   * Corrección operativa de una factura: notas y/o método de pago.
+   * No cambia ítems, total ni stock. El método nuevo debe ser de la misma moneda.
+   */
+  async update(
+    id: number,
+    organizationId: number,
+    userId: number,
+    dto: UpdateInvoiceDto,
+  ) {
+    const hasNotes = dto.notes !== undefined;
+    const hasPayments = Array.isArray(dto.payments);
+    if (!hasNotes && !hasPayments) {
+      throw new BadRequestException(
+        "Indique notas o el método de pago a corregir",
+      );
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, organizationId },
+      include: { paymentLines: true, pagos: true },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException(`Factura con ID ${id} no encontrada`);
+    }
+
+    if (invoice.status === InvoiceStatus.CANCELLED || invoice.deletedAt) {
+      throw new BadRequestException("No se puede editar una factura anulada");
+    }
+
+    const existingLines =
+      invoice.paymentLines.length > 0
+        ? invoice.paymentLines.map((line) => ({
+            method: String(line.method),
+            amount: Number(line.amount),
+            currency: String(line.currency) as "USD" | "VES",
+          }))
+        : [
+            {
+              method: normalizePaymentMethod(invoice.paymentMethod),
+              amount:
+                paymentCurrencyGroup(
+                  normalizePaymentMethod(invoice.paymentMethod),
+                ) === "VES"
+                  ? Number(invoice.montoBs ?? 0)
+                  : Number(invoice.montoUsd ?? invoice.totalAmount),
+              currency:
+                paymentCurrencyGroup(
+                  normalizePaymentMethod(invoice.paymentMethod),
+                ) === "VES"
+                  ? ("VES" as const)
+                  : ("USD" as const),
+            },
+          ];
+
+    const isCredit =
+      invoice.paymentMethod === "CREDIT" ||
+      invoice.paymentStatus === PaymentStatus.pending_credit ||
+      existingLines.some(
+        (line) => paymentCurrencyGroup(line.method) === "CREDIT",
+      );
+
+    if (hasPayments && isCredit) {
+      throw new BadRequestException(
+        "No se puede cambiar el método de una venta a crédito. Anule la factura si hace falta.",
+      );
+    }
+
+    let nextLines = existingLines;
+    if (hasPayments) {
+      const payments = dto.payments!;
+      if (payments.length !== existingLines.length) {
+        throw new BadRequestException(
+          `Envíe un método por cada línea de pago (${existingLines.length})`,
+        );
+      }
+      nextLines = existingLines.map((line, index) => {
+        const nextMethod = payments[index].method;
+        const currentGroup = paymentCurrencyGroup(line.method);
+        const nextGroup = paymentCurrencyGroup(nextMethod);
+        if (currentGroup !== nextGroup) {
+          throw new BadRequestException(
+            "El método de pago debe ser de la misma moneda (USD o Bs). No se cambia el monto.",
+          );
+        }
+        if (line.amount <= 0) {
+          throw new BadRequestException(
+            "No hay monto en esa moneda para cambiar el método de pago",
+          );
+        }
+        return { ...line, method: nextMethod };
+      });
+    }
+
+    const nextPaymentMethod =
+      nextLines.length === 1 ? nextLines[0].method : "MIXED";
+    const tasaReferencia = Number(invoice.tasaReferencia ?? 1);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invoice.update({
+        where: { id },
+        data: {
+          ...(hasNotes
+            ? { notes: dto.notes?.trim() ? dto.notes.trim() : null }
+            : {}),
+          ...(hasPayments
+            ? {
+                paymentMethod: nextPaymentMethod,
+                paymentLines: {
+                  deleteMany: {},
+                  create: nextLines.map((line) => ({
+                    method: line.method as any,
+                    amount: line.amount,
+                    currency: line.currency as any,
+                  })),
+                },
+                pagos: {
+                  deleteMany: {},
+                  create: nextLines.map((line) => ({
+                    moneda: line.currency,
+                    metodo: mapToPagoMetodo(line.method),
+                    monto: line.amount,
+                    tasaCambio: tasaReferencia,
+                    tenantId: organizationId,
+                  })),
+                },
+              }
+            : {}),
+        },
+      });
+    });
+
+    await this.activityLog.log({
+      organizationId,
+      userId,
+      action: "INVOICE_UPDATED",
+      entityType: "invoice",
+      entityId: String(id),
+      oldValue: {
+        notes: invoice.notes,
+        paymentMethod: invoice.paymentMethod,
+        paymentLines: existingLines,
+      },
+      newValue: {
+        notes: hasNotes
+          ? dto.notes?.trim()
+            ? dto.notes.trim()
+            : null
+          : invoice.notes,
+        paymentMethod: hasPayments ? nextPaymentMethod : invoice.paymentMethod,
+        paymentLines: nextLines,
+      },
+      summary: `Factura #${invoice.consecutiveNumber ?? id} editada.${
+        hasPayments
+          ? ` Pago: ${existingLines.map((l) => l.method).join("+")} → ${nextLines.map((l) => l.method).join("+")}.`
+          : ""
+      }${hasNotes ? " Notas actualizadas." : ""}`,
+    });
+
+    return this.findOne(id, organizationId);
+  }
+
+  /**
    * Anula una factura (soft-delete). Cumple con la normativa tributaria venezolana.
    * La factura pasa a estado CANCELLED, se preservan todos los datos y se registra en auditoría.
    *
@@ -1310,8 +1487,10 @@ export class InvoicesService {
         sellerId: true,
         totalAmount: true,
         ivaAmount: true,
+        consecutiveNumber: true,
         status: true,
         paymentMethod: true,
+        paymentStatus: true,
         montoUsd: true,
         montoBs: true,
         tasaReferencia: true,

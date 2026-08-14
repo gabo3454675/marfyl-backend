@@ -37,11 +37,45 @@ export const ROLE_ORDER: Record<string, number> = {
   [ROLES.WAREHOUSE]: 1,
 };
 
+/** Puestos de piso/caja/almacén. El gerente los cubre; no toca Admin ni Super Admin. */
+export const OPERATIONAL_ROLES: RoleValue[] = [
+  ROLES.SELLER,
+  ROLES.WAREHOUSE,
+  ROLES.POS_OPERATOR,
+  ROLES.WAITER,
+  ROLES.KITCHEN,
+];
+
+export function isOperationalRole(role: string | undefined): boolean {
+  return OPERATIONAL_ROLES.includes(normalizeRole(role) as RoleValue);
+}
+
+/**
+ * ¿Puede este actor asignar o tocar a alguien con `targetRole`?
+ * Super Admin: todo. Admin: todo salvo Super Admin y otros Admin.
+ * Gerente: solo puestos operativos.
+ */
+export function canManageStaffRole(
+  actorRole: string | undefined,
+  targetRole: string | undefined,
+): boolean {
+  const actor = normalizeRole(actorRole);
+  const target = normalizeRole(targetRole);
+  if (!target) return false;
+  if (actor === ROLES.SUPER_ADMIN) return true;
+  if (target === ROLES.SUPER_ADMIN) return false;
+  if (actor === ROLES.ADMIN) return target !== ROLES.ADMIN;
+  if (actor === ROLES.MANAGER) return isOperationalRole(target);
+  return false;
+}
+
 export interface RolePermissions {
   /** Acceso total (Super Admin) */
   isSuperAdmin: boolean;
   /** Gestionar usuarios: invitar, desactivar, cambiar roles. No puede eliminar SUPER_ADMIN. */
   canManageUsers: boolean;
+  /** Equipo del local: gerente invita/cambia puestos de piso, no admins. */
+  canManageStaff: boolean;
   /** Editar configuración de empresa: tasa BCV, impuestos, etc. */
   canEditOrganizationSettings: boolean;
   /** Gestionar inventario (productos, stock, import/export) */
@@ -68,7 +102,7 @@ function normalizeRole(role: string | undefined): string {
  * Devuelve la matriz de permisos para un rol dado.
  * - SUPER_ADMIN: acceso total.
  * - ADMIN: usuarios (sin eliminar SUPER_ADMIN), configuración empresa. No crear organizaciones.
- * - MANAGER: inventario, ventas, asignar tareas. No usuarios ni configuración.
+ * - MANAGER: administrador del local (equipo operativo + tasa). No Super Admin ni fiscal.
  * - SELLER/WAREHOUSE (USER): operativos según contexto; no gestionan equipo ni configuración.
  */
 export function getPermissions(role: string | undefined): RolePermissions {
@@ -80,7 +114,8 @@ export function getPermissions(role: string | undefined): RolePermissions {
   return {
     isSuperAdmin,
     canManageUsers: isSuperAdmin || isAdmin,
-    canEditOrganizationSettings: isSuperAdmin || isAdmin,
+    canManageStaff: isSuperAdmin || isAdmin || isManager,
+    canEditOrganizationSettings: isSuperAdmin || isAdmin || isManager,
     canManageInventory:
       isSuperAdmin || isAdmin || isManager || r === ROLES.WAREHOUSE,
     canManageSales: isSuperAdmin || isAdmin || isManager || r === ROLES.SELLER,
@@ -122,4 +157,5 @@ export const ROLES_CAN_MANAGE_MEMBERS: RoleValue[] = [
 export const ROLES_CAN_EDIT_ORGANIZATION: RoleValue[] = [
   ROLES.SUPER_ADMIN,
   ROLES.ADMIN,
+  ROLES.MANAGER,
 ];

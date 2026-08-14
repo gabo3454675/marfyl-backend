@@ -110,11 +110,11 @@ export class TenantsController {
   }
 
   /**
-   * Actualiza la organización (ej. tasa BCV/Paralelo). Solo ADMIN o SUPER_ADMIN.
+   * Actualiza la organización (ej. tasa BCV/Paralelo). Admin o gerente del local.
    */
   @Patch("organization")
   @UseGuards(OrganizationGuard, RolesGuard)
-  @Roles("SUPER_ADMIN", "ADMIN")
+  @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
   async updateOrganization(
     @ActiveOrganization() organizationId: number,
     @Body() dto: UpdateOrganizationDto,
@@ -230,7 +230,7 @@ export class TenantsController {
    */
   @Patch("organization/members/:memberId/role")
   @UseGuards(OrganizationGuard, RolesGuard)
-  @Roles("SUPER_ADMIN", "ADMIN")
+  @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
   async updateMemberRole(
     @Param("memberId", ParseIntPipe) memberId: number,
     @Body() dto: UpdateMemberRoleDto,
@@ -252,7 +252,7 @@ export class TenantsController {
    */
   @Delete("organization/members/:memberId")
   @UseGuards(OrganizationGuard, RolesGuard)
-  @Roles("SUPER_ADMIN", "ADMIN")
+  @Roles("SUPER_ADMIN", "ADMIN", "MANAGER")
   async removeMember(
     @Param("memberId", ParseIntPipe) memberId: number,
     @ActiveOrganization() organizationId: number,

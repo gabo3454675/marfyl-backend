@@ -10,6 +10,8 @@ import {
   ROLE_ORDER,
   getPermissions,
   canDeleteSuperAdmin,
+  canManageStaffRole,
+  OPERATIONAL_ROLES,
   ROLES,
 } from "@/common/constants/roles.constants";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
@@ -327,7 +329,7 @@ export class TenantsService {
   /**
    * Obtiene miembros de la organización según visibilidad del rol del solicitante.
    * - SUPER_ADMIN / ADMIN: lista completa.
-   * - MANAGER: solo su equipo (SELLER, WAREHOUSE).
+   * - MANAGER: caja, piso y almacén (no ve Admin ni Super Admin).
    * - SELLER / WAREHOUSE: no pueden ver la lista (devolver vacío; el guard puede bloquear acceso).
    */
   async getMembers(organizationId: number, requesterRole?: string) {
@@ -341,7 +343,7 @@ export class TenantsService {
         status: "ACTIVE",
         user: { isActive: true },
         ...(role === ROLES.MANAGER
-          ? { role: { in: ["SELLER", "WAREHOUSE"] } }
+          ? { role: { in: [...OPERATIONAL_ROLES] } }
           : {}),
       },
       include: {
@@ -408,8 +410,16 @@ export class TenantsService {
     const newRole = String(dto.newRole).toUpperCase().trim() as Role;
     const perms = getPermissions(role);
 
-    if (!perms.canManageUsers) {
+    if (!perms.canManageStaff) {
       throw new ForbiddenException("Solo un administrador puede cambiar roles");
+    }
+    if (
+      !canManageStaffRole(role, String(membership.role)) ||
+      !canManageStaffRole(role, newRole)
+    ) {
+      throw new ForbiddenException(
+        "No puedes cambiar ese rol. El gerente solo cubre caja, piso y almacén.",
+      );
     }
 
     if (
@@ -496,9 +506,14 @@ export class TenantsService {
 
     const role = String(requesterRole).toUpperCase().trim();
     const perms = getPermissions(role);
-    if (!perms.canManageUsers) {
+    if (!perms.canManageStaff) {
       throw new ForbiddenException(
         "Solo un administrador puede desactivar miembros",
+      );
+    }
+    if (!canManageStaffRole(role, String(membership.role))) {
+      throw new ForbiddenException(
+        "No puedes desactivar a este miembro. El gerente solo cubre caja, piso y almacén.",
       );
     }
     if (
@@ -588,7 +603,7 @@ export class TenantsService {
       .toUpperCase()
       .trim();
     const perms = getPermissions(role);
-    if (!perms.canManageUsers) {
+    if (!perms.canManageStaff) {
       throw new ForbiddenException(
         "Solo un administrador puede eliminar usuarios",
       );
@@ -610,6 +625,11 @@ export class TenantsService {
     if (!membership) {
       throw new NotFoundException(
         "El usuario no es un miembro activo de esta organización",
+      );
+    }
+    if (!canManageStaffRole(role, String(membership.role))) {
+      throw new ForbiddenException(
+        "No puedes eliminar a este miembro. El gerente solo cubre caja, piso y almacén.",
       );
     }
 
