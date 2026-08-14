@@ -11,6 +11,36 @@ import { v4 as uuidv4 } from "uuid";
 import type { AperturaCajaDto } from "./dto/apertura-caja.dto";
 import type { CierreCajaZDto } from "./dto/cierre-caja-z.dto";
 
+function keepAperturaBsNote(
+  existing: string | null | undefined,
+  next?: string | null,
+): string | null {
+  const prefix = existing
+    ?.split("\n")
+    .find((line) => line.startsWith("APERTURA_BS="));
+  const merged = [prefix, next?.trim()].filter(Boolean).join("\n");
+  return merged || null;
+}
+
+function parseAperturaBs(observaciones?: string | null): number {
+  const line = observaciones
+    ?.split("\n")
+    .find((l) => l.startsWith("APERTURA_BS="));
+  if (!line) return 0;
+  const n = Number(line.slice("APERTURA_BS=".length));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function stripAperturaBsNote(observaciones?: string | null): string | null {
+  if (!observaciones) return null;
+  const cleaned = observaciones
+    .split("\n")
+    .filter((line) => !line.startsWith("APERTURA_BS="))
+    .join("\n")
+    .trim();
+  return cleaned || null;
+}
+
 @Injectable()
 export class CierreCajaService {
   constructor(
@@ -67,6 +97,10 @@ export class CierreCajaService {
           autoconsumos: 0,
           estado: CierreCajaEstado.OPEN,
           tasaHistoricaId: tasa.id,
+          observaciones:
+            dto.montoInicialBs != null && dto.montoInicialBs > 0
+              ? `APERTURA_BS=${dto.montoInicialBs}`
+              : null,
         },
         include: {
           user: { select: { id: true, email: true, fullName: true } },
@@ -113,6 +147,7 @@ export class CierreCajaService {
 
     return {
       ...cierre,
+      montoInicialBs: parseAperturaBs(cierre.observaciones),
       ventasEfectivo: ventasEfectivoTotal,
       ventasDigitales: ventasDigitalesTotal,
       ventasEfectivoUsd,
@@ -151,6 +186,7 @@ export class CierreCajaService {
     );
 
     const montoInicial = Number(cierre.montoInicial);
+    const montoInicialBs = parseAperturaBs(cierre.observaciones);
     const ventasEfectivoUsd =
       Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
     const ventasEfectivoBs =
@@ -163,7 +199,7 @@ export class CierreCajaService {
     const ventasEfectivoTotal = ventasEfectivoUsd;
     const ventasDigitalesTotal = ventasEfectivoBs + ventasPagoMovil + ventasPos;
     const totalUsd = montoInicial + ventasEfectivoUsd;
-    const totalVes = ventasEfectivoBs + ventasPagoMovil;
+    const totalVes = montoInicialBs + ventasEfectivoBs + ventasPagoMovil;
     const montoFisicoUsd = dto.montoFisicoUsd ?? dto.montoFisico ?? 0;
     const montoFisicoVes = dto.montoFisicoVes ?? 0;
     const montoEsperado = totalUsd;
@@ -207,7 +243,10 @@ export class CierreCajaService {
           diferenciaUsd,
           diferenciaVes,
           impreso: false,
-          observaciones: dto.observaciones ?? null,
+          observaciones: keepAperturaBsNote(
+            cierre.observaciones,
+            dto.observaciones,
+          ),
           estado: CierreCajaEstado.CLOSED,
           publicToken,
           tasaHistoricaId: tasa.id,
@@ -269,6 +308,7 @@ export class CierreCajaService {
     );
 
     const montoInicial = Number(cierre.montoInicial);
+    const montoInicialBs = parseAperturaBs(cierre.observaciones);
     const ventasEfectivoUsd =
       Number(cierre.ventasEfectivoUsd ?? 0) + desglose.ventasEfectivoUsd;
     const ventasEfectivoBs =
@@ -276,7 +316,7 @@ export class CierreCajaService {
     const ventasPagoMovil =
       Number(cierre.ventasPagoMovil ?? 0) + desglose.ventasPagoMovil;
     const totalUsd = montoInicial + ventasEfectivoUsd;
-    const totalVes = ventasEfectivoBs + ventasPagoMovil;
+    const totalVes = montoInicialBs + ventasEfectivoBs + ventasPagoMovil;
 
     return this.cerrar(tenantId, userId, {
       montoFisicoUsd: totalUsd,
@@ -382,6 +422,8 @@ export class CierreCajaService {
     const efectivoBs = Number(cierre.ventasEfectivoBs ?? 0);
     const pagoMovil = Number(cierre.ventasPagoMovil ?? 0);
     const pos = Number(cierre.ventasPos ?? 0);
+    const montoInicialBs = parseAperturaBs(cierre.observaciones);
+    const obsPublicas = stripAperturaBsNote(cierre.observaciones);
 
     const ticketText = [
       "",
@@ -393,6 +435,7 @@ export class CierreCajaService {
       "",
       "--- CONCILIACION ---",
       `Monto inicial $    ${fmt(Number(cierre.montoInicial))}`,
+      montoInicialBs > 0 ? `Monto inicial Bs   ${fmt(montoInicialBs)}` : "",
       "",
       "  Efectivo $       " + fmt(efectivoUsd),
       "  Efectivo Bs      " + fmt(efectivoBs),
@@ -406,7 +449,7 @@ export class CierreCajaService {
       `Monto fisico $     ${fmt(Number(cierre.montoFisico ?? 0))}`,
       `Diferencia         ${dif != null ? fmt(dif) : "-"}`,
       "",
-      cierre.observaciones ? `Obs: ${line(cierre.observaciones)}` : "",
+      obsPublicas ? `Obs: ${line(obsPublicas)}` : "",
       "",
       center("Escanee el QR para ver"),
       center("el resumen digital"),
