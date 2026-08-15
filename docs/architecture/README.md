@@ -1,6 +1,6 @@
 # 📚 Arquitectura — MARFYL
 
-> **Última actualización:** 2026-08-14  
+> **Última actualización:** 2026-08-15  
 > **Estado:** ✅ Actualizado
 
 ---
@@ -18,7 +18,13 @@
 
 | Documento | Descripción | Estado |
 |-----------|-------------|--------|
-| [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid v0.4.0 (Monddy) | ✅ Actualizado |
+| [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid v0.4.0 (orgs fundadoras) | ✅ Actualizado |
+
+### Importación (Excel)
+
+| Documento | Descripción | Estado |
+|-----------|-------------|--------|
+| [Importación Excel](../../README.md#importación-excel) | Proyección de stock (`currentStock`/`stockDelta`/`finalStock`), trazabilidad por archivo y deuda de migración manual `importedViaFile` — sección del `README.md` del backend | ✅ Actualizado |
 
 ### Otros Documentos
 
@@ -109,4 +115,4 @@ Ver `permissions.md` → Troubleshooting
 ---
 
 **Maintenido por:** Documentation Agent  
-**Última revisión:** 2026-08-14
+**Última revisión:** 2026-08-15

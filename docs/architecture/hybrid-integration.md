@@ -1,8 +1,8 @@
 # Integración Hybrid (solo lectura)
 
-> **Última actualización:** 2026-08-14  
+> **Última actualización:** 2026-08-15  
 > **Estado:** ✅ Implementado (contrato Hybrid Local API **v0.4.0**)  
-> **Alcance:** consulta READ-ONLY vía API Local Hybrid, solo org Monddy
+> **Alcance:** consulta READ-ONLY vía API Local Hybrid, solo orgs fundadoras (Monddy, Davean, El Rancho)
 
 ---
 
@@ -14,7 +14,7 @@ Marfyl expone un **proxy GET-only** hacia Hybrid Local API **v0.4.0**. No hay pe
 |------|----------------|
 | Upstream | Hybrid Local API v0.4.0 — URL pública documentada: `https://db.marfyl.site` |
 | Backend | `src/modules/hybrid/` — proxy autenticado |
-| Frontend | Nav + páginas solo Monddy; llama solo al API Marfyl; combos vía `/hybrid/catalogos` (sin hardcode de tipos) |
+| Frontend | Nav + páginas solo orgs fundadoras; llama solo al API Marfyl; combos vía `/hybrid/catalogos` (sin hardcode de tipos) |
 | Ops | `HYBRID_API_BASE_URL` + `HYBRID_API_TOKEN` (local puede ya estar configurado; no inventar tokens) |
 
 ---
@@ -57,7 +57,7 @@ Marfyl expone un **proxy GET-only** hacia Hybrid Local API **v0.4.0**. No hay pe
 
 ### Orden de gates (upstream)
 
-1. Org activa con slug ≠ Monddy (`HYBRID_ORG_SLUG` = `monddy` en código) → **404**
+1. Org activa cuyo slug no está en `HYBRID_ORG_SLUGS` (`["el-rancho-de-german", "monddy", "davean"]`, vía `isHybridOrgSlug`) → **404**
 2. `HYBRID_API_BASE_URL` o `HYBRID_API_TOKEN` vacíos → **503**
 3. Solo entonces se hace GET al upstream con query filtrada por allowlist
 
@@ -84,7 +84,7 @@ Placeholders en `.env.example`:
 
 ## Frontend
 
-- Visible solo para org **Monddy** (slug `monddy`)
+- Visible solo para orgs fundadoras (**Monddy**, **Davean**, **El Rancho**)
 - Páginas: `/hybrid/ventas` (lista) y `/hybrid/ventas/[documento]` (detalle)
 - Combos (p. ej. tipos) se cargan desde `/hybrid/catalogos` — **sin hardcode de tipos**
 - Todas las llamadas van al API Marfyl (`/hybrid/...`); sin secretos Hybrid en el frontend (`NEXT_PUBLIC_*` Hybrid, tokens, etc.)
@@ -95,7 +95,7 @@ Placeholders en `.env.example`:
 
 ```
 marfyl-backend/src/modules/hybrid/
-marfyl-backend/src/common/founding-orgs.ts   # HYBRID_ORG_SLUG
+marfyl-backend/src/common/founding-orgs.ts   # HYBRID_ORG_SLUGS
 marfyl-frontend/src/lib/api/hybrid.ts
 marfyl-frontend/src/lib/hybrid/feature.ts
 marfyl-frontend/src/app/(dashboard)/hybrid/ventas/

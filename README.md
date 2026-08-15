@@ -47,10 +47,46 @@ El servidor arranca en `http://localhost:3001`.
 | PATCH | `/api/products/variants/:variantId` | Actualizar variante |
 | DELETE | `/api/products/variants/:variantId` | Eliminar variante |
 | POST | `/api/invoices` | Crear factura |
+| GET/POST | `/api/sales-import/*` | Import ventas Excel: `template`, `preview`, `confirm` (preview con proyección de stock `currentStock`/`stockDelta`/`finalStock`) |
+| GET/POST | `/api/purchases-import/*` | Import compras Excel: `template`, `preview`, `confirm` (preview con proyección de stock `currentStock`/`stockDelta`/`finalStock`) |
 | POST | `/api/assistant/chat` | Asistente IA |
-| GET | `/api/hybrid/*` | Proxy READ-ONLY Hybrid (solo org Monddy; ver docs) |
+| GET | `/api/hybrid/*` | Proxy READ-ONLY Hybrid (orgs fundadoras; ver docs) |
 
 Rutas Hybrid (contrato v0.4.0): `health`, `catalogos`, `catalogos/:grupo`, `monedas`, `inventario`, `inventario/:codigo`, `clientes`, `existencia`, `ventas`, `ventas/:documento`. Ventas query: incluye `caja`, `serie`. Roles: SUPER_ADMIN, ADMIN, MANAGER. Detalle: [docs/architecture/hybrid-integration.md](./docs/architecture/hybrid-integration.md).
+
+## Importación Excel
+
+Los módulos `sales-import` (ventas), `purchases-import` (compras) e inventario (`POST /api/inventory/import`) importan desde archivos Excel. Los previews y confirms de ventas/compras reutilizan el mismo helper puro de proyección de stock ([`src/common/stock-projection.util.ts`](./src/common/stock-projection.util.ts), `projectStock`), de modo que preview y confirm siempre son consistentes.
+
+### Proyección de stock en previews
+
+Los previews de ventas y compras devuelven por línea `currentStock`, `stockDelta` y `finalStock`:
+
+| Caso | `currentStock` | `stockDelta` | `finalStock` |
+|------|----------------|--------------|--------------|
+| Venta (producto con stock) | stock actual | `-quantity` (resta) | `currentStock - quantity` |
+| Compra (producto existente) | stock actual | `+quantity` (suma) | `currentStock + quantity` |
+| Compra (producto nuevo, `willCreate`) | `0` | `+quantity` | `quantity` |
+| Servicio / combo (no afecta stock) | stock actual | `0` | `currentStock` |
+| Sin match de producto | `null` | `null` | `null` |
+
+- **Confirm ventas:** valida stock (error si `stock < quantity`, salvo `skipStockValidation=true`) y aplica el decrement; **confirm compras:** aplica el increment y actualiza `costPrice`. Ambos reutilizan `projectStock`.
+- **Inventario (dry-run, `confirm=false`):** devuelve `currentStock` (stock actual en BD) solo para `action: "update"` (`null` para `create`/`skip`); el `stock` del archivo es el valor que se fijará (el Excel es la "fuente de verdad").
+
+### Trazabilidad de importación por archivo
+
+| Origen | Entidad | Campos de trazabilidad |
+|--------|---------|------------------------|
+| Ventas | `Invoice` | `importSource: "fastreport"`, `isLegacyImport`, `legacyImportKey` (idempotencia) |
+| Compras | `Expense` | `importKey` con prefijo `monddy-compra:` |
+| Compras | `InventoryMovement` | Sin columna propia; su origen se deriva del `expense.importKey` |
+| Inventario | `Product` | `importedViaFile` (`Boolean @default(false)`) — se marca `true` al confirmar el import masivo |
+
+### Deuda técnica: migración manual de `importedViaFile`
+
+La columna `products.importedViaFile` se aplicó con SQL manual (`prisma/migrations/manual_add_imported_via_file_to_product.sql`, vía `prisma db execute`) porque `prisma migrate dev` falla con **P3006** por una migración previa no aplicable (`20260323144000_soft_delete_contribuyente_declaraciones`).
+
+**Consecuencia:** la migración manual **no queda registrada** en `_prisma_migrations`. Cuando se repare la migración rota, hay que reconciliar el historial con `prisma migrate resolve` (marcar la manual como aplicada y resolver la P3006) antes de generar nuevas migraciones.
 
 ## Estructura
 
@@ -63,7 +99,7 @@ src/
 │   ├── fiscal/       # Motor fiscal
 │   ├── assistant/    # Asistente IA
 │   ├── concert/      # Boletería
-│   ├── hybrid/       # Proxy GET-only Hybrid (Monddy)
+│   ├── hybrid/       # Proxy GET-only Hybrid (orgs fundadoras)
 │   └── ...
 ├── common/           # Infraestructura compartida
 │   ├── guards/       # JWT, roles, tenant
@@ -86,6 +122,6 @@ pnpm start:dev          # Desarrollo con watch
 
 Ver `.env.example` para la lista completa.
 
-Hybrid (proxy solo lectura, org Monddy, API v0.4.0): `HYBRID_API_BASE_URL` (p. ej. `https://db.marfyl.site`), `HYBRID_API_TOKEN`, `HYBRID_API_TIMEOUT_MS` (~60s listados; detalle venta ~180s), `HYBRID_AUTH_HEADER`. Ops: BASE_URL + TOKEN (local puede ya estar configurado; no inventar tokens).
+Hybrid (proxy solo lectura, orgs fundadoras — Monddy, Davean, El Rancho —, API v0.4.0): `HYBRID_API_BASE_URL` (p. ej. `https://db.marfyl.site`), `HYBRID_API_TOKEN`, `HYBRID_API_TIMEOUT_MS` (~60s listados; detalle venta ~180s), `HYBRID_AUTH_HEADER`. Ops: BASE_URL + TOKEN (local puede ya estar configurado; no inventar tokens).
 
 **NUNCA commitear .env al repositorio.**
