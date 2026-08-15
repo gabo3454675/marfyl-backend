@@ -1,4 +1,5 @@
 import {
+  getHybridApiBaseUrlHost,
   getHybridApiTimeoutMs,
   getHybridAuthMode,
   getHybridDetailTimeoutMs,
@@ -79,6 +80,20 @@ describe("hybrid.config", () => {
       expect(getHybridAuthMode()).toBe("x-api-key");
       process.env.HYBRID_AUTH_HEADER = "apikey";
       expect(getHybridAuthMode()).toBe("x-api-key");
+    });
+  });
+
+  describe("getHybridApiBaseUrlHost", () => {
+    it("devuelve hostname sin path", () => {
+      process.env.HYBRID_API_BASE_URL = "https://db.marfyl.site/v1";
+      expect(getHybridApiBaseUrlHost()).toBe("db.marfyl.site");
+    });
+
+    it("null si vacío o inválido", () => {
+      delete process.env.HYBRID_API_BASE_URL;
+      expect(getHybridApiBaseUrlHost()).toBeNull();
+      process.env.HYBRID_API_BASE_URL = "not-a-url";
+      expect(getHybridApiBaseUrlHost()).toBeNull();
     });
   });
 });

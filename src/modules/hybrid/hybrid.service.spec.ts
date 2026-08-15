@@ -176,4 +176,45 @@ describe("HybridService gate order", () => {
       { timeoutMs: HYBRID_TIMEOUT_MAX_MS },
     );
   });
+
+  describe("getConnectionStatus (SA diagnostic)", () => {
+    it("sin config: configured false y no llama http ni assertHybridOrg", async () => {
+      clearHybridEnv();
+      const status = await service.getConnectionStatus();
+      expect(status.configured).toBe(false);
+      expect(status.reachable).toBe(false);
+      expect(status.health).toBeNull();
+      expect(status.latencyMs).toBeNull();
+      expect(status.error).toMatch(/HYBRID_API_BASE_URL/);
+      expect(http.get).not.toHaveBeenCalled();
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+      expect(status).not.toHaveProperty("token");
+      expect(JSON.stringify(status)).not.toMatch(/Bearer\s/i);
+    });
+
+    it("con config + health ok: reachable y host, sin token", async () => {
+      process.env.HYBRID_API_BASE_URL = "https://db.marfyl.site";
+      process.env.HYBRID_API_TOKEN = "tok-secret-value";
+      http.get.mockResolvedValue({
+        status: 200,
+        body: { ok: true, tablas: 128, solo_lectura: true },
+      });
+
+      const status = await service.getConnectionStatus();
+      expect(status.configured).toBe(true);
+      expect(status.reachable).toBe(true);
+      expect(status.baseUrlHost).toBe("db.marfyl.site");
+      expect(status.health).toEqual({
+        ok: true,
+        tablas: 128,
+        solo_lectura: true,
+      });
+      expect(typeof status.latencyMs).toBe("number");
+      expect(http.get).toHaveBeenCalledWith("/health");
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+      expect(status).not.toHaveProperty("token");
+      expect(JSON.stringify(status)).not.toContain("tok-secret-value");
+      expect(JSON.stringify(status)).not.toMatch(/Bearer\s/i);
+    });
+  });
 });

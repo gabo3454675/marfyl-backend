@@ -17,6 +17,16 @@ import { HybridService } from "./hybrid.service";
 export class HybridController {
   constructor(private readonly hybridService: HybridService) {}
 
+  /**
+   * Diagnóstico de conexión Hybrid POS (solo SUPER_ADMIN).
+   * Sin gate Monddy; no expone token.
+   */
+  @Get("connection")
+  @Roles(Role.SUPER_ADMIN)
+  connection() {
+    return this.hybridService.getConnectionStatus();
+  }
+
   @Get("health")
   health(@ActiveOrganization() organizationId: number) {
     return this.hybridService.getHealth(organizationId);

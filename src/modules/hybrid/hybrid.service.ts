@@ -7,7 +7,11 @@ import {
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { HYBRID_ORG_SLUG } from "@/common/founding-orgs";
 import { HybridHttpClient } from "./hybrid-http.client";
-import { getHybridDetailTimeoutMs, isConfigured } from "./hybrid.config";
+import {
+  getHybridApiBaseUrlHost,
+  getHybridDetailTimeoutMs,
+  isConfigured,
+} from "./hybrid.config";
 import {
   HYBRID_EXISTENCIA_QUERY_KEYS,
   HYBRID_LIST_QUERY_KEYS,
@@ -16,6 +20,22 @@ import {
   pickAllowlistedQuery,
   type HybridQueryInput,
 } from "./hybrid-query.allowlist";
+
+export type HybridConnectionHealth = {
+  ok: boolean;
+  tablas?: number;
+  solo_lectura?: boolean;
+};
+
+export type HybridConnectionStatus = {
+  configured: boolean;
+  baseUrlHost: string | null;
+  latencyMs: number | null;
+  reachable: boolean;
+  health: HybridConnectionHealth | null;
+  error?: string;
+  checkedAt: string;
+};
 
 /**
  * Orquestación del proxy Hybrid.
@@ -34,6 +54,88 @@ export class HybridService {
 
   async getHealth(organizationId: number): Promise<unknown> {
     return this.proxyGet(organizationId, "/health");
+  }
+
+  /**
+   * Diagnóstico de conexión Hybrid POS para Super Admin.
+   * Sin gate Monddy (credenciales env globales). Nunca incluye el token.
+   */
+  async getConnectionStatus(): Promise<HybridConnectionStatus> {
+    const checkedAt = new Date().toISOString();
+    const baseUrlHost = getHybridApiBaseUrlHost();
+
+    if (!isConfigured()) {
+      return {
+        configured: false,
+        baseUrlHost,
+        latencyMs: null,
+        reachable: false,
+        health: null,
+        error:
+          "Hybrid API no configurada. Defina HYBRID_API_BASE_URL y HYBRID_API_TOKEN.",
+        checkedAt,
+      };
+    }
+
+    const started = Date.now();
+    try {
+      const result = await this.http.get("/health");
+      const latencyMs = Date.now() - started;
+
+      if (result.status >= 400) {
+        return {
+          configured: true,
+          baseUrlHost,
+          latencyMs,
+          reachable: false,
+          health: null,
+          error: `Hybrid respondió HTTP ${result.status}`,
+          checkedAt,
+        };
+      }
+
+      const body =
+        result.body && typeof result.body === "object"
+          ? (result.body as Record<string, unknown>)
+          : {};
+      const tablasRaw = body.tablas;
+      const tablas =
+        typeof tablasRaw === "number" && Number.isFinite(tablasRaw)
+          ? tablasRaw
+          : undefined;
+      const soloLectura =
+        typeof body.solo_lectura === "boolean"
+          ? body.solo_lectura
+          : undefined;
+
+      return {
+        configured: true,
+        baseUrlHost,
+        latencyMs,
+        reachable: true,
+        health: {
+          ok: body.ok === true,
+          ...(tablas !== undefined ? { tablas } : {}),
+          ...(soloLectura !== undefined ? { solo_lectura: soloLectura } : {}),
+        },
+        checkedAt,
+      };
+    } catch (e: unknown) {
+      const latencyMs = Date.now() - started;
+      const message =
+        e instanceof Error
+          ? e.message
+          : "No se pudo contactar el servicio Hybrid";
+      return {
+        configured: true,
+        baseUrlHost,
+        latencyMs,
+        reachable: false,
+        health: null,
+        error: message,
+        checkedAt,
+      };
+    }
   }
 
   async getCatalogos(organizationId: number): Promise<unknown> {

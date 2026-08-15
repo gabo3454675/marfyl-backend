@@ -14,6 +14,17 @@ export function getHybridApiBaseUrl(): string {
   return process.env.HYBRID_API_BASE_URL?.trim() ?? "";
 }
 
+/** Hostname de la base Hybrid (sin path/credenciales). Null si URL inválida/vacía. */
+export function getHybridApiBaseUrlHost(): string | null {
+  const base = getHybridApiBaseUrl();
+  if (!base) return null;
+  try {
+    return new URL(base).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 export function getHybridApiToken(): string {
   return process.env.HYBRID_API_TOKEN?.trim() ?? "";
 }

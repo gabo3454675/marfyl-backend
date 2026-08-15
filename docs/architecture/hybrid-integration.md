@@ -27,7 +27,8 @@ Marfyl expone un **proxy GET-only** hacia Hybrid Local API **v0.4.0**. No hay pe
 
 | Método | Ruta | Notas |
 |--------|------|--------|
-| GET | `/hybrid/health` | Health del proxy / upstream |
+| GET | `/hybrid/connection` | **Solo SUPER_ADMIN**. Diagnóstico (sin gate Monddy): configured, host, latency, health |
+| GET | `/hybrid/health` | Health del proxy / upstream (Monddy) |
 | GET | `/hybrid/catalogos` | Catálogos (v0.4.0) |
 | GET | `/hybrid/catalogos/:grupo` | Catálogo por grupo (v0.4.0) |
 | GET | `/hybrid/monedas` | Monedas (v0.4.0) |
