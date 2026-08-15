@@ -58,9 +58,13 @@ export class HybridService {
 
   /**
    * Diagnóstico de conexión Hybrid POS para Super Admin.
-   * Sin gate Monddy (credenciales env globales). Nunca incluye el token.
+   * Solo org Monddy. Nunca incluye el token.
    */
-  async getConnectionStatus(): Promise<HybridConnectionStatus> {
+  async getConnectionStatus(
+    organizationId: number,
+  ): Promise<HybridConnectionStatus> {
+    await this.assertHybridOrg(organizationId);
+
     const checkedAt = new Date().toISOString();
     const baseUrlHost = getHybridApiBaseUrlHost();
 
