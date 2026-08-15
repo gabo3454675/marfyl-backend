@@ -14,6 +14,7 @@ import {
   type LineTaxInput,
 } from "@/modules/fiscal/helpers/tax-calculator";
 import { isIvaDisabledOrgSlug } from "@/common/founding-orgs";
+import { projectStock } from "@/common/stock-projection.util";
 import { randomBytes } from "crypto";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -61,6 +62,9 @@ export interface SalesImportInvoicePreview {
     productId?: number;
     productName?: string;
     matchBy?: "sku" | "barcode" | "name";
+    currentStock?: number | null;
+    stockDelta?: number | null;
+    finalStock?: number | null;
   }[];
 }
 
@@ -400,6 +404,13 @@ export class SalesImportService {
           line.description,
           lookups,
         );
+        const stockProjection = projectStock({
+          direction: "out",
+          quantity: line.quantity,
+          currentStock: product?.stock ?? null,
+          affectsStock: !!product && !product.isBundle && !product.isService,
+          matched: !!product,
+        });
         return {
           productCode: line.productCode,
           description: line.description,
@@ -408,6 +419,7 @@ export class SalesImportService {
           productId: product?.id,
           productName: product?.name,
           matchBy,
+          ...stockProjection,
         };
       });
 
@@ -855,13 +867,26 @@ export class SalesImportService {
         ivaLine: 0,
       });
 
-      if (!product.isBundle && !product.isService) {
+      // Alineado con projectStock (mismo delta que mostró el preview):
+      // stockDelta = 0 para servicio/combo, -quantity para productos con stock.
+      const projection = projectStock({
+        direction: "out",
+        quantity: line.quantity,
+        currentStock: product.stock,
+        affectsStock: !product.isBundle && !product.isService,
+        matched: true,
+      });
+      const stockDelta = projection.stockDelta;
+      if (stockDelta !== null && stockDelta !== 0) {
         if (!params.skipStockValidation && product.stock < line.quantity) {
           throw new BadRequestException(
             `Stock insuficiente ${product.name}: ${product.stock} < ${line.quantity}`,
           );
         }
-        stockDecrements.push({ productId: product.id, quantity: line.quantity });
+        stockDecrements.push({
+          productId: product.id,
+          quantity: Math.abs(stockDelta),
+        });
       }
     }
 

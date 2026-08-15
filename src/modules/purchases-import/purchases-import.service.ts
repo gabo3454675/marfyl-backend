@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
+import { projectStock } from "@/common/stock-projection.util";
 import { buildMovementReason } from "@/modules/invoice-upload/invoice-upload.constants";
 import {
   parseMonddyPurchasesExcel,
@@ -19,6 +20,7 @@ type ProductRow = {
   barcode: string | null;
   costPrice: unknown;
   salePrice: unknown;
+  stock: number;
   isBundle: boolean;
   isService: boolean;
 };
@@ -35,6 +37,9 @@ export interface PurchaseLinePreview {
   productName: string | null;
   matchMethod: "sku" | "description" | "create" | "none";
   willCreate: boolean;
+  currentStock?: number | null;
+  stockDelta?: number | null;
+  finalStock?: number | null;
 }
 
 export interface PurchaseGroupPreview {
@@ -139,6 +144,7 @@ export class PurchasesImportService {
         barcode: true,
         costPrice: true,
         salePrice: true,
+        stock: true,
         isBundle: true,
         isService: true,
       },
@@ -186,6 +192,24 @@ export class PurchasesImportService {
         if (willCreate) productsToCreate += 1;
         totalLines += 1;
         totalAmountUsd += line.quantity * line.unitCostUsd;
+
+        const matched =
+          willCreate || method === "sku" || method === "description";
+        const affectsStock =
+          willCreate || (!!product && !product.isBundle && !product.isService);
+        const currentStock = willCreate
+          ? 0
+          : product && !product.isBundle && !product.isService
+            ? product.stock
+            : null;
+        const stockProjection = projectStock({
+          direction: "in",
+          quantity: line.quantity,
+          currentStock,
+          affectsStock,
+          matched,
+        });
+
         return {
           rowNum: line.rowNum,
           sku: line.sku,
@@ -198,6 +222,7 @@ export class PurchasesImportService {
           productName: product?.name ?? null,
           matchMethod: willCreate ? "create" : method,
           willCreate,
+          ...stockProjection,
         };
       });
 
@@ -288,6 +313,8 @@ export class PurchasesImportService {
         unitCostUsd: number;
         salePriceUsd: number;
         isExempt: boolean;
+        affectsStock: boolean;
+        currentStock: number;
       }> = [];
 
       for (const line of group.lines) {
@@ -303,7 +330,7 @@ export class PurchasesImportService {
         }
         const product = await this.prisma.product.findUnique({
           where: { id: productId },
-          select: { name: true },
+          select: { name: true, stock: true, isBundle: true, isService: true },
         });
         validated.push({
           productId,
@@ -312,6 +339,9 @@ export class PurchasesImportService {
           unitCostUsd: line.unitCostUsd,
           salePriceUsd: line.salePriceUsd,
           isExempt: line.isExempt,
+          // Afecta stock = NO servicio/combo; los productos nuevos nacen sin esas flags.
+          affectsStock: !product?.isBundle && !product?.isService,
+          currentStock: product?.stock ?? 0,
         });
       }
 
@@ -338,6 +368,9 @@ export class PurchasesImportService {
           });
 
           for (const line of validated) {
+            // Trazabilidad del movement: se deriva del expense.importKey
+            // (prefijo "monddy-compra:"). No se agrega columna propia al
+            // movement (decisión de plan: sin over-engineering).
             await tx.inventoryMovement.create({
               data: {
                 type: "COMPRA",
@@ -350,12 +383,23 @@ export class PurchasesImportService {
               },
             });
             movementsCreated += 1;
-            stockAdded += line.quantity;
+
+            // Alineado con projectStock (mismo delta que mostró el preview):
+            // stockDelta = 0 para servicio/combo, +quantity para el resto.
+            const stockDelta =
+              projectStock({
+                direction: "in",
+                quantity: line.quantity,
+                currentStock: line.currentStock,
+                affectsStock: line.affectsStock,
+                matched: true,
+              }).stockDelta ?? 0;
+            stockAdded += stockDelta;
 
             await tx.product.update({
               where: { id: line.productId },
               data: {
-                stock: { increment: line.quantity },
+                stock: { increment: stockDelta },
                 costPrice: line.unitCostUsd,
                 ...(line.salePriceUsd > 0
                   ? {
