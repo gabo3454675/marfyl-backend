@@ -1,20 +1,21 @@
 # Integración Hybrid (solo lectura)
 
 > **Última actualización:** 2026-08-14  
-> **Estado:** ✅ Implementado (ops: completar credenciales en `.env`)  
-> **Alcance:** TASK-007 — consulta READ-ONLY vía API Local Hybrid, solo org Monddy
+> **Estado:** ✅ Implementado (contrato Hybrid Local API **v0.4.0**)  
+> **Alcance:** consulta READ-ONLY vía API Local Hybrid, solo org Monddy
 
 ---
 
 ## Resumen
 
-Marfyl expone un **proxy GET-only** hacia Hybrid Local API. No hay persistencia Prisma de datos Hybrid, no hay escrituras hacia Hybrid y no se expone `/tablas`.
+Marfyl expone un **proxy GET-only** hacia Hybrid Local API **v0.4.0**. No hay persistencia Prisma de datos Hybrid, no hay escrituras hacia Hybrid y no se expone `/tablas`.
 
 | Capa | Comportamiento |
 |------|----------------|
+| Upstream | Hybrid Local API v0.4.0 — URL pública documentada: `https://db.marfyl.site` |
 | Backend | `src/modules/hybrid/` — proxy autenticado |
-| Frontend | Nav + páginas solo Monddy; llama solo al API Marfyl |
-| Ops | Falta rellenar `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` reales en backend `.env` |
+| Frontend | Nav + páginas solo Monddy; llama solo al API Marfyl; combos vía `/hybrid/catalogos` (sin hardcode de tipos) |
+| Ops | `HYBRID_API_BASE_URL` + `HYBRID_API_TOKEN` (local puede ya estar configurado; no inventar tokens) |
 
 ---
 
@@ -27,12 +28,24 @@ Marfyl expone un **proxy GET-only** hacia Hybrid Local API. No hay persistencia 
 | Método | Ruta | Notas |
 |--------|------|--------|
 | GET | `/hybrid/health` | Health del proxy / upstream |
+| GET | `/hybrid/catalogos` | Catálogos (v0.4.0) |
+| GET | `/hybrid/catalogos/:grupo` | Catálogo por grupo (v0.4.0) |
+| GET | `/hybrid/monedas` | Monedas (v0.4.0) |
 | GET | `/hybrid/inventario` | Lista (query allowlist) |
 | GET | `/hybrid/inventario/:codigo` | Por código |
 | GET | `/hybrid/clientes` | Query allowlist |
 | GET | `/hybrid/existencia` | Query allowlist |
-| GET | `/hybrid/ventas` | Query allowlist |
+| GET | `/hybrid/ventas` | Query allowlist (incluye `caja`, `serie`) |
 | GET | `/hybrid/ventas/:documento` | Detalle por documento |
+
+**Ventas (v0.4.0):** la query allowlist de listado incluye `caja` y `serie`. El campo `serie` forma parte del contrato de ventas.
+
+### Timeouts hacia Hybrid
+
+| Caso | Timeout aproximado |
+|------|--------------------|
+| Listados / catálogos | ~60 s (default `HYBRID_API_TIMEOUT_MS`) |
+| Detalle venta (`/hybrid/ventas/:documento`) | ~180 s |
 
 ### Auth y roles
 
@@ -53,18 +66,18 @@ Placeholders en `.env.example`:
 
 | Variable | Uso |
 |----------|-----|
-| `HYBRID_API_BASE_URL` | Base URL del API Hybrid (**requerida en ops**) |
-| `HYBRID_API_TOKEN` | Token hacia Hybrid (**requerida en ops**) |
-| `HYBRID_API_TIMEOUT_MS` | Timeout hacia Hybrid (default ejemplo `120000`) |
+| `HYBRID_API_BASE_URL` | Base URL del API Hybrid (p. ej. `https://db.marfyl.site`; **requerida en ops**) |
+| `HYBRID_API_TOKEN` | Token hacia Hybrid (**requerida en ops**; no inventar valores) |
+| `HYBRID_API_TIMEOUT_MS` | Timeout hacia Hybrid (default ~60000 para listados; detalle venta usa ~180000) |
 | `HYBRID_AUTH_HEADER` | `bearer` (default) o `x-api-key` |
 
-**Criterio ops pendiente:** rellenar valores reales de `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` en el `.env` del backend.
+**Ops:** configurar `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` en el `.env` del backend. En local pueden ya estar definidos; no documentar ni inventar tokens.
 
 ### Fuera de alcance (intencional)
 
 - Sin Prisma persist de respuestas Hybrid
 - Sin POST/PUT/PATCH/DELETE hacia Hybrid
-- Sin endpoint `/tablas`
+- Sin endpoint `/tablas` en Marfyl
 
 ---
 
@@ -72,8 +85,8 @@ Placeholders en `.env.example`:
 
 - Visible solo para org **Monddy** (slug `monddy`)
 - Páginas: `/hybrid/ventas` (lista) y `/hybrid/ventas/[documento]` (detalle)
-- Todas las llamadas van al API Marfyl (`/hybrid/...`); timeout cliente **150s**
-- **Sin** secretos Hybrid en el frontend (`NEXT_PUBLIC_*` Hybrid, tokens, etc.)
+- Combos (p. ej. tipos) se cargan desde `/hybrid/catalogos` — **sin hardcode de tipos**
+- Todas las llamadas van al API Marfyl (`/hybrid/...`); sin secretos Hybrid en el frontend (`NEXT_PUBLIC_*` Hybrid, tokens, etc.)
 
 ---
 
@@ -90,4 +103,4 @@ marfyl-frontend/src/app/(dashboard)/hybrid/ventas/
 ---
 
 **Mantenido por:** Documentation Agent  
-**Fuente:** hechos aprobados TASK-007 (no inventar comportamiento adicional)
+**Fuente:** contrato Hybrid Local API v0.4.0 + hechos aprobados (no inventar comportamiento adicional)

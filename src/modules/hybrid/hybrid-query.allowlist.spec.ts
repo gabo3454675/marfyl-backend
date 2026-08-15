@@ -42,4 +42,25 @@ describe("pickAllowlistedQuery", () => {
       rif: "J123",
     });
   });
+
+  it("incluye caja y serie en ventas (v0.4.0)", () => {
+    expect(HYBRID_VENTAS_QUERY_KEYS).toContain("caja");
+    expect(HYBRID_VENTAS_QUERY_KEYS).toContain("serie");
+
+    const result = pickAllowlistedQuery(
+      {
+        caja: "CAJA01",
+        serie: "FISCAL01",
+        tipo: "11",
+        ignored: "drop",
+      },
+      HYBRID_VENTAS_QUERY_KEYS,
+    );
+    expect(result).toEqual({
+      caja: "CAJA01",
+      serie: "FISCAL01",
+      tipo: "11",
+    });
+    expect(result).not.toHaveProperty("ignored");
+  });
 });

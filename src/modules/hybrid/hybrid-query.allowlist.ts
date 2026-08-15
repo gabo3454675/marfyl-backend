@@ -26,6 +26,8 @@ export const HYBRID_VENTAS_QUERY_KEYS = [
   "usuario",
   "deposito",
   "moneda",
+  "caja",
+  "serie",
   "documento_origen",
   "limit",
   "offset",

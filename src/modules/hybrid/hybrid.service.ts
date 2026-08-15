@@ -7,7 +7,7 @@ import {
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { HYBRID_ORG_SLUG } from "@/common/founding-orgs";
 import { HybridHttpClient } from "./hybrid-http.client";
-import { isConfigured } from "./hybrid.config";
+import { getHybridDetailTimeoutMs, isConfigured } from "./hybrid.config";
 import {
   HYBRID_EXISTENCIA_QUERY_KEYS,
   HYBRID_LIST_QUERY_KEYS,
@@ -34,6 +34,22 @@ export class HybridService {
 
   async getHealth(organizationId: number): Promise<unknown> {
     return this.proxyGet(organizationId, "/health");
+  }
+
+  async getCatalogos(organizationId: number): Promise<unknown> {
+    return this.proxyGet(organizationId, "/catalogos");
+  }
+
+  async getCatalogoByGrupo(
+    organizationId: number,
+    grupo: string,
+  ): Promise<unknown> {
+    const encoded = encodeURIComponent(grupo);
+    return this.proxyGet(organizationId, `/catalogos/${encoded}`);
+  }
+
+  async getMonedas(organizationId: number): Promise<unknown> {
+    return this.proxyGet(organizationId, "/monedas");
   }
 
   async getInventario(
@@ -98,6 +114,7 @@ export class HybridService {
       organizationId,
       `/ventas/${encoded}`,
       pickAllowlistedQuery(query, HYBRID_VENTA_DETAIL_QUERY_KEYS),
+      { timeoutMs: getHybridDetailTimeoutMs() },
     );
   }
 
@@ -109,6 +126,7 @@ export class HybridService {
     organizationId: number,
     path: string,
     query?: Record<string, string>,
+    options?: { timeoutMs?: number },
   ): Promise<unknown> {
     await this.assertHybridOrg(organizationId);
 
@@ -118,7 +136,10 @@ export class HybridService {
       );
     }
 
-    const result = await this.http.get(path, query);
+    const result =
+      options !== undefined
+        ? await this.http.get(path, query, options)
+        : await this.http.get(path, query);
 
     if (result.status >= 400) {
       throw new HttpException(

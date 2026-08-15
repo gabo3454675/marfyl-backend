@@ -102,4 +102,18 @@ describe("HybridHttpClient", () => {
     expect((client as unknown as Record<string, unknown>).patch).toBeUndefined();
     expect((client as unknown as Record<string, unknown>).delete).toBeUndefined();
   });
+
+  it("acepta override de timeoutMs (detalle 180s)", async () => {
+    const setTimeoutSpy = jest.spyOn(global, "setTimeout");
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 200,
+      text: async () => "{}",
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await client.get("/ventas/1", undefined, { timeoutMs: 180_000 });
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 180_000);
+    setTimeoutSpy.mockRestore();
+  });
 });

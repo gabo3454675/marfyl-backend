@@ -18,7 +18,7 @@
 
 | Documento | Descripción | Estado |
 |-----------|-------------|--------|
-| [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid (Monddy) | ✅ Actualizado |
+| [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid v0.4.0 (Monddy) | ✅ Actualizado |
 
 ### Otros Documentos
 

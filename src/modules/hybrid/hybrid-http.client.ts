@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import {
   buildHybridAuthHeaders,
+  clampHybridTimeoutMs,
   getHybridApiBaseUrl,
   getHybridApiTimeoutMs,
   getHybridApiToken,
@@ -14,6 +15,11 @@ import {
 export type HybridHttpResult = {
   status: number;
   body: unknown;
+};
+
+export type HybridHttpGetOptions = {
+  /** Override de timeout (ms); se clampa a [60000, 180000]. */
+  timeoutMs?: number;
 };
 
 /**
@@ -27,13 +33,15 @@ export class HybridHttpClient {
   async get(
     path: string,
     query?: Record<string, string>,
+    options?: HybridHttpGetOptions,
   ): Promise<HybridHttpResult> {
-    return this.requestGet(path, query);
+    return this.requestGet(path, query, options);
   }
 
   private async requestGet(
     path: string,
     query?: Record<string, string>,
+    options?: HybridHttpGetOptions,
   ): Promise<HybridHttpResult> {
     const base = getHybridApiBaseUrl().replace(/\/+$/, "");
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -46,7 +54,10 @@ export class HybridHttpClient {
     }
 
     const token = getHybridApiToken();
-    const timeoutMs = getHybridApiTimeoutMs();
+    const timeoutMs =
+      options?.timeoutMs !== undefined
+        ? clampHybridTimeoutMs(options.timeoutMs)
+        : getHybridApiTimeoutMs();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 

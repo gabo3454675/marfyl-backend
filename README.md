@@ -50,7 +50,7 @@ El servidor arranca en `http://localhost:3001`.
 | POST | `/api/assistant/chat` | Asistente IA |
 | GET | `/api/hybrid/*` | Proxy READ-ONLY Hybrid (solo org Monddy; ver docs) |
 
-Rutas Hybrid: `health`, `inventario`, `inventario/:codigo`, `clientes`, `existencia`, `ventas`, `ventas/:documento`. Roles: SUPER_ADMIN, ADMIN, MANAGER. Detalle: [docs/architecture/hybrid-integration.md](./docs/architecture/hybrid-integration.md).
+Rutas Hybrid (contrato v0.4.0): `health`, `catalogos`, `catalogos/:grupo`, `monedas`, `inventario`, `inventario/:codigo`, `clientes`, `existencia`, `ventas`, `ventas/:documento`. Ventas query: incluye `caja`, `serie`. Roles: SUPER_ADMIN, ADMIN, MANAGER. Detalle: [docs/architecture/hybrid-integration.md](./docs/architecture/hybrid-integration.md).
 
 ## Estructura
 
@@ -86,6 +86,6 @@ pnpm start:dev          # Desarrollo con watch
 
 Ver `.env.example` para la lista completa.
 
-Hybrid (proxy solo lectura, org Monddy): `HYBRID_API_BASE_URL`, `HYBRID_API_TOKEN`, `HYBRID_API_TIMEOUT_MS`, `HYBRID_AUTH_HEADER`. En ops hace falta rellenar BASE_URL y TOKEN reales.
+Hybrid (proxy solo lectura, org Monddy, API v0.4.0): `HYBRID_API_BASE_URL` (p. ej. `https://db.marfyl.site`), `HYBRID_API_TOKEN`, `HYBRID_API_TIMEOUT_MS` (~60s listados; detalle venta ~180s), `HYBRID_AUTH_HEADER`. Ops: BASE_URL + TOKEN (local puede ya estar configurado; no inventar tokens).
 
 **NUNCA commitear .env al repositorio.**

@@ -6,6 +6,7 @@ import {
 import { HybridService } from "./hybrid.service";
 import { HybridHttpClient } from "./hybrid-http.client";
 import { PrismaService } from "@/common/prisma/prisma.service";
+import { HYBRID_TIMEOUT_MAX_MS } from "./hybrid.config";
 
 describe("HybridService gate order", () => {
   const originalEnv = { ...process.env };
@@ -122,5 +123,57 @@ describe("HybridService gate order", () => {
       limit: "5",
       offset: "0",
     });
+  });
+
+  it("catalogos y monedas proxifican sin query", async () => {
+    configureHybridEnv();
+    prisma.organization.findUnique.mockResolvedValue({ slug: "monddy" });
+    http.get.mockResolvedValue({ status: 200, body: { ok: true } });
+
+    await service.getCatalogos(7);
+    expect(http.get).toHaveBeenCalledWith("/catalogos", undefined);
+
+    http.get.mockClear();
+    await service.getCatalogoByGrupo(7, "tipos_venta");
+    expect(http.get).toHaveBeenCalledWith("/catalogos/tipos_venta", undefined);
+
+    http.get.mockClear();
+    await service.getMonedas(7);
+    expect(http.get).toHaveBeenCalledWith("/monedas", undefined);
+  });
+
+  it("gate order también en catalogos (404 antes de 503)", async () => {
+    clearHybridEnv();
+    prisma.organization.findUnique.mockResolvedValue({ slug: "otra" });
+
+    await expect(service.getCatalogos(1)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(http.get).not.toHaveBeenCalled();
+  });
+
+  it("ventas reenvía caja/serie; detalle usa timeout 180s", async () => {
+    configureHybridEnv();
+    prisma.organization.findUnique.mockResolvedValue({ slug: "monddy" });
+    http.get.mockResolvedValue({ status: 200, body: { items: [] } });
+
+    await service.getVentas(7, {
+      caja: "CAJA01",
+      serie: "FISCAL01",
+      secret: "no",
+    });
+    expect(http.get).toHaveBeenCalledWith("/ventas", {
+      caja: "CAJA01",
+      serie: "FISCAL01",
+    });
+
+    http.get.mockClear();
+    http.get.mockResolvedValue({ status: 200, body: { documento: "1" } });
+    await service.getVentaByDocumento(7, "00010923", { limit: "10" });
+    expect(http.get).toHaveBeenCalledWith(
+      "/ventas/00010923",
+      { limit: "10" },
+      { timeoutMs: HYBRID_TIMEOUT_MAX_MS },
+    );
   });
 });

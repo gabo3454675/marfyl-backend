@@ -7,6 +7,20 @@
 
 ## 📋 Resumen de Cambios
 
+### 2026-08-14 — Hybrid Local API v0.4.0 (contrato)
+
+**Agente:** Documentation Agent  
+**Estado:** ✅ Completado
+
+**Archivos:**
+- Actualizado `docs/architecture/hybrid-integration.md` — contrato v0.4.0: URL pública `https://db.marfyl.site`, rutas `catalogos` / `catalogos/:grupo` / `monedas`, query ventas `caja`+`serie`, campo `serie`, timeouts ~60s listados / ~180s detalle, frontend combos vía catálogos
+- Actualizados `marfyl-backend/README.md` y `marfyl-frontend/README.md` — menciones breves alineadas
+
+**Sin cambio de alcance:** GET-only, Monddy-only, secretos solo backend, sin `/tablas` en Marfyl.  
+**Ops:** `HYBRID_API_BASE_URL` + `HYBRID_API_TOKEN` (local puede ya estar configurado; no inventar tokens).
+
+---
+
 ### 2026-08-14 — Integración Hybrid (TASK-007)
 
 **Agente:** Documentation Agent  
@@ -17,7 +31,7 @@
 - Actualizado `docs/architecture/README.md` — índice de integraciones
 - Actualizados `marfyl-backend/README.md` y `marfyl-frontend/README.md` — menciones breves
 
-**Ops pendiente (no docs):** rellenar `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` reales en backend `.env`.
+**Ops:** `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` en backend `.env` (valores reales; no inventar en docs).
 
 ---
 

@@ -22,6 +22,24 @@ export class HybridController {
     return this.hybridService.getHealth(organizationId);
   }
 
+  @Get("catalogos")
+  catalogos(@ActiveOrganization() organizationId: number) {
+    return this.hybridService.getCatalogos(organizationId);
+  }
+
+  @Get("catalogos/:grupo")
+  catalogoByGrupo(
+    @ActiveOrganization() organizationId: number,
+    @Param("grupo") grupo: string,
+  ) {
+    return this.hybridService.getCatalogoByGrupo(organizationId, grupo);
+  }
+
+  @Get("monedas")
+  monedas(@ActiveOrganization() organizationId: number) {
+    return this.hybridService.getMonedas(organizationId);
+  }
+
   @Get("inventario")
   inventario(
     @ActiveOrganization() organizationId: number,

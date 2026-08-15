@@ -1,6 +1,7 @@
 import {
   getHybridApiTimeoutMs,
   getHybridAuthMode,
+  getHybridDetailTimeoutMs,
   isConfigured,
   HYBRID_TIMEOUT_DEFAULT_MS,
   HYBRID_TIMEOUT_MAX_MS,
@@ -37,9 +38,10 @@ describe("hybrid.config", () => {
   });
 
   describe("getHybridApiTimeoutMs", () => {
-    it("default 120000", () => {
+    it("default 60000 (listados/catálogos)", () => {
       delete process.env.HYBRID_API_TIMEOUT_MS;
       expect(getHybridApiTimeoutMs()).toBe(HYBRID_TIMEOUT_DEFAULT_MS);
+      expect(HYBRID_TIMEOUT_DEFAULT_MS).toBe(60_000);
     });
 
     it("clampa por debajo de 60000", () => {
@@ -55,6 +57,14 @@ describe("hybrid.config", () => {
     it("acepta valor dentro del rango", () => {
       process.env.HYBRID_API_TIMEOUT_MS = "90000";
       expect(getHybridApiTimeoutMs()).toBe(90_000);
+    });
+  });
+
+  describe("getHybridDetailTimeoutMs", () => {
+    it("siempre 180000 para detalle de ventas", () => {
+      process.env.HYBRID_API_TIMEOUT_MS = "60000";
+      expect(getHybridDetailTimeoutMs()).toBe(HYBRID_TIMEOUT_MAX_MS);
+      expect(getHybridDetailTimeoutMs()).toBe(180_000);
     });
   });
 

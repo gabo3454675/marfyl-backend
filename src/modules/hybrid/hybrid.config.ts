@@ -2,8 +2,11 @@
 export const HYBRID_TIMEOUT_MIN_MS = 60_000;
 /** Timeout máximo (ms) hacia Hybrid. */
 export const HYBRID_TIMEOUT_MAX_MS = 180_000;
-/** Timeout por defecto si env ausente o inválido. */
-export const HYBRID_TIMEOUT_DEFAULT_MS = 120_000;
+/**
+ * Timeout por defecto para listados/catálogos si env ausente o inválido.
+ * Alineado con README v0.4.0 (~60 s en listados).
+ */
+export const HYBRID_TIMEOUT_DEFAULT_MS = 60_000;
 
 export type HybridAuthMode = "bearer" | "x-api-key";
 
@@ -21,16 +24,30 @@ export function isConfigured(): boolean {
 }
 
 /**
- * Timeout hacia Hybrid, clamped a [60000, 180000].
- * Default 120000 si ausente o no numérico.
+ * Timeout para listados/catálogos, clamped a [60000, 180000].
+ * Lee HYBRID_API_TIMEOUT_MS; default 60000 si ausente o no numérico.
  */
 export function getHybridApiTimeoutMs(): number {
   const raw = process.env.HYBRID_API_TIMEOUT_MS?.trim();
   const n = raw ? Number.parseInt(raw, 10) : HYBRID_TIMEOUT_DEFAULT_MS;
   if (!Number.isFinite(n)) return HYBRID_TIMEOUT_DEFAULT_MS;
+  return clampHybridTimeoutMs(n);
+}
+
+/**
+ * Timeout para GET /ventas/:documento (~180 s; TDetalleVta puede tardar).
+ * Siempre el máximo del rango permitido.
+ */
+export function getHybridDetailTimeoutMs(): number {
+  return HYBRID_TIMEOUT_MAX_MS;
+}
+
+/** Clampa un timeout al rango [MIN, MAX]. */
+export function clampHybridTimeoutMs(ms: number): number {
+  if (!Number.isFinite(ms)) return HYBRID_TIMEOUT_DEFAULT_MS;
   return Math.min(
     HYBRID_TIMEOUT_MAX_MS,
-    Math.max(HYBRID_TIMEOUT_MIN_MS, n),
+    Math.max(HYBRID_TIMEOUT_MIN_MS, ms),
   );
 }
 
