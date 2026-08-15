@@ -75,3 +75,12 @@ services:
         value: nvidia/nemotron-3-ultra-550b-a55b
       - key: MARFYL_TOP_K
         value: "3"
+      # Hybrid POS (proxy solo lectura — org Monddy). TOKEN en Dashboard, no en git.
+      - key: HYBRID_API_BASE_URL
+        value: https://db.marfyl.site
+      - key: HYBRID_API_TOKEN
+        sync: false
+      - key: HYBRID_API_TIMEOUT_MS
+        value: "120000"
+      - key: HYBRID_AUTH_HEADER
+        value: bearer
