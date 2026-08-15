@@ -1,4 +1,8 @@
-import { isIvaDisabledOrgSlug, IVA_DISABLED_ORG_SLUGS } from "./founding-orgs";
+import {
+  isIvaDisabledOrgSlug,
+  IVA_DISABLED_ORG_SLUGS,
+  HYBRID_ORG_SLUG,
+} from "./founding-orgs";
 
 describe("isIvaDisabledOrgSlug", () => {
   it("should return true for davean", () => {
@@ -26,5 +30,11 @@ describe("isIvaDisabledOrgSlug", () => {
   it("IVA_DISABLED_ORG_SLUGS should contain davean and el-rancho-de-german", () => {
     expect(IVA_DISABLED_ORG_SLUGS).toContain("davean");
     expect(IVA_DISABLED_ORG_SLUGS).toContain("el-rancho-de-german");
+  });
+});
+
+describe("HYBRID_ORG_SLUG", () => {
+  it("es monddy", () => {
+    expect(HYBRID_ORG_SLUG).toBe("monddy");
   });
 });

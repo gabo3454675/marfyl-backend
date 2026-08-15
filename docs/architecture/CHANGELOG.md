@@ -1,11 +1,25 @@
-# 📝 Changelog — Documentación Sistema de Permisos Granular
+# 📝 Changelog — Documentación de Arquitectura
 
-> **Última actualización:** 2026-06-30  
-> **Estado:** ✅ Completado
+> **Última actualización:** 2026-08-14  
+> **Estado:** ✅ Actualizado
 
 ---
 
 ## 📋 Resumen de Cambios
+
+### 2026-08-14 — Integración Hybrid (TASK-007)
+
+**Agente:** Documentation Agent  
+**Estado:** ✅ Completado
+
+**Archivos:**
+- Creado `docs/architecture/hybrid-integration.md` — proxy GET-only, gates Monddy/config, rutas, env, UI Monddy
+- Actualizado `docs/architecture/README.md` — índice de integraciones
+- Actualizados `marfyl-backend/README.md` y `marfyl-frontend/README.md` — menciones breves
+
+**Ops pendiente (no docs):** rellenar `HYBRID_API_BASE_URL` y `HYBRID_API_TOKEN` reales en backend `.env`.
+
+---
 
 ### 2026-06-30 — Creación Completa de Documentación
 

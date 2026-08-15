@@ -48,6 +48,9 @@ El servidor arranca en `http://localhost:3001`.
 | DELETE | `/api/products/variants/:variantId` | Eliminar variante |
 | POST | `/api/invoices` | Crear factura |
 | POST | `/api/assistant/chat` | Asistente IA |
+| GET | `/api/hybrid/*` | Proxy READ-ONLY Hybrid (solo org Monddy; ver docs) |
+
+Rutas Hybrid: `health`, `inventario`, `inventario/:codigo`, `clientes`, `existencia`, `ventas`, `ventas/:documento`. Roles: SUPER_ADMIN, ADMIN, MANAGER. Detalle: [docs/architecture/hybrid-integration.md](./docs/architecture/hybrid-integration.md).
 
 ## Estructura
 
@@ -60,6 +63,7 @@ src/
 │   ├── fiscal/       # Motor fiscal
 │   ├── assistant/    # Asistente IA
 │   ├── concert/      # Boletería
+│   ├── hybrid/       # Proxy GET-only Hybrid (Monddy)
 │   └── ...
 ├── common/           # Infraestructura compartida
 │   ├── guards/       # JWT, roles, tenant
@@ -81,5 +85,7 @@ pnpm start:dev          # Desarrollo con watch
 ## Variables de Entorno
 
 Ver `.env.example` para la lista completa.
+
+Hybrid (proxy solo lectura, org Monddy): `HYBRID_API_BASE_URL`, `HYBRID_API_TOKEN`, `HYBRID_API_TIMEOUT_MS`, `HYBRID_AUTH_HEADER`. En ops hace falta rellenar BASE_URL y TOKEN reales.
 
 **NUNCA commitear .env al repositorio.**

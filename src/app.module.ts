@@ -32,6 +32,7 @@ import { AuditoriaModule } from "./common/auditoria/auditoria.module";
 import { FiscalModule } from "./modules/fiscal/fiscal.module";
 import { AssistantModule } from "./modules/assistant/assistant.module";
 import { ConcertModule } from "./modules/concert/concert.module";
+import { HybridModule } from "./modules/hybrid/hybrid.module";
 import { EmailModule } from "./modules/email/email.module";
 import { HealthModule } from "./modules/health/health.module";
 import { AiModule } from "./modules/ai/ai.module";
@@ -84,6 +85,7 @@ import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
     FiscalAdvisorModule,
     EmailModule,
     ConcertModule,
+    HybridModule,
     HealthModule,
     AiModule,
     ExchangeRateModule,

@@ -1,6 +1,6 @@
 # 📚 Arquitectura — MARFYL
 
-> **Última actualización:** 2026-06-30  
+> **Última actualización:** 2026-08-14  
 > **Estado:** ✅ Actualizado
 
 ---
@@ -13,6 +13,12 @@
 |-----------|-------------|--------|
 | [permissions.md](./permissions.md) | Sistema de permisos granular completo | ✅ Actualizado |
 | [roles.md](./roles.md) | Roles del sistema y jerarquía | ✅ Actualizado |
+
+### Integraciones
+
+| Documento | Descripción | Estado |
+|-----------|-------------|--------|
+| [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid (Monddy) | ✅ Actualizado |
 
 ### Otros Documentos
 
@@ -103,4 +109,4 @@ Ver `permissions.md` → Troubleshooting
 ---
 
 **Maintenido por:** Documentation Agent  
-**Última revisión:** 2026-06-30
+**Última revisión:** 2026-08-14

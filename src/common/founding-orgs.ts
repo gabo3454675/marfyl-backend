@@ -10,6 +10,9 @@ export type FoundingOrgSlug = (typeof FOUNDING_ORG_SLUGS)[number];
 /** Única org con módulo de concierto / boletería temporal. */
 export const CONCERT_ORG_SLUG = "monddy";
 
+/** Única org con proxy de solo lectura hacia Hybrid. */
+export const HYBRID_ORG_SLUG = "monddy";
+
 /** Orgs sin cálculo ni cobro de IVA en ventas (precio = total). */
 export const IVA_DISABLED_ORG_SLUGS = ["el-rancho-de-german", "davean"] as const;
 
