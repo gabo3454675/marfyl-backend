@@ -46,6 +46,7 @@ import { SalesImportModule } from "./modules/sales-import/sales-import.module";
 import { PurchasesImportModule } from "./modules/purchases-import/purchases-import.module";
 import { CashHoldModule } from "./modules/cash-hold/cash-hold.module";
 import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
+import { HybridImportModule } from "./modules/hybrid-import/hybrid-import.module";
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { FloorOrdersModule } from "./modules/floor-orders/floor-orders.module";
     EmailModule,
     ConcertModule,
     HybridModule,
+    HybridImportModule,
     HealthModule,
     AiModule,
     ExchangeRateModule,
