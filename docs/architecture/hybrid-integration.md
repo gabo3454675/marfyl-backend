@@ -103,5 +103,127 @@ marfyl-frontend/src/app/(dashboard)/hybrid/ventas/
 
 ---
 
+## Importación Hybrid → Marfyl (Adapter Pattern)
+
+### Arquitectura
+
+La importación de datos desde Hybrid a Marfyl utiliza el patrón **Adapter** para transformar los datos del formato Hybrid al formato Marfyl/Prisma.
+
+```
+┌──────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│   Frontend    │    │   Backend        │    │   Hybrid API     │
+│              │    │                  │    │                  │
+│  /hybrid/    │───▶│  HybridImport    │◀───│  GET /ventas     │
+│  importar    │    │  Controller      │    │  GET /inventario  │
+│              │    │       │          │    │  GET /clientes    │
+│  [Seleccion] │    │       ▼          │    │                  │
+│  [Importar]  │    │  HybridImport    │    └──────────────────┘
+│  [Resultado] │    │  Service         │
+│              │    │       │          │
+└──────────────┘    │       ▼          │
+                    │  ┌───────────┐   │
+                    │  │ Adapters  │   │
+                    │  │           │   │
+                    │  │ Venta     │   │
+                    │  │ Producto  │   │
+                    │  │ Cliente   │   │
+                    │  └─────┬─────┘   │
+                    │        │         │
+                    │        ▼         │
+                    │  ┌───────────┐   │
+                    │  │ Prisma    │   │
+                    │  │ Invoice   │   │
+                    │  │ Product   │   │
+                    │  │ Customer  │   │
+                    │  └───────────┘   │
+                    └──────────────────┘
+```
+
+### Módulo NestJS
+
+El módulo de importación vive en `src/modules/hybrid-import/` y es independiente del proxy `hybrid/`.
+
+**Estructura:**
+```
+hybrid-import/
+├── hybrid-import.module.ts
+├── hybrid-import.controller.ts
+├── hybrid-import.service.ts
+├── adapters/
+│   ├── hybrid-adapter.interface.ts
+│   ├── dedup-keys.ts
+│   ├── status.mapper.ts
+│   ├── venta.adapter.ts
+│   ├── producto.adapter.ts
+│   └── cliente.adapter.ts
+├── services/
+│   └── entity-resolver.service.ts
+└── types/
+    ├── import-context.ts
+    ├── hybrid-input.types.ts
+    ├── hybrid-output.types.ts
+    └── import-result.types.ts
+```
+
+### Adapter Interface
+
+```typescript
+interface HybridAdapter<TInput, TOutput> {
+  transform(input: TInput, context: ImportContext): TOutput;
+  getDedupKey(input: TInput): string;
+  validate(input: TInput): ValidationResult;
+}
+```
+
+| Adapter | Input | Output | Dedup Key |
+|---------|-------|--------|-----------|
+| VentaAdapter | HybridVentaDetailInput | CreateInvoiceFromHybridDto | `hybrid:{documento}` |
+| ProductoAdapter | HybridProductoInput | CreateProductFromHybridDto | `sku:{codigo}` |
+| ClienteAdapter | HybridClienteInput | CreateCustomerFromHybridDto | `taxId:{rif\|nit}` |
+
+### Endpoints
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/hybrid-import/ventas/preview` | Preview de todas las ventas pendientes |
+| `POST` | `/hybrid-import/ventas/preview` | Preview de ventas específicas |
+| `POST` | `/hybrid-import/ventas/confirm` | Confirmar importación |
+
+### Deduplicación
+
+| Tipo | Campo | Método |
+|------|-------|--------|
+| Venta | `legacyImportKey` | `@@unique([organizationId, legacyImportKey])` |
+| Producto | `sku` | `@@unique([organizationId, sku])` |
+| Cliente | `taxId` | Lookup por `taxId + organizationId` |
+
+### Mapeo de Status
+
+| Hybrid Status | Marfyl InvoiceStatus | Importable |
+|---------------|---------------------|------------|
+| 0 (Anulado) | CANCELLED | ❌ |
+| 1 (Procesado) | PAID | ✅ |
+| 2 (Anulado) | CANCELLED | ❌ |
+| 5 (En proceso) | PENDING | ✅ |
+
+### Frontend
+
+La UI de importación está en `/hybrid/importar` y permite:
+
+1. **Preview**: Cargar ventas de Hybrid y ver qué se importaría
+2. **Selección**: Elegir ventas individuales o todas las listas
+3. **Importación**: Confirmar y persistir en la DB de Marfyl
+4. **Resultado**: Ver resumen de importadas, omitidas y errores
+
+### Seguridad
+
+- Solo **Super Admin** puede importar
+- Solo orgs fundadoras tienen acceso (Monddy, Davean, El Rancho)
+- Importación es **one-way** (Hybrid → Marfyl, nunca al revés)
+- Transacciones Prisma para atomicidad
+- Idempotencia via `legacyImportKey`
+
+---
+
 **Mantenido por:** Documentation Agent  
 **Fuente:** contrato Hybrid Local API v0.4.0 + hechos aprobados (no inventar comportamiento adicional)
