@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
-import { HYBRID_ORG_SLUG } from "@/common/founding-orgs";
+import { isHybridOrgSlug } from "@/common/founding-orgs";
 import { HybridHttpClient } from "./hybrid-http.client";
 import {
   getHybridApiBaseUrlHost,
@@ -267,7 +267,7 @@ export class HybridService {
       throw new NotFoundException("Organización no encontrada");
     }
 
-    if (org.slug !== HYBRID_ORG_SLUG) {
+    if (!isHybridOrgSlug(org.slug)) {
       throw new NotFoundException(
         "Módulo Hybrid no disponible para esta organización",
       );
