@@ -421,6 +421,8 @@ export class InventoryService {
       description: string | null;
       isExempt: boolean;
       action: "create" | "update" | "skip";
+      /** Stock ACTUAL en BD. Solo se puebla para action "update"; null en create/skip. */
+      currentStock?: number | null;
     };
 
     const errors: Array<{ row: number; field?: string; message: string }> = [];
@@ -581,7 +583,7 @@ export class InventoryService {
             organizationId,
             sku: { in: skus },
           },
-          select: { sku: true, id: true },
+          select: { sku: true, id: true, stock: true },
         })
       : [];
 
@@ -589,10 +591,22 @@ export class InventoryService {
       existing.map((e) => (e.sku ? e.sku.toUpperCase() : "")).filter(Boolean),
     );
 
-    const preview: PreviewRow[] = previewRowsRaw.map((r) => ({
-      ...r,
-      action: existingSkuSet.has(r.sku.toUpperCase()) ? "update" : "create",
-    }));
+    const stockBySku = new Map<string, number>();
+    for (const e of existing) {
+      if (e.sku) stockBySku.set(e.sku.toUpperCase(), e.stock);
+    }
+
+    const preview: PreviewRow[] = previewRowsRaw.map((r) => {
+      const action = existingSkuSet.has(r.sku.toUpperCase())
+        ? "update"
+        : "create";
+      return {
+        ...r,
+        action,
+        currentStock:
+          action === "update" ? (stockBySku.get(r.sku.toUpperCase()) ?? null) : null,
+      };
+    });
 
     const summary = {
       toCreate: preview.filter((p) => p.action === "create").length,
@@ -641,6 +655,7 @@ export class InventoryService {
           stock: r.stock,
           minStock: 5,
           isExempt: r.isExempt,
+          importedViaFile: true,
         })),
       });
       createdCount = created.count;
@@ -661,6 +676,7 @@ export class InventoryService {
               costPrice: this.toMoney(r.costPrice),
               stock: r.stock,
               isExempt: r.isExempt,
+              importedViaFile: true,
             },
           }),
         ),

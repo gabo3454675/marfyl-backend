@@ -267,6 +267,8 @@ model Product {
   // Servicio (sin inventario propio): al vender no descuenta stock del ítem; no combina con combo
   isService         Boolean  @default(false)
   isActive          Boolean  @default(true)
+  // Trazabilidad: true si el producto fue cargado/actualizado vía archivo de inventario
+  importedViaFile   Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
