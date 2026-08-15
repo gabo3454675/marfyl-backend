@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { OrganizationGuard } from '@/common/guards/organization.guard';
+import { ActiveOrganization } from '@/common/decorators/active-organization.decorator';
 import { HybridImportService } from './hybrid-import.service';
 import type { ImportResult, HybridImportPreviewResult } from './types/import-result.types';
 
@@ -15,9 +16,9 @@ export class HybridImportController {
    */
   @Get('ventas/preview')
   async previewVentas(
-    @Request() req: { user: { id: number }; organizationId: number },
+    @ActiveOrganization() organizationId: number,
   ): Promise<HybridImportPreviewResult> {
-    return this.hybridImportService.previewVentas(req.organizationId);
+    return this.hybridImportService.previewVentas(organizationId);
   }
 
   /**
@@ -25,10 +26,10 @@ export class HybridImportController {
    */
   @Post('ventas/preview')
   async previewVentasSpecific(
-    @Request() req: { user: { id: number }; organizationId: number },
+    @ActiveOrganization() organizationId: number,
     @Body('documentos') documentos: string[],
   ): Promise<HybridImportPreviewResult> {
-    return this.hybridImportService.previewVentas(req.organizationId, documentos);
+    return this.hybridImportService.previewVentas(organizationId, documentos);
   }
 
   /**
@@ -37,9 +38,9 @@ export class HybridImportController {
    */
   @Post('ventas/confirm')
   async confirmVentas(
-    @Request() req: { user: { id: number }; organizationId: number },
+    @ActiveOrganization() organizationId: number,
     @Body('documentos') documentos: string[],
   ): Promise<ImportResult> {
-    return this.hybridImportService.confirmVentas(req.organizationId, documentos);
+    return this.hybridImportService.confirmVentas(organizationId, documentos);
   }
 }
