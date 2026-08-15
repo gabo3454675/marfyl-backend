@@ -77,10 +77,11 @@ export class HybridImportService {
       const key = ventaDedupKey(venta.documento);
       const isDuplicate = existingKeys.has(key);
       const isImportable = isImportableStatus(venta.status);
-      const validation = this.ventaAdapter.validate({
-        ...venta,
-        lineas: [],
-      });
+      const hasLines = Array.isArray(venta.lineas) && venta.lineas.length > 0;
+      const validation = this.ventaAdapter.validate(
+        hasLines ? { ...venta, lineas: venta.lineas } : { ...venta, lineas: [] },
+        { skipLinesCheck: !hasLines },
+      );
 
       let status: HybridImportInvoicePreview['status'] = 'ready';
       const issues: string[] = [];
@@ -94,6 +95,10 @@ export class HybridImportService {
       } else if (!validation.valid) {
         status = 'error';
         issues.push(...validation.errors.map((e) => e.message));
+      } else if (!hasLines) {
+        // Modo listado: no se cargaron líneas aún; se validarán al confirmar
+        status = 'warning';
+        issues.push('Sin detalle cargado: las líneas se validarán al confirmar');
       }
 
       return {

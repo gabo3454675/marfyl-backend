@@ -51,7 +51,7 @@ export class VentaAdapter implements HybridAdapter<HybridVentaDetailInput, Creat
     return ventaDedupKey(input.documento);
   }
 
-  validate(input: HybridVentaDetailInput): ValidationResult {
+  validate(input: HybridVentaDetailInput, options?: { skipLinesCheck?: boolean }): ValidationResult {
     const errors: ValidationResult['errors'] = [];
 
     if (!input.documento?.trim()) {
@@ -62,7 +62,7 @@ export class VentaAdapter implements HybridAdapter<HybridVentaDetailInput, Creat
       errors.push({ field: 'fecha', message: 'Fecha es requerida', code: 'REQUIRED' });
     }
 
-    if (!input.lineas || input.lineas.length === 0) {
+    if (!options?.skipLinesCheck && (!input.lineas || input.lineas.length === 0)) {
       errors.push({ field: 'lineas', message: 'Venta sin líneas de detalle', code: 'EMPTY_LINES' });
     }
 

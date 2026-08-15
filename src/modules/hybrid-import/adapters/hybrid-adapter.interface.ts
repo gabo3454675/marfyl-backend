@@ -39,6 +39,8 @@ export interface HybridAdapter<TInput, TOutput> {
   /**
    * Valida input sin lanzar excepciones.
    * Retorna resultado estructurado para procesamiento batch.
+   * `options.skipLinesCheck` permite omitir la validación de líneas
+   * cuando el input proviene de un listado (sin detalle cargado).
    */
-  validate(input: TInput): ValidationResult;
+  validate(input: TInput, options?: { skipLinesCheck?: boolean }): ValidationResult;
 }
