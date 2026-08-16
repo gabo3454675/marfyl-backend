@@ -9,7 +9,6 @@ import { PrismaService } from "@/common/prisma/prisma.service";
 import { getCompanyIdFromOrganization } from "@/common/helpers/organization.helper";
 import { InvoiceSequenceService } from "@/modules/invoices/invoice-sequence.service";
 import {
-  computeInvoiceTax,
   computeInvoiceTaxFromGross,
   type LineTaxInput,
 } from "@/modules/fiscal/helpers/tax-calculator";
@@ -447,7 +446,7 @@ export class SalesImportService {
       }
 
       const computedTax =
-        taxInputs.length > 0 ? computeInvoiceTax(taxInputs) : null;
+        taxInputs.length > 0 ? computeInvoiceTaxFromGross(taxInputs) : null;
       const computedSubtotal = computedTax
         ? Number(computedTax.subtotal.toFixed(2))
         : 0;
@@ -664,7 +663,6 @@ export class SalesImportService {
           productById,
           rate,
           skipStockValidation: params.skipStockValidation ?? false,
-          useLegacyHeaderTotal: true,
           ivaDisabled,
         });
         imported.push({ legacyKey: invPreview.legacyKey, invoiceId });
@@ -820,7 +818,6 @@ export class SalesImportService {
     productById: Map<number, ProductRow>;
     rate: number;
     skipStockValidation: boolean;
-    useLegacyHeaderTotal?: boolean;
     ivaDisabled?: boolean;
   }) {
     const issueDate = requireImportIssueDate(
@@ -890,7 +887,7 @@ export class SalesImportService {
       }
     }
 
-    const taxTotals = computeInvoiceTax(taxLineInputs);
+    const taxTotals = computeInvoiceTaxFromGross(taxLineInputs);
     for (let i = 0; i < invoiceItemsData.length; i++) {
       const lt = taxTotals.lines[i];
       invoiceItemsData[i].taxRate = lt.taxRate;
@@ -898,9 +895,6 @@ export class SalesImportService {
       invoiceItemsData[i].ivaLine = lt.ivaLine;
     }
 
-    const excelSubtotal = Number(
-      invoiceItemsData.reduce((s, i) => s + i.subtotal, 0).toFixed(2),
-    );
     let totalAmount = taxTotals.totalWithTax;
     let baseExempt = taxTotals.baseExempt;
     let baseGeneral = taxTotals.baseGeneral;
@@ -910,28 +904,7 @@ export class SalesImportService {
     const header = params.source.headerTotalNet;
     const headerRounded =
       header != null ? Number(header.toFixed(2)) : null;
-    const legacyGrossMode =
-      !ivaDisabled &&
-      params.useLegacyHeaderTotal &&
-      (headerRounded != null
-        ? Math.abs(headerRounded - excelSubtotal) <= 0.15
-        : taxTotals.totalWithTax - excelSubtotal > 0.05);
-
-    if (legacyGrossMode) {
-      const grossTax = computeInvoiceTaxFromGross(taxLineInputs);
-      for (let i = 0; i < invoiceItemsData.length; i++) {
-        const lt = grossTax.lines[i];
-        invoiceItemsData[i].taxRate = lt.taxRate;
-        invoiceItemsData[i].taxableBase = lt.taxableBase;
-        invoiceItemsData[i].ivaLine = lt.ivaLine;
-      }
-      totalAmount =
-        headerRounded != null ? headerRounded : grossTax.totalWithTax;
-      baseExempt = grossTax.baseExempt;
-      baseGeneral = grossTax.baseGeneral;
-      baseReduced = grossTax.baseReduced;
-      ivaAmount = grossTax.ivaAmount;
-    } else if (
+    if (
       headerRounded != null &&
       Math.abs(headerRounded - taxTotals.totalWithTax) <= 0.05
     ) {

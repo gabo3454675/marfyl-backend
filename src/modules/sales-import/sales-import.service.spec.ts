@@ -79,9 +79,11 @@ const makeProduct = (
 });
 
 /**
- * Factura legacy con una sola línea. headerTotalNet = lineTotal * 1.16 (IVA
- * 16%, computeInvoiceTax real) para que totalsMatch sea true y la invoice
- * quede "ready" en el preview (producto gravado y no exento).
+ * Factura legacy con una sola línea. Los montos del archivo YA incluyen IVA
+ * (16%): headerTotalNet = lineTotal (semántica bruta). computeInvoiceTaxFromGross
+ * desglosa base = round2(monto/1.16) e iva = round2(monto - base), por lo que
+ * totalsMatch es true y la invoice queda "ready" en el preview (producto
+ * gravado y no exento).
  */
 const makeParsedInvoice = (
   lineOverrides: Partial<{
@@ -105,7 +107,7 @@ const makeParsedInvoice = (
     documentNumber: "0001",
     saleDate: "11/08/2026",
     customer: "CLIENTE NATURAL CONTADO",
-    headerTotalNet: Number((line.lineTotal * 1.16).toFixed(2)),
+    headerTotalNet: line.lineTotal,
     lines: [line],
     sourceFile: "ventas.xlsx",
     ...overrides,
@@ -454,5 +456,80 @@ describe("SalesImportService - Confirm (stock)", () => {
     expect(second.invoices[0].invoiceId).toBe(500);
     expect(tx.product.update).toHaveBeenCalledTimes(1);
     expect(tx.invoice.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("8. confirm desglosa IVA desde monto bruto: totalAmount=10, baseGeneral=8.62, ivaAmount=1.38, item taxableBase=8.62/ivaLine=1.38/taxRate=16", async () => {
+    mockPrisma.product.findMany.mockResolvedValue([makeProduct()]);
+    const previewResult = await setupConfirmPreview();
+
+    const result = await service.confirm({
+      ...confirmParams,
+      batchId: previewResult.batchId,
+    });
+
+    expect(result.imported).toBe(1);
+    expect(result.failed).toBe(0);
+    const data = tx.invoice.create.mock.calls[0][0].data;
+    // El monto del archivo (10) YA incluye IVA: totalAmount no suma IVA extra.
+    expect(data.totalAmount).toBe(10);
+    expect(data.baseExempt).toBe(0);
+    expect(data.baseGeneral).toBe(8.62);
+    expect(data.ivaAmount).toBe(1.38);
+    // Identidad base + iva = monto (8.62 + 1.38 = 10).
+    expect(data.baseGeneral + data.ivaAmount).toBe(10);
+    expect(data.items.create[0]).toMatchObject({
+      taxableBase: 8.62,
+      ivaLine: 1.38,
+      taxRate: 16,
+    });
+  });
+
+  it("9. confirm producto exento: baseExempt=monto, iva=0, taxRate=0", async () => {
+    mockPrisma.product.findMany.mockResolvedValue([
+      makeProduct({ isExempt: true }),
+    ]);
+    const previewResult = await setupConfirmPreview();
+
+    const result = await service.confirm({
+      ...confirmParams,
+      batchId: previewResult.batchId,
+    });
+
+    expect(result.imported).toBe(1);
+    const data = tx.invoice.create.mock.calls[0][0].data;
+    expect(data.totalAmount).toBe(10);
+    expect(data.baseExempt).toBe(10);
+    expect(data.baseGeneral).toBe(0);
+    expect(data.ivaAmount).toBe(0);
+    expect(data.items.create[0]).toMatchObject({
+      taxableBase: 0,
+      ivaLine: 0,
+      taxRate: 0,
+    });
+  });
+
+  it("10. confirm redondea a 2 decimales: lineTotal=4.06 → base 3.50, iva 0.56", async () => {
+    mockPrisma.product.findMany.mockResolvedValue([makeProduct()]);
+    const invoice = makeParsedInvoice({ lineTotal: 4.06 });
+    (parseMarfylSalesExcel as jest.Mock).mockReturnValue([invoice]);
+    const previewResult = await setupConfirmPreview(invoice);
+
+    const result = await service.confirm({
+      ...confirmParams,
+      batchId: previewResult.batchId,
+    });
+
+    expect(result.imported).toBe(1);
+    const data = tx.invoice.create.mock.calls[0][0].data;
+    expect(data.totalAmount).toBe(4.06);
+    expect(data.baseGeneral).toBe(3.5);
+    expect(data.ivaAmount).toBe(0.56);
+    // Identidad base + iva = monto (3.50 + 0.56 = 4.06).
+    expect(data.baseGeneral + data.ivaAmount).toBeCloseTo(4.06, 2);
+    expect(data.items.create[0]).toMatchObject({
+      taxableBase: 3.5,
+      ivaLine: 0.56,
+      taxRate: 16,
+    });
   });
 });

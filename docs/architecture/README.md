@@ -1,6 +1,6 @@
 # 📚 Arquitectura — MARFYL
 
-> **Última actualización:** 2026-08-15  
+> **Última actualización:** 2026-08-16  
 > **Estado:** ✅ Actualizado
 
 ---
@@ -25,6 +25,7 @@
 | Documento | Descripción | Estado |
 |-----------|-------------|--------|
 | [Importación Excel](../../README.md#importación-excel) | Proyección de stock (`currentStock`/`stockDelta`/`finalStock`), trazabilidad por archivo y deuda de migración manual `importedViaFile` — sección del `README.md` del backend | ✅ Actualizado |
+| [Desglose fiscal en importaciones](../../README.md#desglose-fiscal-en-importaciones-task-007) | TASK-007: precios con IVA incluido (16%), desglose `base = round2(monto/1.16)`, precedente en `expense-fiscal.helper.ts:57-58` — sección del `README.md` del backend | ✅ Actualizado |
 
 ### Otros Documentos
 
@@ -115,4 +116,4 @@ Ver `permissions.md` → Troubleshooting
 ---
 
 **Maintenido por:** Documentation Agent  
-**Última revisión:** 2026-08-15
+**Última revisión:** 2026-08-16

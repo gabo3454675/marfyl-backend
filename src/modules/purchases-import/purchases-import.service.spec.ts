@@ -310,4 +310,54 @@ describe("PurchasesImportService", () => {
       expect(tx.inventoryMovement.create).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("confirm - desglose fiscal del Expense (IVA incluido en el monto)", () => {
+    const confirmParams = {
+      buffer: Buffer.from("compra"),
+      fileName: "compra-monddy.xlsx",
+      organizationId: 7,
+      userId: 3,
+    };
+
+    it("9. expense.create desglosa IVA desde monto bruto: baseGeneral=43.10, ivaAmount=6.90", async () => {
+      // Línea por defecto: quantity=5, unitCostUsd=10 → monto bruto 50.
+      // base = round2(50/1.16) = 43.10, iva = round2(50 - 43.10) = 6.90.
+      await service.confirm(confirmParams);
+
+      expect(tx.expense.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 50,
+            baseExempt: 0,
+            baseGeneral: 43.1,
+            ivaAmount: 6.9,
+          }),
+        }),
+      );
+      // Identidad base + iva = monto (43.10 + 6.90 = 50).
+      const data = tx.expense.create.mock.calls[0][0].data;
+      expect(data.baseGeneral + data.ivaAmount).toBe(50);
+    });
+
+    it("10. expense.create exento: baseExempt=monto, iva=0", async () => {
+      (parseMonddyPurchasesExcel as jest.Mock).mockReturnValue([
+        makeGroup({
+          lines: [makeLine({ isExempt: true })],
+        }),
+      ]);
+
+      await service.confirm(confirmParams);
+
+      expect(tx.expense.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            amount: 50,
+            baseExempt: 50,
+            baseGeneral: 0,
+            ivaAmount: 0,
+          }),
+        }),
+      );
+    });
+  });
 });

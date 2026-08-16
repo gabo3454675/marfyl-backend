@@ -44,4 +44,18 @@ describe("tax-calculator", () => {
     expect(t.baseGeneral).toBe(100);
     expect(t.baseExempt).toBe(10);
   });
+
+  it("desglosa IVA desde precio bruto con tasa reducida 8%", () => {
+    const t = computeInvoiceTaxFromGross([{ amount: 108, taxRate: 8 }]);
+    expect(t.totalWithTax).toBe(108);
+    expect(t.ivaAmount).toBe(8);
+    expect(t.baseReduced).toBe(100);
+    expect(t.baseGeneral).toBe(0);
+    expect(t.lines[0]).toMatchObject({
+      taxableBase: 100,
+      ivaLine: 8,
+      taxRate: 8,
+      bucket: "reduced",
+    });
+  });
 });

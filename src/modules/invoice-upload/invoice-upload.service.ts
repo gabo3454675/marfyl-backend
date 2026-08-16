@@ -5,6 +5,8 @@ import { getCompanyIdFromOrganization } from "@/common/helpers/organization.help
 import type { ConfirmInvoiceUploadDto } from "./dto/confirm-invoice.dto";
 import { buildMovementReason } from "./invoice-upload.constants";
 import { num } from "@/common/helpers/number.helper";
+import { computeExpenseFiscal } from "@/modules/fiscal/helpers/expense-fiscal.helper";
+import { round2 } from "@/modules/fiscal/helpers/tax-calculator";
 import * as ExcelJS from "exceljs";
 import pdfParse from "pdf-parse";
 import { ReceiptScanService } from "@/modules/expenses/receipt-scan.service";
@@ -639,6 +641,7 @@ export class InvoiceUploadService {
       productName: string;
       quantity: number;
       unitCost: number;
+      isExempt: boolean;
     };
     const validatedLines: ValidatedLine[] = [];
 
@@ -666,6 +669,7 @@ export class InvoiceUploadService {
         productName: product.name,
         quantity: line.quantity,
         unitCost: line.unitCostUsd ?? num(product.costPrice),
+        isExempt: product.isExempt,
       });
     }
 
@@ -691,6 +695,26 @@ export class InvoiceUploadService {
       validatedLines.reduce((sum, l) => sum + l.quantity * l.unitCost, 0) * 100,
     ) / 100;
 
+    // ── 5b. Calculate fiscal breakdown (IVA incluido en el monto bruto) ──
+    // Los montos de la factura YA incluyen IVA (16%). Nunca se suma IVA adicional:
+    // se desglosa el bruto con base = round2(monto/1.16), iva = round2(monto - base).
+    const fiscalTotals = validatedLines.reduce(
+      (acc, l) => {
+        const fiscal = computeExpenseFiscal({
+          amount: l.quantity * l.unitCost,
+          isExempt: l.isExempt,
+        });
+        acc.baseExempt += fiscal.baseExempt;
+        acc.baseGeneral += fiscal.baseGeneral;
+        acc.ivaAmount += fiscal.ivaAmount;
+        return acc;
+      },
+      { baseExempt: 0, baseGeneral: 0, ivaAmount: 0 },
+    );
+    const baseExempt = round2(fiscalTotals.baseExempt);
+    const baseGeneral = round2(fiscalTotals.baseGeneral);
+    const ivaAmount = round2(fiscalTotals.ivaAmount);
+
     // ── 6. Execute in transaction ────────────────────────────────────
     const expenseDate = dto.date ?? new Date().toISOString().split("T")[0];
 
@@ -707,6 +731,9 @@ export class InvoiceUploadService {
             organizationId,
             date: new Date(expenseDate),
             amount: totalAmount,
+            baseExempt,
+            baseGeneral,
+            ivaAmount,
             description: dto.description || "Compra de inventario importada",
             categoryId: inventoryCategoryId,
             supplierId: dto.supplierId ?? undefined,

@@ -73,6 +73,37 @@ Los previews de ventas y compras devuelven por línea `currentStock`, `stockDelt
 - **Confirm ventas:** valida stock (error si `stock < quantity`, salvo `skipStockValidation=true`) y aplica el decrement; **confirm compras:** aplica el increment y actualiza `costPrice`. Ambos reutilizan `projectStock`.
 - **Inventario (dry-run, `confirm=false`):** devuelve `currentStock` (stock actual en BD) solo para `action: "update"` (`null` para `create`/`skip`); el `stock` del archivo es el valor que se fijará (el Excel es la "fuente de verdad").
 
+### Desglose fiscal en importaciones (TASK-007)
+
+Los montos importados desde archivos Excel (ventas, compras, hybrid, invoice-upload) **ya incluyen IVA (16%)**. El sistema **no suma IVA adicional**, solo desglosa:
+
+```
+base = round2(monto / 1.16)
+iva  = round2(monto - base)
+```
+
+Identidad exacta: `base + iva = monto` (sin redondeo adicional).
+
+**Tabla de flujos afectados:**
+
+| Flujo | Archivo | Cambio |
+|-------|---------|--------|
+| Ventas (preview/confirm) | `sales-import.service.ts` | `computeInvoiceTaxFromGross` (TASK-001) |
+| Compras | `purchases-import.service.ts` | Desglose fiscal con `computeExpenseFiscal` (TASK-002) |
+| Invoice-upload | `invoice-upload.service.ts` | `isExempt` + desglose fiscal (TASK-003) |
+| Hybrid (líneas) | `venta.adapter.ts` | Desglose bruto en líneas (TASK-004) |
+| POS frontend | Ya correcto (sin cambios) | Desglose por dentro (TASK-006) |
+| Inventario | `inventory.service.ts` | Sin cambio (ya guardaba tal cual) |
+| Products upload | `products.service.ts` | Sin cambio (ya guardaba tal cual) |
+
+**Precedente:** `src/modules/fiscal/helpers/expense-fiscal.helper.ts:57-58`
+```typescript
+const baseGeneral = round2(amount / 1.16);
+const ivaAmount = round2(amount - baseGeneral);
+```
+
+**Nota:** Inventario y products upload ya guardaban `costPrice`/`salePrice` tal cual sin desglose fiscal; no requirieron cambios de código.
+
 ### Trazabilidad de importación por archivo
 
 | Origen | Entidad | Campos de trazabilidad |

@@ -12,6 +12,8 @@ import {
   type ParsedPurchaseGroup,
   type ParsedPurchaseLine,
 } from "./monddy-purchases.parser";
+import { computeExpenseFiscal } from "@/modules/fiscal/helpers/expense-fiscal.helper";
+import { round2 } from "@/modules/fiscal/helpers/tax-calculator";
 
 type ProductRow = {
   id: number;
@@ -349,6 +351,23 @@ export class PurchasesImportService {
         validated.reduce((s, l) => s + l.quantity * l.unitCostUsd, 0) * 100,
       ) / 100;
 
+      // Desglose fiscal por línea: los montos del Excel YA incluyen IVA (16%).
+      // Exenta → baseExempt = monto; gravada → baseGeneral = round2(monto/1.16),
+      // ivaAmount = round2(monto - baseGeneral). Identidad base + iva = monto.
+      const fiscalTotals = validated.reduce(
+        (acc, line) => {
+          const fiscal = computeExpenseFiscal({
+            amount: line.quantity * line.unitCostUsd,
+            isExempt: line.isExempt,
+          });
+          acc.baseExempt += fiscal.baseExempt;
+          acc.baseGeneral += fiscal.baseGeneral;
+          acc.ivaAmount += fiscal.ivaAmount;
+          return acc;
+        },
+        { baseExempt: 0, baseGeneral: 0, ivaAmount: 0 },
+      );
+
       await this.prisma.$transaction(
         async (tx) => {
           const expense = await tx.expense.create({
@@ -357,6 +376,9 @@ export class PurchasesImportService {
               organizationId: params.organizationId,
               date: new Date(`${group.purchaseDate}T12:00:00.000Z`),
               amount: totalAmount,
+              baseExempt: round2(fiscalTotals.baseExempt),
+              baseGeneral: round2(fiscalTotals.baseGeneral),
+              ivaAmount: round2(fiscalTotals.ivaAmount),
               description: `Compra importada Monddy | ${importKey} | ${group.supplierName}`,
               importKey,
               categoryId: category.id,
