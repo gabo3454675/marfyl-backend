@@ -45,7 +45,7 @@ describe("HybridService gate order", () => {
 
   it("1→2: org distinta a monddy → NotFound y no llama al client (aunque config exista)", async () => {
     configureHybridEnv();
-    prisma.organization.findUnique.mockResolvedValue({ slug: "davean" });
+    prisma.organization.findUnique.mockResolvedValue({ slug: "unknown-org" });
 
     await expect(service.getHealth(1)).rejects.toBeInstanceOf(NotFoundException);
     expect(http.get).not.toHaveBeenCalled();
@@ -180,7 +180,7 @@ describe("HybridService gate order", () => {
   describe("getConnectionStatus (SA diagnostic, solo Monddy)", () => {
     it("org distinta a monddy → NotFound y no llama http", async () => {
       configureHybridEnv();
-      prisma.organization.findUnique.mockResolvedValue({ slug: "davean" });
+      prisma.organization.findUnique.mockResolvedValue({ slug: "unknown-org" });
 
       await expect(service.getConnectionStatus(1)).rejects.toBeInstanceOf(
         NotFoundException,
@@ -191,7 +191,7 @@ describe("HybridService gate order", () => {
     it("rancho → NotFound y no llama http", async () => {
       configureHybridEnv();
       prisma.organization.findUnique.mockResolvedValue({
-        slug: "el-rancho-de-german",
+        slug: "unknown-org",
       });
 
       await expect(service.getConnectionStatus(2)).rejects.toBeInstanceOf(
