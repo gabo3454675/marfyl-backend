@@ -283,6 +283,7 @@ export class InventoryService {
     ]);
     const cost = this.findColumnIndex(received, ["costo"]);
     const salePrice = this.findColumnIndex(received, [
+      "precio_venta",
       "precio venta",
       "precio",
     ]);

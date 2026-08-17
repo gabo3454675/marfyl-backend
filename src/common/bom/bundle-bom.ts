@@ -1,6 +1,11 @@
 /**
  * BOM de combos/tobos: receta de 1 nivel (combo → productos sueltos).
  * No hay combos anidados ni grafo: el stock vive en los componentes.
+ *
+ * Combos Monddy (isBundle): botella + vasos + hielo + mixers vía parseBomLines/explodeBom.
+ * Descorche/isService NUNCA en bundleComponents — rechazado en products.resolveBomLines
+ * y en findUnstockableBomNeed (invoices/floor-orders) tras mergeBomNeeds.
+ * BOM de isService (descorche) tampoco admite botella/licor (findBottleInBom).
  */
 
 export type BomLine = { productId: number; quantity: number };
@@ -35,6 +40,24 @@ export function explodeBom(lines: BomLine[], comboQty: number): BomLine[] {
       line.productId,
       (merged.get(line.productId) ?? 0) + line.quantity * n,
     );
+  }
+  return [...merged.entries()].map(([productId, quantity]) => ({
+    productId,
+    quantity,
+  }));
+}
+
+/** Fusiona varias listas de necesidades BOM por productId (suma cantidades). */
+export function mergeBomNeeds(linesLists: BomLine[][]): BomLine[] {
+  const merged = new Map<number, number>();
+  for (const lines of linesLists) {
+    if (!Array.isArray(lines)) continue;
+    for (const line of lines) {
+      if (!line || line.productId <= 0 || line.quantity < 1) continue;
+      const qty = Math.floor(line.quantity);
+      if (qty < 1) continue;
+      merged.set(line.productId, (merged.get(line.productId) ?? 0) + qty);
+    }
   }
   return [...merged.entries()].map(([productId, quantity]) => ({
     productId,

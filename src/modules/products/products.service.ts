@@ -17,6 +17,7 @@ import { UploadService } from "@/common/services/upload.service";
 import { PaginatedResponse } from "@/common/interfaces/paginated-response.interface";
 import { parseMonddyExcel } from "./monddy-excel.parser";
 import { parseBomLines, maxBuildable, type BomLine } from "@/common/bom/bundle-bom";
+import { findBottleInBom } from "@/common/bom/sale-mode-stock";
 
 @Injectable()
 export class ProductsService {
@@ -84,10 +85,12 @@ export class ProductsService {
     if (bundle) {
       storedComponents = await this.resolveBomLines(organizationId, compsRaw, {
         requireNonEmpty: true,
+        parentKind: "combo",
       });
     } else if (srv && parseBomLines(compsRaw).length > 0) {
       storedComponents = await this.resolveBomLines(organizationId, compsRaw, {
         requireNonEmpty: false,
+        parentKind: "service",
       });
     } else {
       storedComponents = undefined;
@@ -301,7 +304,11 @@ export class ProductsService {
         data.bundleComponents = await this.resolveBomLines(
           organizationId,
           bc,
-          { requireNonEmpty: true, parentProductId: id },
+          {
+            requireNonEmpty: true,
+            parentProductId: id,
+            parentKind: "combo",
+          },
         );
       } else if (nextService) {
         const lines = parseBomLines(bc);
@@ -310,6 +317,7 @@ export class ProductsService {
             ? await this.resolveBomLines(organizationId, bc, {
                 requireNonEmpty: false,
                 parentProductId: id,
+                parentKind: "service",
               })
             : null;
       } else {
@@ -319,7 +327,11 @@ export class ProductsService {
       data.bundleComponents = await this.resolveBomLines(
         organizationId,
         existingProduct.bundleComponents,
-        { requireNonEmpty: true, parentProductId: id },
+        {
+          requireNonEmpty: true,
+          parentProductId: id,
+          parentKind: "combo",
+        },
       );
     }
 
@@ -1012,7 +1024,12 @@ export class ProductsService {
   private async resolveBomLines(
     organizationId: number,
     raw: unknown,
-    opts: { requireNonEmpty: boolean; parentProductId?: number },
+    opts: {
+      requireNonEmpty: boolean;
+      parentProductId?: number;
+      /** combo = isBundle; service = isService (descorche) — sin botella en BOM */
+      parentKind?: "combo" | "service";
+    },
   ): Promise<BomLine[]> {
     const lines = parseBomLines(raw);
     if (opts.requireNonEmpty && lines.length === 0) {
@@ -1027,14 +1044,22 @@ export class ProductsService {
       lines.some((l) => l.productId === opts.parentProductId)
     ) {
       throw new BadRequestException(
-        "Un combo no puede incluirse a sí mismo en la receta.",
+        opts.parentKind === "service"
+          ? "Un servicio no puede incluirse a sí mismo en la receta."
+          : "Un combo no puede incluirse a sí mismo en la receta.",
       );
     }
 
     const ids = lines.map((l) => l.productId);
     const children = await this.prisma.product.findMany({
       where: { id: { in: ids }, organizationId },
-      select: { id: true, name: true, isBundle: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isBundle: true,
+        isService: true,
+        isActive: true,
+      },
     });
     const childById = new Map(children.map((p) => [p.id, p]));
     for (const line of lines) {
@@ -1049,12 +1074,30 @@ export class ProductsService {
           `"${child.name}" es un combo. La receta solo admite productos sueltos (un nivel).`,
         );
       }
+      if (child.isService) {
+        throw new BadRequestException(
+          `"${child.name}" es un servicio (p. ej. descorche) y no puede ir en la receta.`,
+        );
+      }
       if (!child.isActive) {
         throw new BadRequestException(
           `"${child.name}" está inactivo y no puede formar parte de la receta.`,
         );
       }
     }
+
+    // Invariante catálogo descorche: BOM de isService no incluye botella/licor
+    if (opts.parentKind === "service") {
+      const nameById = new Map(children.map((c) => [c.id, c.name]));
+      const bottle = findBottleInBom(lines, nameById);
+      if (bottle) {
+        const name = nameById.get(bottle.productId) ?? `#${bottle.productId}`;
+        throw new BadRequestException(
+          `"${name}" es una botella/licor y no puede ir en la receta de un servicio de descorche. Solo acompañamientos (vasos, hielo, mixers).`,
+        );
+      }
+    }
+
     return lines;
   }
 }

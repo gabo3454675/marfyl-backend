@@ -32,8 +32,19 @@ import {
   InvoiceStatus,
   FiscalDocumentType,
   MovementType,
+  SaleMode,
 } from "@prisma/client";
-import { parseBomLines } from "@/common/bom/bundle-bom";
+import { explodeBom, mergeBomNeeds, parseBomLines } from "@/common/bom/bundle-bom";
+import {
+  bomLinesForStock,
+  collectReferencedBomProductIds,
+  collectSaleStockNeeds,
+  findUnstockableBomNeed,
+  resolveSaleMode,
+  unstockableBomNeedMessage,
+  type SaleModeValue,
+  type StockProductLike,
+} from "@/common/bom/sale-mode-stock";
 import { LiquorSalesService } from "./liquor-sales.service";
 import {
   displayQuantity,
@@ -146,17 +157,15 @@ export class InvoicesService {
       where: { id: { in: lineProductIds }, organizationId },
     });
     const allIdSet = new Set<number>(lineProductIds);
-    for (const p of firstProducts) {
-      if (!p.isBundle && !p.isService) continue;
-      for (const c of parseBomLines(p.bundleComponents)) {
-        allIdSet.add(c.productId);
-      }
+    for (const id of collectReferencedBomProductIds(firstProducts)) {
+      allIdSet.add(id);
     }
 
     const products = await this.prisma.product.findMany({
       where: { id: { in: [...allIdSet] }, organizationId },
     });
     const productById = new Map(products.map((p) => [p.id, p]));
+    const nameByProductId = new Map(products.map((p) => [p.id, p.name]));
 
     if (products.length !== allIdSet.size) {
       throw new NotFoundException("Uno o más productos no fueron encontrados");
@@ -205,8 +214,9 @@ export class InvoicesService {
       taxableBase: number;
       ivaLine: number;
       variantId: number | null;
+      saleMode: SaleMode;
     }[] = [];
-    const stockDecrements: { productId: number; quantity: number }[] = [];
+    const pendingStockLists: { productId: number; quantity: number }[][] = [];
     const inventoryMovementPromises: ReturnType<
       PrismaService["inventoryMovement"]["create"]
     >[] = [];
@@ -216,6 +226,13 @@ export class InvoicesService {
       if (!product) {
         throw new NotFoundException(
           `Producto con ID ${item.productId} no encontrado`,
+        );
+      }
+
+      const saleMode = resolveSaleMode(item.saleMode) as SaleModeValue;
+      if (saleMode === "DESCORCHE" && !product.isService) {
+        throw new BadRequestException(
+          `saleMode DESCORCHE solo aplica a productos de servicio (tarifa). "${product.name}" no es isService.`,
         );
       }
 
@@ -239,6 +256,8 @@ export class InvoicesService {
         effectiveQty = item.quantity * variant.unitQuantity;
         shouldDeduct = variant.stockBehavior === "DEDUCT";
       } else {
+        // DESCORCHE / STANDARD / COMBO: precio = salePrice del producto de línea
+        // (tarifa de descorche o precio de combo / unidad).
         unitPrice = Number(product.salePrice);
         effectiveQty = item.quantity;
       }
@@ -261,9 +280,14 @@ export class InvoicesService {
         taxableBase: 0,
         ivaLine: 0,
         variantId: item.variantId ?? null,
+        saleMode: saleMode as SaleMode,
       });
 
-      const compsList = parseBomLines(product.bundleComponents);
+      const compsList = bomLinesForStock(
+        product,
+        saleMode,
+        nameByProductId,
+      );
 
       if (product.isBundle) {
         if (compsList.length === 0) {
@@ -271,43 +295,18 @@ export class InvoicesService {
             `El combo "${product.name}" no tiene componentes configurados`,
           );
         }
-        this.applyInvoiceBundleComponents(
-          compsList,
-          item.quantity,
-          product.name,
-          "combo",
-          productById,
-          stockDecrements,
-          releaseMap,
-        );
+        pendingStockLists.push(explodeBom(compsList, item.quantity));
       } else if (product.isService) {
+        // STANDARD: BOM completo si hay. DESCORCHE: solo acompañamientos (sin botella).
         if (compsList.length > 0) {
-          this.applyInvoiceBundleComponents(
-            compsList,
-            item.quantity,
-            product.name,
-            "servicio",
-            productById,
-            stockDecrements,
-            releaseMap,
-          );
+          pendingStockLists.push(explodeBom(compsList, item.quantity));
         }
       } else {
-        // ── Stock para productos normales ──
         if (shouldDeduct) {
-          const avail = availableUnits(
-            product,
-            releaseMap.get(product.id) ?? 0,
-          );
-          if (avail < effectiveQty) {
-            throw new BadRequestException(
-              `Stock insuficiente para ${product.name}. Disponible: ${avail}, Solicitado: ${effectiveQty}`,
-            );
-          }
-          stockDecrements.push({ productId: product.id, quantity: effectiveQty });
+          pendingStockLists.push([
+            { productId: product.id, quantity: effectiveQty },
+          ]);
         }
-
-        // ── InventoryMovement solo cuando se usa variante ──
         if (hasVariant) {
           inventoryMovementPromises.push(
             this.prisma.inventoryMovement.create({
@@ -323,6 +322,33 @@ export class InvoicesService {
             }),
           );
         }
+      }
+    }
+
+    // Merge por productId antes de chequear stock (varias líneas pueden compartir componente)
+    const stockDecrements = mergeBomNeeds(pendingStockLists);
+    const badNeed = findUnstockableBomNeed(
+      stockDecrements,
+      productById as Map<number, StockProductLike>,
+    );
+    if (badNeed?.reason === "missing") {
+      throw new NotFoundException(
+        unstockableBomNeedMessage(badNeed),
+      );
+    }
+    if (badNeed) {
+      throw new BadRequestException(unstockableBomNeedMessage(badNeed));
+    }
+    for (const need of stockDecrements) {
+      const child = productById.get(need.productId)!;
+      const avail = availableUnits(
+        child,
+        releaseMap.get(child.id) ?? 0,
+      );
+      if (avail < need.quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${child.name}". Disponible: ${avail}, requerido: ${need.quantity}`,
+        );
       }
     }
 
@@ -561,68 +587,37 @@ export class InvoicesService {
     })!;
   }
 
-  /**
-   * Descuenta inventario de los productos hijos (misma lógica para combo y servicio con «receta»).
-   */
-  private applyInvoiceBundleComponents(
-    comps: { productId: number; quantity: number }[],
-    lineQty: number,
-    parentName: string,
-    kind: "combo" | "servicio",
-    productById: Map<number, Product>,
-    stockDecrements: { productId: number; quantity: number }[],
-    releaseMap: Map<number, number> = new Map(),
-  ) {
-    for (const comp of comps) {
-      const child = productById.get(comp.productId);
-      if (!child) {
-        throw new NotFoundException(
-          kind === "combo"
-            ? `Componente de combo no encontrado: producto ${comp.productId}`
-            : `Producto incluido en el servicio no encontrado: ${comp.productId}`,
-        );
-      }
-      const need = lineQty * (comp.quantity ?? 1);
-      const avail = availableUnits(child, releaseMap.get(child.id) ?? 0);
-      if (avail < need) {
-        throw new BadRequestException(
-          `Stock insuficiente para "${child.name}" (${kind === "combo" ? "componente del combo" : "incluido en el servicio"}) "${parentName}". Disponible: ${avail}, requerido: ${need}`,
-        );
-      }
-      stockDecrements.push({ productId: child.id, quantity: need });
-    }
-  }
-
-  /** Restaura stock al anular una factura (inverso de create). */
+  /** Restaura stock al anular una factura (inverso de create vía mergeBomNeeds). */
   private collectVoidStockRestores(
     items: Array<{
       quantity: number;
+      saleMode?: SaleMode | string | null;
       product: Product & { bundleComponents?: unknown };
     }>,
     productById: Map<number, Product>,
+    nameByProductId: Map<number, string>,
   ): { productId: number; increment: number }[] {
-    const restores: { productId: number; increment: number }[] = [];
-    const push = (productId: number, increment: number) => {
-      if (increment <= 0) return;
-      const existing = restores.find((r) => r.productId === productId);
-      if (existing) existing.increment += increment;
-      else restores.push({ productId, increment });
-    };
-
-    for (const item of items) {
-      const product = item.product;
-      const compsList = parseBomLines(product.bundleComponents);
-
-      if (product.isBundle || product.isService) {
-        for (const comp of compsList) {
-          if (!productById.has(comp.productId)) continue;
-          push(comp.productId, item.quantity * comp.quantity);
-        }
-      } else {
-        push(product.id, item.quantity);
-      }
+    const stockProducts = new Map<number, StockProductLike>();
+    for (const [id, p] of productById) {
+      stockProducts.set(id, p as StockProductLike);
     }
-    return restores;
+    for (const item of items) {
+      stockProducts.set(item.product.id, item.product as StockProductLike);
+    }
+
+    const needs = collectSaleStockNeeds(
+      items.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        saleMode: item.saleMode,
+      })),
+      stockProducts,
+      nameByProductId,
+    );
+
+    return needs
+      .filter((n) => productById.has(n.productId))
+      .map((n) => ({ productId: n.productId, increment: n.quantity }));
   }
 
   async findAll(organizationId: number) {
@@ -1250,7 +1245,7 @@ export class InvoicesService {
 
     const allProductIds = new Set<number>();
     for (const item of invoice.items) {
-      allProductIds.add(item.productId);
+      if (item.productId != null) allProductIds.add(item.productId);
       for (const c of parseBomLines(item.product?.bundleComponents)) {
         allProductIds.add(c.productId);
       }
@@ -1259,13 +1254,18 @@ export class InvoicesService {
       where: { id: { in: [...allProductIds] }, organizationId },
     });
     const productById = new Map(relatedProducts.map((p) => [p.id, p]));
+    const nameByProductId = new Map(
+      relatedProducts.map((p) => [p.id, p.name]),
+    );
 
     const stockRestores = this.collectVoidStockRestores(
       invoice.items as Array<{
         quantity: number;
+        saleMode?: SaleMode | string | null;
         product: Product & { bundleComponents?: unknown };
       }>,
       productById,
+      nameByProductId,
     );
 
     const isCreditSale =

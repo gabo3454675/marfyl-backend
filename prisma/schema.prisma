@@ -355,6 +355,15 @@ enum FloorTableAccountStatus {
   CLOSED
 }
 
+/// Modalidad de venta de la línea (comanda / factura).
+/// DESCORCHE: tarifa isService; no descuenta botella; sí acompañamientos BOM.
+/// COMBO: anotación opcional para isBundle (stock siempre vía componentes).
+enum SaleMode {
+  STANDARD
+  DESCORCHE
+  COMBO
+}
+
 model FloorTable {
   id             Int      @id @default(autoincrement())
   organizationId Int
@@ -465,6 +474,7 @@ model FloorOrderItem {
   unitPrice    Decimal      @db.Decimal(10, 2)
   notes        String?
   station      FloorStation @default(OTHER)
+  saleMode     SaleMode     @default(STANDARD)
 
   floorOrder FloorOrder @relation(fields: [floorOrderId], references: [id], onDelete: Cascade)
   product    Product    @relation(fields: [productId], references: [id])
@@ -904,6 +914,7 @@ model InvoiceItem {
   taxRate       Int                      @default(16)
   taxableBase   Decimal                  @default(0) @db.Decimal(15, 2)
   ivaLine       Decimal                  @default(0) @db.Decimal(15, 2)
+  saleMode      SaleMode                 @default(STANDARD)
   recordClass   InvoiceItemRecordClass   @default(OPERATIONAL)
   lineageStatus InvoiceItemLineageStatus @default(ACTIVE)
   sourceHash    String?

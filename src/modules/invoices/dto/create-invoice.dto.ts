@@ -12,6 +12,8 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
+const SALE_MODES = ["STANDARD", "DESCORCHE", "COMBO"] as const;
+
 export class CreateInvoiceItemDto {
   @IsInt()
   @Min(1)
@@ -25,6 +27,11 @@ export class CreateInvoiceItemDto {
   @IsInt()
   @Min(1)
   variantId?: number;
+
+  /** Modalidad de venta. Default STANDARD. DESCORCHE solo si el producto es isService. */
+  @IsOptional()
+  @IsIn(SALE_MODES)
+  saleMode?: (typeof SALE_MODES)[number];
 }
 
 const PAYMENT_METHODS = [

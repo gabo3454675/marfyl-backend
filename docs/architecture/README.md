@@ -20,6 +20,12 @@
 |-----------|-------------|--------|
 | [hybrid-integration.md](./hybrid-integration.md) | Proxy READ-ONLY Hybrid v0.4.0 (orgs fundadoras) | ✅ Actualizado |
 
+### POS / Catálogo Monddy
+
+| Documento | Descripción | Estado |
+|-----------|-------------|--------|
+| [ADR-002 SaleMode + Combos/Descorches](../adr/002-sale-mode-combos-descorches.md) | Modalidad de venta, stock, seeds staging, gaps FE/staging (Gate B) | ✅ Actualizado |
+
 ### Importación (Excel)
 
 | Documento | Descripción | Estado |

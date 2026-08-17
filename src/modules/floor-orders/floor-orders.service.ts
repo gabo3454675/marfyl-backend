@@ -9,11 +9,20 @@ import {
   FloorPaymentMode,
   FloorStation,
   Prisma,
+  SaleMode,
 } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { InvoicesService } from "@/modules/invoices/invoices.service";
 import { WebSocketService } from "@/services/websocket";
 import { classifyLiquorProduct } from "@/modules/invoices/liquor-sales.util";
+import {
+  collectReferencedBomProductIds,
+  collectSaleStockNeeds,
+  findUnstockableBomNeed,
+  resolveSaleMode,
+  unstockableBomNeedMessage,
+  type StockProductLike,
+} from "@/common/bom/sale-mode-stock";
 import {
   ChargeFloorOrderDto,
   CreateFloorOrderDto,
@@ -52,6 +61,56 @@ function resolveHistoryRange(
 
 function availableStock(p: { stock: number; reservedStock: number }): number {
   return Math.max(0, p.stock - p.reservedStock);
+}
+
+function assertDescorcheAllowed(
+  saleMode: string,
+  product: { name: string; isService: boolean },
+): void {
+  if (saleMode === "DESCORCHE" && !product.isService) {
+    throw new BadRequestException(
+      `saleMode DESCORCHE solo aplica a productos de servicio (tarifa). "${product.name}" no es isService.`,
+    );
+  }
+}
+
+/**
+ * Precarga productos de línea + componentes BOM y calcula necesidades de stock
+ * (reserva / release) respetando saleMode.
+ */
+async function loadStockContext(
+  prisma: PrismaService,
+  organizationId: number,
+  items: Array<{ productId: number; quantity: number; saleMode?: SaleMode | string | null }>,
+) {
+  const lineIds = [...new Set(items.map((i) => i.productId))];
+  const lineProducts = await prisma.product.findMany({
+    where: { id: { in: lineIds }, organizationId },
+  });
+  const allIds = new Set(lineIds);
+  for (const id of collectReferencedBomProductIds(lineProducts)) {
+    allIds.add(id);
+  }
+  const haveIds = new Set(lineProducts.map((p) => p.id));
+  const missingBom = [...allIds].some((id) => !haveIds.has(id));
+  const allProducts = missingBom
+    ? await prisma.product.findMany({
+        where: { id: { in: [...allIds] }, organizationId },
+      })
+    : lineProducts;
+  const productById = new Map(
+    allProducts.map((p) => [p.id, p as StockProductLike]),
+  );
+  const nameByProductId = new Map(allProducts.map((p) => [p.id, p.name]));
+  const needs = collectSaleStockNeeds(items, productById, nameByProductId);
+  const bad = findUnstockableBomNeed(needs, productById);
+  if (bad?.reason === "missing") {
+    throw new NotFoundException(unstockableBomNeedMessage(bad));
+  }
+  if (bad) {
+    throw new BadRequestException(unstockableBomNeedMessage(bad));
+  }
+  return { productById, nameByProductId, needs, allProducts };
 }
 
 function inferStation(name: string): FloorStation {
@@ -349,6 +408,7 @@ export class FloorOrdersService {
           quantity: i.quantity,
           unitPrice: Number(i.unitPrice),
           station: i.station,
+          saleMode: i.saleMode,
         })),
       };
     });
@@ -531,10 +591,16 @@ export class FloorOrdersService {
         throw new BadRequestException("Una comanda de esta mesa ya fue cobrada.");
       }
       const items = account.orders.flatMap((order) =>
-        order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        order.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          saleMode: resolveSaleMode(item.saleMode),
+        })),
       );
-      const releaseReserved = account.orders.flatMap((order) =>
-        order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      const { needs: releaseReserved } = await loadStockContext(
+        this.prisma,
+        organizationId,
+        account.orders.flatMap((order) => order.items),
       );
       const invoice = await this.invoices.create(
         {
@@ -598,6 +664,12 @@ export class FloorOrdersService {
       throw new NotFoundException("Uno o más productos no existen o están inactivos");
     }
     const byId = new Map(products.map((p) => [p.id, p]));
+
+    for (const item of dto.items) {
+      const p = byId.get(item.productId)!;
+      const saleMode = resolveSaleMode(item.saleMode);
+      assertDescorcheAllowed(saleMode, p);
+    }
 
     // --- Resolución de cliente por cédula (cuenta abierta) ---
     let resolvedCustomerId = dto.customerId ?? null;
@@ -684,12 +756,14 @@ export class FloorOrdersService {
         items: {
           create: dto.items.map((item) => {
             const p = byId.get(item.productId)!;
+            const saleMode = resolveSaleMode(item.saleMode) as SaleMode;
             return {
               productId: p.id,
               quantity: item.quantity,
               unitPrice: p.salePrice,
               notes: item.notes?.trim() || null,
               station: inferStation(p.name),
+              saleMode,
             };
           }),
         },
@@ -729,42 +803,45 @@ export class FloorOrdersService {
     });
     const byId = new Map(products.map((p) => [p.id, p]));
 
-    // Agregar cantidades por producto (varias líneas)
-    const needByProduct = new Map<number, number>();
     for (const item of order.items) {
-      needByProduct.set(
-        item.productId,
-        (needByProduct.get(item.productId) ?? 0) + item.quantity,
-      );
+      const p = byId.get(item.productId);
+      if (!p) throw new NotFoundException(`Producto ${item.productId} no encontrado`);
+      assertDescorcheAllowed(item.saleMode, p);
     }
 
-    for (const [productId, qty] of needByProduct) {
-      const p = byId.get(productId);
-      if (!p) throw new NotFoundException(`Producto ${productId} no encontrado`);
-      if (p.isBundle || p.isService) {
-        throw new BadRequestException(
-          `El producto "${p.name}" es combo/servicio; use el POS para cobro directo`,
+    const { needs, allProducts } = await loadStockContext(
+      this.prisma,
+      organizationId,
+      order.items,
+    );
+    const stockById = new Map(allProducts.map((p) => [p.id, p]));
+
+    for (const need of needs) {
+      const p = stockById.get(need.productId);
+      if (!p) {
+        throw new NotFoundException(
+          `Componente de stock ${need.productId} no encontrado`,
         );
       }
       const avail = availableStock(p);
-      if (avail < qty) {
+      if (avail < need.quantity) {
         throw new BadRequestException(
-          `Stock insuficiente para ${p.name}. Disponible: ${avail}, solicitado: ${qty}`,
+          `Stock insuficiente para ${p.name}. Disponible: ${avail}, solicitado: ${need.quantity}`,
         );
       }
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      for (const [productId, qty] of needByProduct) {
-        const p = await tx.product.findUnique({ where: { id: productId } });
-        if (!p || availableStock(p) < qty) {
+      for (const need of needs) {
+        const p = await tx.product.findUnique({ where: { id: need.productId } });
+        if (!p || availableStock(p) < need.quantity) {
           throw new BadRequestException(
-            `Stock insuficiente al reservar (producto ${productId})`,
+            `Stock insuficiente al reservar (producto ${need.productId})`,
           );
         }
         await tx.product.update({
-          where: { id: productId },
-          data: { reservedStock: { increment: qty } },
+          where: { id: need.productId },
+          data: { reservedStock: { increment: need.quantity } },
         });
       }
       return tx.floorOrder.update({
@@ -835,25 +912,22 @@ export class FloorOrdersService {
       order.status === FloorOrderStatus.IN_PREP ||
       order.status === FloorOrderStatus.READY;
 
+    const releaseNeeds = shouldRelease
+      ? (await loadStockContext(this.prisma, organizationId, order.items)).needs
+      : [];
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldRelease) {
-        const needByProduct = new Map<number, number>();
-        for (const item of order.items) {
-          needByProduct.set(
-            item.productId,
-            (needByProduct.get(item.productId) ?? 0) + item.quantity,
-          );
-        }
-        for (const [productId, qty] of needByProduct) {
+        for (const need of releaseNeeds) {
           await tx.product.update({
-            where: { id: productId },
-            data: { reservedStock: { decrement: qty } },
+            where: { id: need.productId },
+            data: { reservedStock: { decrement: need.quantity } },
           });
           // Evitar reservedStock negativo
           await tx.$executeRaw`
             UPDATE products
             SET "reservedStock" = GREATEST("reservedStock", 0)
-            WHERE id = ${productId}
+            WHERE id = ${need.productId}
           `;
         }
       }
@@ -901,10 +975,11 @@ export class FloorOrdersService {
       );
     }
 
-    const releaseReserved = order.items.map((i) => ({
-      productId: i.productId,
-      quantity: i.quantity,
-    }));
+    const { needs: releaseReserved } = await loadStockContext(
+      this.prisma,
+      organizationId,
+      order.items,
+    );
 
     const guest =
       order.customerName?.trim() ||
@@ -919,6 +994,7 @@ export class FloorOrdersService {
         items: order.items.map((i) => ({
           productId: i.productId,
           quantity: i.quantity,
+          saleMode: resolveSaleMode(i.saleMode),
         })),
         paymentMethod: dto.paymentMethod,
         payments: dto.payments,
@@ -1073,15 +1149,38 @@ export class FloorOrdersService {
     }
 
     // FASE 3: Preparar datos para la factura
-    const allItems: { productId: number; quantity: number }[] = [];
-    const releaseReserved: { productId: number; quantity: number }[] = [];
+    const allItems: {
+      productId: number;
+      quantity: number;
+      saleMode: "STANDARD" | "DESCORCHE" | "COMBO";
+    }[] = [];
+    const releaseLines: Array<{
+      productId: number;
+      quantity: number;
+      saleMode?: SaleMode | string | null;
+    }> = [];
 
     for (const order of orders) {
       for (const item of order.items) {
-        allItems.push({ productId: item.productId, quantity: item.quantity });
-        releaseReserved.push({ productId: item.productId, quantity: item.quantity });
+        const saleMode = resolveSaleMode(item.saleMode);
+        allItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          saleMode,
+        });
+        releaseLines.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          saleMode: item.saleMode,
+        });
       }
     }
+
+    const { needs: releaseReserved } = await loadStockContext(
+      this.prisma,
+      organizationId,
+      releaseLines,
+    );
 
     const orderIdsStr = orders.map((o) => `#${o.id}`).join(", ");
     const customerName = orders[0]?.customerName || `cliente #${customerId}`;

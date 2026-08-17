@@ -12,6 +12,8 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
+const SALE_MODES = ["STANDARD", "DESCORCHE", "COMBO"] as const;
+
 export class FloorOrderItemDto {
   @IsInt()
   @Min(1)
@@ -24,6 +26,11 @@ export class FloorOrderItemDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** Modalidad de venta. Default STANDARD. DESCORCHE solo si el producto es isService. */
+  @IsOptional()
+  @IsIn(SALE_MODES)
+  saleMode?: (typeof SALE_MODES)[number];
 }
 
 export class CreateFloorOrderDto {

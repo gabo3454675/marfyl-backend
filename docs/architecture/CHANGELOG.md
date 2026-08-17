@@ -1,11 +1,54 @@
 # 📝 Changelog — Documentación de Arquitectura
 
-> **Última actualización:** 2026-08-14  
+> **Última actualización:** 2026-08-16  
 > **Estado:** ✅ Actualizado
 
 ---
 
 ## 📋 Resumen de Cambios
+
+### 2026-08-16 — Follow-ups SaleMode (staging floor + FE picker) — TASK-004
+
+**Agente:** Documentation Agent  
+**Estado:** ✅ Completado  
+**Aprobación:** Follow-ups FE APPROVED_WITH_NOTES (solo hechos aprobados)
+
+**Archivos:**
+- Actualizado `docs/adr/002-sale-mode-combos-descorches.md` — cierra gaps staging floor y FE
+- Actualizado `docs/architecture/CHANGELOG.md` — esta entrada
+
+**Hechos documentados (cierre de gaps previos):**
+- Staging (`ep-curly-star`): 5 tablas `floor_*` + `floor_order_items.saleMode` vía `scripts/staging-apply-floor-schema.sql`; **prod sin** SaleMode
+- FE: picker `saleMode` en POS + comanda; `DESCORCHE` si `isService`, `COMBO` si `isBundle`; payloads envían `saleMode`
+- Comanda `avail()`: `isBundle`/`isService` antes de `availableStock` (combos visibles)
+- Beers/tobos siguen OUT
+- Critic FE APPROVED_WITH_NOTES — nota cosmética badge `999999` disp.
+
+**Sin actualizar:** `docs/status/*` / `AGENTS.md` (no existen). Root `CHANGELOG.md` no tocado. No se documenta prod migrado.
+
+---
+
+### 2026-08-16 — Combos + Descorches + SaleMode (Gate B APPROVED_WITH_NOTES)
+
+**Agente:** Documentation Agent  
+**Estado:** ✅ Completado (supersedido en gaps FE/staging por follow-up TASK-004 arriba)  
+**Aprobación:** Gate B APPROVED_WITH_NOTES (solo hechos aprobados)
+
+**Archivos:**
+- Creado `docs/adr/002-sale-mode-combos-descorches.md` — SaleMode, stock, catálogo Monddy, seeds staging, gaps FE/staging, deuda heurística
+- Actualizado `docs/architecture/README.md` — enlace al ADR
+
+**Hechos documentados (estado al Gate B; ver follow-up TASK-004 para FE + floor staging):**
+- `SaleMode` `STANDARD` | `DESCORCHE` | `COMBO` en `InvoiceItem` y `FloorOrderItem`; copia Floor→Invoice al cobrar
+- Stock: DESCORCHE = línea `isService` (nunca botella; acompañamientos si BOM); rechazo botella+DESCORCHE; combo = solo componentes BOM
+- Catálogo Monddy staging: 5 descorches (30/20/15/10 + VINO) + 16 combos `COMBO-01`…`15B`; descorche no en BOM; `suggestedDescorcheSku` solo anotación
+- Seeds: `seed-monddy-descorches.ts` → `seed-monddy-liquor-combos.ts`; solo `ep-curly-star` / abort prod
+- Beers/tobos OUT; deuda `classifyLiquorProduct` aceptada v1
+- *(Obsoleto en ADR actual)* FE sin picker; gap staging `floor_order_items` — cerrado en follow-up TASK-004
+
+**Sin actualizar:** `docs/status/*` / `AGENTS.md` (no existen en este repo). Root `CHANGELOG.md` no tocado (huella mínima vía ADR + este changelog).
+
+---
 
 ### 2026-08-14 — Hybrid Local API v0.4.0 (contrato)
 
