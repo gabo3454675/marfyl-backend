@@ -551,6 +551,53 @@ export class ProductsService {
   }
 
   /**
+   * Payload liviano para Licores → Combos y servicios.
+   * Evita GET /products (catálogo completo), que en Monddy supera el timeout del cliente.
+   */
+  async getComboWorkspace(organizationId: number) {
+    const products = await this.prisma.product.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        salePrice: true,
+        isBundle: true,
+        isService: true,
+        isActive: true,
+        bundleComponents: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const mapItem = (p: (typeof products)[number]) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      salePrice: Number(p.salePrice),
+      isBundle: p.isBundle,
+      isService: p.isService,
+      isActive: p.isActive,
+      bundleComponents: p.bundleComponents,
+    });
+
+    return {
+      combos: products.filter((p) => p.isBundle).map(mapItem),
+      services: products
+        .filter((p) => p.isService && !p.isBundle)
+        .map(mapItem),
+      recipeCatalog: products
+        .filter((p) => !p.isBundle)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          isBundle: false as const,
+        })),
+    };
+  }
+
+  /**
    * Importa productos desde un archivo Excel en formato MonddY.
    * Usa el parser MonddY para extraer productos con variantes,
    * y realiza upsert por SKU para idempotencia multi-tenant.

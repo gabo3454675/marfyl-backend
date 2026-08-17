@@ -1,3 +1,22 @@
+/** Caracas no usa DST: medianoche local = 04:00 UTC. */
+const CARACAS_UTC_OFFSET_HOURS = 4;
+
+/**
+ * Rango UTC [start, end) del día operativo en America/Caracas.
+ * Permite filtrar `issueDate` con índice, sin castear cada fila.
+ */
+export function caracasDayUtcRange(day: string): { startIso: string; endIso: string } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new Error(`Día inválido: ${day}`);
+  }
+  const [y, m, d] = day.split("-").map(Number);
+  const startMs = Date.UTC(y, m - 1, d, CARACAS_UTC_OFFSET_HOURS, 0, 0, 0);
+  return {
+    startIso: new Date(startMs).toISOString(),
+    endIso: new Date(startMs + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
 /** Unidades por tobo (balde) de cerveza. */
 export const BOTTLES_PER_TOBO = 12;
 /** Tobos que forman una caja de cerveza. */

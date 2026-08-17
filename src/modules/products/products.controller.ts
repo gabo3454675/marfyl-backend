@@ -107,6 +107,13 @@ export class ProductsController {
     return this.productsService.getBomOverview(organizationId);
   }
 
+  /** Combos, servicios y catálogo de receta (sin el catálogo completo). */
+  @Get("combo-workspace")
+  @Permissions("canViewProducts")
+  getComboWorkspace(@ActiveOrganization() organizationId: number) {
+    return this.productsService.getComboWorkspace(organizationId);
+  }
+
   @Get(":id")
   findOne(
     @Param("id", ParseIntPipe) id: number,

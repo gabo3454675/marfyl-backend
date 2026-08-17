@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   BEER_STYLE_LABELS,
@@ -7,12 +8,26 @@ import {
   BOTTLES_PER_TOBO,
   LIQUOR_BUCKET_LABELS,
   TOBOS_PER_CASE,
+  caracasDayUtcRange,
   classifyBeerStyle,
   classifyLiquorProduct,
   packFromBottles,
   type BeerStyle,
   type LiquorBucket,
 } from "./liquor-sales.util";
+
+const LATEST_LIQUOR_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
+
+function isMissingSnapshotTable(err: unknown): boolean {
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2021"
+  ) {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /liquor_day_snapshots/i.test(msg) && /does not exist/i.test(msg);
+}
 
 function todayCaracas(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -48,12 +63,15 @@ type RawRow = {
 
 @Injectable()
 export class LiquorSalesService {
+  private readonly logger = new Logger(LiquorSalesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   private async loadDayRows(
     organizationId: number,
     day: string,
   ): Promise<RawRow[]> {
+    const { startIso, endIso } = caracasDayUtcRange(day);
     const rows = (await this.prisma.$queryRawUnsafe(
       `
       SELECT
@@ -72,7 +90,8 @@ export class LiquorSalesService {
         AND ii."productId" IS NOT NULL
         AND p."isBundle" = false
         AND p."isService" = false
-        AND ((i."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Caracas')::date = $2::date
+        AND i."issueDate" >= $2::timestamptz
+        AND i."issueDate" < $3::timestamptz
         AND (
           i."legacyImportKey" IS NULL
           OR i."legacyImportKey" NOT LIKE 'CUADRE-DIARIO-%'
@@ -81,7 +100,8 @@ export class LiquorSalesService {
       ORDER BY SUM(COALESCE(ii.quantity::numeric, ii."effectiveQuantity")) DESC
       `,
       organizationId,
-      day,
+      startIso,
+      endIso,
     )) as {
       productId: number;
       sku: string | null;
@@ -102,19 +122,37 @@ export class LiquorSalesService {
   private async findLatestLiquorDay(
     organizationId: number,
   ): Promise<string | null> {
+    try {
+      const snap = await this.prisma.liquorDaySnapshot.findFirst({
+        where: { organizationId },
+        orderBy: { day: "desc" },
+        select: { day: true },
+      });
+      if (snap?.day) {
+        return snap.day.toISOString().slice(0, 10);
+      }
+    } catch (err) {
+      if (!isMissingSnapshotTable(err)) throw err;
+      this.logger.warn(
+        "Tabla liquor_day_snapshots ausente; fallback de día usa solo facturas recientes.",
+      );
+    }
+
+    const since = new Date(Date.now() - LATEST_LIQUOR_LOOKBACK_MS).toISOString();
     const rows = (await this.prisma.$queryRawUnsafe(
       `
       SELECT ((i."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Caracas')::date::text AS day
-      FROM invoice_items ii
+      FROM products p
+      JOIN invoice_items ii ON ii."productId" = p.id
       JOIN invoices i ON i.id = ii."invoiceId"
-      JOIN products p ON p.id = ii."productId"
-      WHERE i."organizationId" = $1
-        AND i.status = 'PAID'
-        AND i."deletedAt" IS NULL
-        AND ii."lineageStatus" = 'ACTIVE'
-        AND ii."productId" IS NOT NULL
+      WHERE p."organizationId" = $1
         AND p."isBundle" = false
         AND p."isService" = false
+        AND i."organizationId" = $1
+        AND i.status = 'PAID'
+        AND i."deletedAt" IS NULL
+        AND i."issueDate" >= $2::timestamptz
+        AND ii."lineageStatus" = 'ACTIVE'
         AND (
           i."legacyImportKey" IS NULL
           OR i."legacyImportKey" NOT LIKE 'CUADRE-DIARIO-%'
@@ -131,11 +169,11 @@ export class LiquorSalesService {
           OR UPPER(p.name) LIKE '%CARORE%'
           OR UPPER(p.name) LIKE '%BOTELLA RETORNABLE%'
         )
-      GROUP BY 1
-      ORDER BY 1 DESC
+      ORDER BY i."issueDate" DESC
       LIMIT 1
       `,
       organizationId,
+      since,
     )) as { day: string }[];
     return rows[0]?.day ?? null;
   }
@@ -146,6 +184,26 @@ export class LiquorSalesService {
    * - Con snapshot inválido (opening < vendido): repara al mínimo coherente.
    */
   async ensureDaySnapshots(
+    organizationId: number,
+    day: string,
+    soldByProduct: Map<number, { name: string; quantity: number }>,
+  ): Promise<Map<number, number>> {
+    try {
+      return await this.writeDaySnapshots(
+        organizationId,
+        day,
+        soldByProduct,
+      );
+    } catch (err) {
+      if (!isMissingSnapshotTable(err)) throw err;
+      this.logger.warn(
+        "Tabla liquor_day_snapshots ausente; el reporte carga sin apertura de inventario.",
+      );
+      return new Map();
+    }
+  }
+
+  private async writeDaySnapshots(
     organizationId: number,
     day: string,
     soldByProduct: Map<number, { name: string; quantity: number }>,
@@ -277,27 +335,34 @@ export class LiquorSalesService {
     const liquor = products.filter((p) => classifyLiquorProduct(p.name));
     if (liquor.length === 0) return;
 
-    const existing = await this.prisma.liquorDaySnapshot.findMany({
-      where: {
-        organizationId,
-        day: new Date(`${day}T00:00:00.000Z`),
-        productId: { in: liquor.map((p) => p.id) },
-      },
-      select: { productId: true },
-    });
-    const have = new Set(existing.map((e) => e.productId));
-    const missing = liquor.filter((p) => !have.has(p.id));
-    if (missing.length === 0) return;
+    try {
+      const existing = await this.prisma.liquorDaySnapshot.findMany({
+        where: {
+          organizationId,
+          day: new Date(`${day}T00:00:00.000Z`),
+          productId: { in: liquor.map((p) => p.id) },
+        },
+        select: { productId: true },
+      });
+      const have = new Set(existing.map((e) => e.productId));
+      const missing = liquor.filter((p) => !have.has(p.id));
+      if (missing.length === 0) return;
 
-    await this.prisma.liquorDaySnapshot.createMany({
-      data: missing.map((p) => ({
-        organizationId,
-        day: new Date(`${day}T00:00:00.000Z`),
-        productId: p.id,
-        openingStock: Math.max(0, p.stock),
-      })),
-      skipDuplicates: true,
-    });
+      await this.prisma.liquorDaySnapshot.createMany({
+        data: missing.map((p) => ({
+          organizationId,
+          day: new Date(`${day}T00:00:00.000Z`),
+          productId: p.id,
+          openingStock: Math.max(0, p.stock),
+        })),
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      if (!isMissingSnapshotTable(err)) throw err;
+      this.logger.warn(
+        "Tabla liquor_day_snapshots ausente; se omite congelar apertura al vender.",
+      );
+    }
   }
 
   async getDailyReport(organizationId: number, day?: string) {
